@@ -33,6 +33,7 @@ export function KeywordForm({ appId }: { appId: number }) {
           <span className="text-ink-soft">
             {state.added === 1 ? "1 añadida" : `${state.added} añadidas`}
             {state.skipped > 0 && ` · ${state.skipped} ya estaban`}
+            {state.trackingFailed && " · no se pudo consultar su posición; se reintentará en la consulta diaria"}
           </span>
         )}
       </p>

@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 // The app is for one person, so a single password over HTTP Basic auth is enough.
-// Without APP_PASSWORD the app stays open (local development).
+// Without APP_PASSWORD the app stays open (local development). The cron route has its own secret.
 export function proxy(request: NextRequest) {
   const password = process.env.APP_PASSWORD;
   if (!password) return NextResponse.next();
@@ -28,5 +28,5 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron).*)"],
 };

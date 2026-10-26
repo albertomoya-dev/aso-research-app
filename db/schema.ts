@@ -79,11 +79,25 @@ export const rankSnapshots = pgTable(
     /** 1-based; null when the app is outside the results we fetched. */
     position: integer("position"),
     top5: jsonb("top5").$type<AppSummary[]>().notNull(),
+    /** How many results were fetched: a null position means "outside the top N". */
+    depth: integer("depth").notNull(),
   },
   (t) => [
     uniqueIndex("rank_snapshots_unique_idx").on(t.appId, t.keywordId, t.store, t.country, t.date),
   ],
 );
 
+/** A dated note on the position chart: a metadata change, a release, a campaign. */
+export const annotations = pgTable("annotations", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  label: text("label").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
+export type Annotation = typeof annotations.$inferSelect;
