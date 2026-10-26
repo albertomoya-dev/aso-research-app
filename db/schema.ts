@@ -16,6 +16,7 @@ import type { AppMeta, AppSummary } from "@/lib/stores/types";
 import type { AlertKind, AlertTone } from "@/lib/alerts";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
+import type { RatingStats, ReviewAnalysis } from "@/lib/review-analysis";
 import type { TrendPoint } from "@/lib/trends";
 
 export const storeEnum = pgEnum("store", ["ios", "android"]);
@@ -221,6 +222,22 @@ export const alerts = pgTable(
   // Running the daily job twice must not repeat ranking alerts.
   (t) => [uniqueIndex("alerts_dedupe_idx").on(t.appId, t.kind, t.keywordId, t.date)],
 );
+
+/** Claude's reading of the latest reviews of our app or a competitor. */
+export const reviewAnalyses = pgTable("review_analyses", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  /** Store id of the analysed app: ours or a competitor's. */
+  targetStoreId: text("target_store_id").notNull(),
+  targetTitle: text("target_title").notNull(),
+  stats: jsonb("stats").$type<RatingStats>().notNull(),
+  result: jsonb("result").$type<ReviewAnalysis>().notNull(),
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;

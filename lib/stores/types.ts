@@ -39,6 +39,16 @@ export type AppMeta = AppSummary & {
 
 export type StoreQuery = { country: string; lang: string };
 
+export type Review = {
+  id: string;
+  rating: number;
+  title: string;
+  text: string;
+  /** ISO date. */
+  date: string;
+  version: string | null;
+};
+
 export interface StoreAdapter {
   store: Store;
   /** Results in store order, so index + 1 is the (approximate) search position. */
@@ -46,6 +56,8 @@ export interface StoreAdapter {
   getApp(id: string, query: StoreQuery): Promise<AppMeta>;
   /** Store autocomplete for what the user has typed so far, in the store's order. */
   suggest(prefix: string, query: StoreQuery): Promise<string[]>;
+  /** Most recent reviews in the country's store, newest first. */
+  getReviews(id: string, query: StoreQuery & { limit: number }): Promise<Review[]>;
 }
 
 export class StoreError extends Error {

@@ -1,6 +1,6 @@
-import gplay, { type IAppItem, type IAppItemFullDetail } from "google-play-scraper";
+import gplay, { type IAppItem, type IAppItemFullDetail, type IReviewsItem } from "google-play-scraper";
 import { limiters, withRetry } from "./retry";
-import { StoreError, type AppMeta, type AppSummary, type StoreAdapter } from "./types";
+import { StoreError, type AppMeta, type AppSummary, type Review, type StoreAdapter } from "./types";
 
 // google-play-scraper reads Google Play's HTML, so it can break when Google changes
 // the page. Keep every call behind this adapter.
@@ -65,4 +65,21 @@ export const android: StoreAdapter = {
   async suggest(prefix, { country, lang }) {
     return wrap(() => client.suggest({ term: prefix, country, lang }));
   },
+
+  async getReviews(id, { country, lang, limit }) {
+    // 2 = sort.NEWEST; the package types declare the enum but not its runtime value.
+    const { data } = await wrap(() => client.reviews({ appId: id, country, lang, sort: 2, num: Math.min(limit, 500) }));
+    return data.map(toReview);
+  },
 };
+
+export function toReview(r: IReviewsItem): Review {
+  return {
+    id: r.id,
+    rating: r.score,
+    title: r.title ?? "",
+    text: r.text ?? "",
+    date: new Date(r.date).toISOString(),
+    version: r.version || null,
+  };
+}

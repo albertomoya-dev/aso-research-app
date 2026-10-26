@@ -4,9 +4,17 @@ import { useActionState, useState } from "react";
 import { addKeywords, type AddKeywordsState } from "@/app/actions";
 import { buttonPrimary, buttonSecondary } from "./ui";
 
-type Props = { appId: number; seed: string; suggestions: string[]; countryName: string };
+type Props = {
+  appId: number;
+  seed?: string;
+  suggestions: string[];
+  /** Shown as "N frases encontradas en {countryName}" unless a caption is given. */
+  countryName: string;
+  caption?: string;
+  source?: "autocomplete" | "ai";
+};
 
-export function DiscoverList({ appId, seed, suggestions, countryName }: Props) {
+export function DiscoverList({ appId, seed = "", suggestions, countryName, caption, source = "autocomplete" }: Props) {
   const [state, action, pending] = useActionState<AddKeywordsState, FormData>(addKeywords, null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const toggle = (term: string) =>
@@ -20,10 +28,10 @@ export function DiscoverList({ appId, seed, suggestions, countryName }: Props) {
   return (
     <form action={action} onReset={() => setSelected(new Set())}>
       <input type="hidden" name="appId" value={appId} />
-      <input type="hidden" name="source" value="autocomplete" />
+      <input type="hidden" name="source" value={source} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-3.5">
         <span className="text-[13px] text-muted">
-          {suggestions.length} frases encontradas en {countryName}
+          {caption ?? `${suggestions.length} frases encontradas en ${countryName}`}
         </span>
         <div className="flex gap-2">
           <button
@@ -34,7 +42,7 @@ export function DiscoverList({ appId, seed, suggestions, countryName }: Props) {
             {selected.size === suggestions.length ? "Quitar selección" : "Seleccionar todas"}
           </button>
           <button type="submit" disabled={pending || selected.size === 0} className={buttonPrimary}>
-            {pending ? "Añadiendo…" : selected.size === 1 ? "Seguir 1 keyword" : `Seguir ${selected.size} keywords`}
+            {pending ? "Añadiendo…" : selected.size === 0 ? "Seguir keywords" : selected.size === 1 ? "Seguir 1 keyword" : `Seguir ${selected.size} keywords`}
           </button>
         </div>
       </div>
@@ -60,7 +68,7 @@ export function DiscoverList({ appId, seed, suggestions, countryName }: Props) {
                 className="size-5 accent-[var(--brand)]"
               />
               <span>
-                {term.startsWith(seed.toLocaleLowerCase()) ? (
+                {seed && term.startsWith(seed.toLocaleLowerCase()) ? (
                   <>
                     <span className="text-muted">{term.slice(0, seed.length)}</span>
                     <strong className="font-semibold">{term.slice(seed.length)}</strong>

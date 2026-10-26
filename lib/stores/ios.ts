@@ -1,6 +1,6 @@
 import { getCountry } from "../countries";
 import { limiters, withRetry } from "./retry";
-import { StoreError, type AppMeta, type AppSummary, type StoreAdapter } from "./types";
+import { StoreError, type AppMeta, type AppSummary, type Review, type StoreAdapter } from "./types";
 
 const BASE = "https://itunes.apple.com";
 const CACHE_SECONDS = 6 * 60 * 60;
@@ -49,6 +49,36 @@ export function toSummary(app: ItunesApp): AppSummary {
     url: app.trackViewUrl,
   };
 }
+
+type Label = { label: string };
+type RssEntry = {
+  id: Label;
+  updated: Label;
+  title: Label;
+  content: Label;
+  "im:rating": Label;
+  "im:version"?: Label;
+};
+
+/** Reviews from the App Store customer-reviews RSS feed (JSON flavour). */
+export function parseReviewFeed(data: { feed?: { entry?: RssEntry | RssEntry[] } }): Review[] {
+  const entries = data.feed?.entry;
+  // A feed with a single review returns an object instead of an array.
+  const list = entries ? (Array.isArray(entries) ? entries : [entries]) : [];
+  return list
+    .filter((e) => e["im:rating"])
+    .map((e) => ({
+      id: e.id.label,
+      rating: Number(e["im:rating"].label),
+      title: e.title?.label ?? "",
+      text: e.content?.label ?? "",
+      date: new Date(e.updated.label).toISOString(),
+      version: e["im:version"]?.label ?? null,
+    }));
+}
+
+/** The feed serves at most 10 pages of 50 reviews. */
+const REVIEW_PAGES = 10;
 
 const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
 
@@ -110,5 +140,23 @@ export const ios: StoreAdapter = {
         return parseHints(await res.text());
       }),
     );
+  },
+
+  async getReviews(id, { country, limit }) {
+    const trackId = id.replace(/^id/, "");
+    const reviews: Review[] = [];
+    for (let page = 1; page <= REVIEW_PAGES && reviews.length < limit; page++) {
+      const url = `${BASE}/${country}/rss/customerreviews/page=${page}/id=${trackId}/sortby=mostrecent/json`;
+      const batch = await limiters.ios(() =>
+        withRetry(async () => {
+          const res = await fetch(url, { next: { revalidate: CACHE_SECONDS } });
+          if (!res.ok) throw new StoreError("ios", `Reseñas del App Store respondieron ${res.status}`, res.status);
+          return parseReviewFeed(await res.json());
+        }),
+      );
+      if (batch.length === 0) break;
+      reviews.push(...batch);
+    }
+    return reviews.slice(0, limit);
   },
 };

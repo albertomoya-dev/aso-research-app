@@ -100,18 +100,6 @@ export default async function AppPage({ params, searchParams }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
           <div className="flex flex-wrap items-baseline gap-3">
             <h2 className="text-[17px] font-semibold">Keywords ({rows.length})</h2>
-            <Link href={`/apps/${app.id}/descubrir`} className="text-sm font-medium text-brand hover:underline">
-              Descubrir más keywords
-            </Link>
-            <Link href={`/apps/${app.id}/ideas`} className="text-sm font-medium text-brand hover:underline">
-              Ideas con IA
-            </Link>
-            <Link href={`/apps/${app.id}/metadata`} className="text-sm font-medium text-brand hover:underline">
-              Editor de ficha
-            </Link>
-            <Link href={`/apps/${app.id}/competidores`} className="text-sm font-medium text-brand hover:underline">
-              Competidores
-            </Link>
           </div>
           <nav aria-label="Filtrar keywords" className="flex flex-wrap gap-2">
             {FILTERS.map((x) => {
