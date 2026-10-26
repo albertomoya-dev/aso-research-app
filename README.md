@@ -7,7 +7,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | Paso | Contenido | Estado |
 | --- | --- | --- |
 | 1 | Buscar apps, ver su ficha (metadata) y cargar keywords a mano | Hecho |
-| 2 | Posición diaria y TOP 5 por keyword, gráfico de evolución | Pendiente |
+| 2 | Posición diaria y TOP 5 por keyword, gráfico de evolución con anotaciones | Hecho |
 | 3 | Popularidad (Google Trends y autocompletado) | Pendiente |
 | 4 | Sugerencias de keywords con IA | Pendiente |
 
@@ -25,7 +25,7 @@ Las peticiones se hacen siempre desde el servidor, con caché de 6 horas, un má
 ## Puesta en marcha
 
 1. Crea una base de datos Postgres gratuita en [Neon](https://neon.tech) (o desde Vercel › Storage).
-2. Copia `.env.example` a `.env.local` y rellena `DATABASE_URL`. `APP_PASSWORD` protege toda la app con usuario y contraseña del navegador (el usuario puede ser cualquiera).
+2. Copia `.env.example` a `.env.local` y rellena `DATABASE_URL`. `APP_PASSWORD` protege toda la app con usuario y contraseña del navegador (el usuario puede ser cualquiera). `CRON_SECRET` protege la consulta diaria.
 3. Instala y crea las tablas:
 
    ```bash
@@ -38,7 +38,13 @@ Las peticiones se hacen siempre desde el servidor, con caché de 6 horas, un má
 
 ### Despliegue en Vercel
 
-Importa el repositorio en Vercel, añade `DATABASE_URL` y `APP_PASSWORD` en Settings › Environment Variables y ejecuta `npm run db:migrate` una vez contra esa base de datos.
+Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD` y `CRON_SECRET` en Settings › Environment Variables y ejecuta `npm run db:migrate` contra esa base de datos (también tras cada actualización que traiga migraciones nuevas).
+
+## Posiciones
+
+Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda de 200 resultados y se guarda la posición de cada app que la sigue y el TOP 5. Si la app no aparece, se guarda «fuera de los 200 primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
+
+En App Store la posición es aproximada: la API pública no siempre ordena igual que la app de la tienda.
 
 ## Comandos
 

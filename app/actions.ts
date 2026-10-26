@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { getCountry, isCountry } from "@/lib/countries";
 import { parseKeywords } from "@/lib/keywords";
+import { trackRankings } from "@/lib/tracking";
 import { getAdapter } from "@/lib/stores";
 
 const followSchema = z.object({
@@ -64,7 +65,7 @@ export async function refreshAppMeta(formData: FormData) {
   revalidatePath(`/apps/${appId}`);
 }
 
-export type AddKeywordsState = { added: number; skipped: number; error?: string } | null;
+export type AddKeywordsState = { added: number; skipped: number; error?: string; trackingFailed?: boolean } | null;
 
 export async function addKeywords(_prev: AddKeywordsState, formData: FormData): Promise<AddKeywordsState> {
   const appId = appIdSchema.parse(formData.get("appId"));
@@ -86,8 +87,15 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
     .onConflictDoNothing()
     .returning({ keywordId: schema.appKeywords.keywordId });
 
+  // Fetch today's position for the new keywords now instead of waiting for the daily job.
+  let trackingFailed = false;
+  if (inserted.length > 0) {
+    const report = await trackRankings({ appId, keywordIds: inserted.map((k) => k.keywordId) });
+    trackingFailed = report.errors.length > 0;
+  }
+
   revalidatePath(`/apps/${appId}`);
-  return { added: inserted.length, skipped: terms.length - inserted.length };
+  return { added: inserted.length, skipped: terms.length - inserted.length, trackingFailed };
 }
 
 export async function removeKeyword(formData: FormData) {
@@ -104,4 +112,38 @@ export async function unfollowApp(formData: FormData) {
   await getDb().delete(schema.apps).where(eq(schema.apps.id, appId));
   revalidatePath("/");
   redirect("/");
+}
+
+export async function refreshRankings(formData: FormData) {
+  const appId = appIdSchema.parse(formData.get("appId"));
+  const report = await trackRankings({ appId });
+  revalidatePath(`/apps/${appId}`, "layout");
+  if (report.errors.length > 0 && report.searches === 0) {
+    throw new Error(`No se pudo consultar la tienda: ${report.errors[0].message}`);
+  }
+}
+
+const annotationSchema = z.object({
+  appId: z.coerce.number().int().positive(),
+  date: z.iso.date(),
+  label: z.string().trim().min(1, "Escribe qué cambió").max(120),
+});
+
+export type AnnotationState = { error?: string; ok?: boolean } | null;
+
+export async function addAnnotation(_prev: AnnotationState, formData: FormData): Promise<AnnotationState> {
+  const parsed = annotationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await getDb().insert(schema.annotations).values(parsed.data);
+  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  return { ok: true };
+}
+
+export async function removeAnnotation(formData: FormData) {
+  const appId = appIdSchema.parse(formData.get("appId"));
+  const id = appIdSchema.parse(formData.get("annotationId"));
+  await getDb()
+    .delete(schema.annotations)
+    .where(and(eq(schema.annotations.id, id), eq(schema.annotations.appId, appId)));
+  revalidatePath(`/apps/${appId}`, "layout");
 }

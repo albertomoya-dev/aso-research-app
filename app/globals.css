@@ -21,6 +21,8 @@
   --danger-soft: #fdecea;
   --warn-bg: #fff1dd;
   --warn-fg: #8a4b00;
+  --up: #1e7b46;
+  --down: #b42318;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,6 +47,8 @@
     --danger-soft: #3a1c1a;
     --warn-bg: #3a2a12;
     --warn-fg: #ffcc80;
+    --up: #6fd49a;
+    --down: #ff8a80;
   }
 }
 
@@ -69,6 +73,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-warn-bg: var(--warn-bg);
   --color-warn-fg: var(--warn-fg);
+  --color-up: var(--up);
+  --color-down: var(--down);
   --font-sans: var(--font-plex-sans), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
