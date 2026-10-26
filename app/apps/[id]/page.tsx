@@ -4,6 +4,7 @@ import { refreshAppMeta, refreshRankings, removeKeyword, unfollowApp } from "@/a
 import { AppIcon } from "@/components/app-icon";
 import { AppMetadata } from "@/components/app-metadata";
 import { ConfirmButton } from "@/components/confirm-button";
+import { CountriesCard } from "@/components/countries-card";
 import { KeywordForm } from "@/components/keyword-form";
 import { Position, PositionChange, Sparkline } from "@/components/rank";
 import { Difficulty, OpportunityBadge, PopularityBar } from "@/components/scores";
@@ -198,6 +199,8 @@ export default async function AppPage({ params, searchParams }: Props) {
           Oportunidad: popularidad descontada por la dificultad.
         </p>
       </Card>
+
+      <CountriesCard app={app} />
 
       <Card aria-label="Ficha publicada" className="p-6">
         <div className="mb-4 text-sm text-muted">Ficha leída el {formatDate(app.metaFetchedAt)}</div>

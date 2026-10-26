@@ -13,6 +13,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 5 | Competidores: cuota de visibilidad en el TOP 5 y cambios en sus fichas | Hecho |
 | 6 | Novedades (alertas) y resumen semanal, también por email | Hecho |
 | 7 | Análisis de reseñas con IA (tu app y competidores) | Hecho |
+| 8 | Estacionalidad de keywords y la misma app en varios países | Hecho |
 
 ## Stack
 
@@ -92,6 +93,12 @@ La pestaña **Reseñas** lee hasta 300 reseñas recientes del país (App Store: 
 - las frases con las que los usuarios describen la app, que puedes seguir como keywords.
 
 La distribución de estrellas y la media se calculan con las reseñas leídas, no con IA. Cada análisis se guarda, así que puedes comparar la media entre análisis.
+
+## Estacionalidad y otros países
+
+La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen.
+
+En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país se sigue por separado, con sus posiciones y su histórico.
 
 ## Novedades y resumen semanal
 
