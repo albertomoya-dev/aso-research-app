@@ -1,0 +1,21 @@
+{
+  "appId": "com.strava",
+  "url": "https://play.google.com/store/apps/details?id=com.strava&hl=es&gl=es",
+  "title": "Strava: correr y ciclismo",
+  "summary": "Registra tus carreras y rutas en bici con GPS",
+  "description": "Strava es la app para corredores y ciclistas.",
+  "developer": "Strava Inc.",
+  "developerId": "Strava+Inc.",
+  "icon": "https://play-lh.googleusercontent.com/icon",
+  "score": 4.5,
+  "scoreText": "4,5",
+  "ratings": 812345,
+  "free": true,
+  "price": 0,
+  "priceText": "Gratis",
+  "genre": "Salud y bienestar",
+  "version": "390.4",
+  "updated": 1760457600000,
+  "recentChanges": "Corrección de errores.",
+  "screenshots": ["https://play-lh.googleusercontent.com/s1"]
+}
