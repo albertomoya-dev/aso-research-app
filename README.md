@@ -12,6 +12,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 4 | Ideas de keywords con IA (Claude) y editor de ficha con validación | Hecho |
 | 5 | Competidores: cuota de visibilidad en el TOP 5 y cambios en sus fichas | Hecho |
 | 6 | Novedades (alertas) y resumen semanal, también por email | Hecho |
+| 7 | Análisis de reseñas con IA (tu app y competidores) | Hecho |
 
 ## Stack
 
@@ -80,6 +81,17 @@ La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 
 - **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. Se muestra la cuota actual (última posición de cada keyword) y su evolución en 30 días para tu app y las cuatro apps más visibles.
 - **Fichas vigiladas**: al pulsar «Vigilar ficha» en una app, la consulta diaria lee su ficha y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. La lista de cambios muestra qué palabras añadió o quitó.
+
+## Reseñas
+
+La pestaña **Reseñas** lee hasta 300 reseñas recientes del país (App Store: feed RSS de Apple; Google Play: `google-play-scraper`) de tu app o de un competidor que vigiles, y Claude resume:
+
+- los temas más mencionados, con su tono, cuántas reseñas los mencionan y una cita;
+- las quejas y las peticiones más repetidas;
+- ideas concretas para la ficha;
+- las frases con las que los usuarios describen la app, que puedes seguir como keywords.
+
+La distribución de estrellas y la media se calculan con las reseñas leídas, no con IA. Cada análisis se guarda, así que puedes comparar la media entre análisis.
 
 ## Novedades y resumen semanal
 

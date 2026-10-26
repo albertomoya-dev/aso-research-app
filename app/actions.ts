@@ -74,7 +74,7 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
   const appId = appIdSchema.parse(formData.get("appId"));
   // A textarea sends one value; the discovery checklist sends one per ticked keyword.
   const terms = parseKeywords(formData.getAll("keywords").join("\n"));
-  const source = z.enum(["manual", "autocomplete"]).catch("manual").parse(formData.get("source"));
+  const source = z.enum(["manual", "autocomplete", "ai"]).catch("manual").parse(formData.get("source"));
   if (terms.length === 0) return { added: 0, skipped: 0, error: "Escribe al menos una keyword." };
 
   const { added, trackingFailed } = await followKeywords(
