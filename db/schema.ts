@@ -6,12 +6,14 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  real,
   serial,
   text,
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
+import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 import type { TrendPoint } from "@/lib/trends";
 
@@ -163,6 +165,39 @@ export const aiSuggestions = pgTable(
   },
   (t) => [uniqueIndex("ai_suggestions_app_term_idx").on(t.appId, t.term)],
 );
+
+/** A competitor whose listing is checked every day. */
+export const competitors = pgTable(
+  "competitors",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    storeId: text("store_id").notNull(),
+    title: text("title").notNull(),
+    developer: text("developer").notNull(),
+    icon: text("icon").notNull(),
+    url: text("url").notNull(),
+    rating: real("rating"),
+    ratingsCount: integer("ratings_count"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    /** Last error from the store, cleared on the next successful check. */
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("competitors_app_store_id_idx").on(t.appId, t.storeId)],
+);
+
+/** A competitor listing, stored only when it differs from the previous one. */
+export const competitorSnapshots = pgTable("competitor_snapshots", {
+  id: serial("id").primaryKey(),
+  competitorId: integer("competitor_id")
+    .notNull()
+    .references(() => competitors.id, { onDelete: "cascade" }),
+  listing: jsonb("listing").$type<Listing>().notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;

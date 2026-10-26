@@ -109,6 +109,9 @@ export default async function AppPage({ params, searchParams }: Props) {
             <Link href={`/apps/${app.id}/metadata`} className="text-sm font-medium text-brand hover:underline">
               Editor de ficha
             </Link>
+            <Link href={`/apps/${app.id}/competidores`} className="text-sm font-medium text-brand hover:underline">
+              Competidores
+            </Link>
           </div>
           <nav aria-label="Filtrar keywords" className="flex flex-wrap gap-2">
             {FILTERS.map((x) => {
