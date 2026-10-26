@@ -8,7 +8,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | --- | --- | --- |
 | 1 | Buscar apps, ver su ficha (metadata) y cargar keywords a mano | Hecho |
 | 2 | Posición diaria y TOP 5 por keyword, gráfico de evolución con anotaciones | Hecho |
-| 3 | Popularidad (Google Trends y autocompletado) | Pendiente |
+| 3 | Popularidad, dificultad y oportunidad; Google Trends; descubrir keywords con el autocompletado | Hecho |
 | 4 | Sugerencias de keywords con IA | Pendiente |
 
 ## Stack
@@ -45,6 +45,17 @@ Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD` y `CRON_
 Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda de 200 resultados y se guarda la posición de cada app que la sigue y el TOP 5. Si la app no aparece, se guarda «fuera de los 200 primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
 
 En App Store la posición es aproximada: la API pública no siempre ordena igual que la app de la tienda.
+
+## Popularidad, dificultad y oportunidad
+
+Las tiendas no publican cuántas veces se busca una palabra, así que son estimaciones de 0 a 100:
+
+- **Popularidad**: se escribe la keyword letra a letra en el buscador de la tienda (autocompletado) hasta que la tienda la sugiere. Cuantas menos letras hagan falta, y cuanto más arriba salga, más se busca. Se recalcula cada semana.
+- **Dificultad**: fuerza del TOP 10 de la búsqueda: cuántas apps llevan la keyword en el título, su valoración y, en App Store, su número de valoraciones. Se recalcula cada día.
+- **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100)`.
+- **Google Trends**: interés semanal en Google de los últimos 12 meses en el país, relativo al pico de la propia keyword. Sirve para ver la estacionalidad, no para comparar keywords. Google Trends no tiene API pública y limita mucho las peticiones: se descargan como máximo 20 keywords por día y se refrescan cada semana.
+
+La pantalla **Descubrir keywords** consulta el autocompletado con una palabra semilla, sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
 
 ## Comandos
 

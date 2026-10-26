@@ -1,3 +1,4 @@
+import { getCountry } from "../countries";
 import { limiters, withRetry } from "./retry";
 import { StoreError, type AppMeta, type AppSummary, type StoreAdapter } from "./types";
 
@@ -44,8 +45,18 @@ export function toSummary(app: ItunesApp): AppSummary {
     developer: app.artistName,
     icon: app.artworkUrl512 ?? app.artworkUrl100,
     rating: app.averageUserRating ?? null,
+    ratingsCount: app.userRatingCount ?? null,
     url: app.trackViewUrl,
   };
+}
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+
+/** Terms from the plist the App Store hints endpoint returns. */
+export function parseHints(xml: string): string[] {
+  return [...xml.matchAll(/<key>term<\/key>\s*<string>([^<]*)<\/string>/g)].map((m) =>
+    m[1].replace(/&(#\d+|\w+);/g, (_, e: string) => (e.startsWith("#") ? String.fromCodePoint(Number(e.slice(1))) : (ENTITIES[e] ?? `&${e};`))),
+  );
 }
 
 export function toMeta(app: ItunesApp, country: string): AppMeta {
@@ -85,5 +96,19 @@ export const ios: StoreAdapter = {
     const [app] = await itunes("lookup", { [key]: key === "id" ? trackId : id, country });
     if (!app) throw new StoreError("ios", `No existe la app ${id} en el App Store de ${country.toUpperCase()}`, 404);
     return toMeta(app, country);
+  },
+
+  async suggest(prefix, { country }) {
+    const url = `https://search.itunes.apple.com/WebObjects/MZSearchHints.woa/wa/hints?${new URLSearchParams({ clientApplication: "Software", term: prefix })}`;
+    return limiters.ios(() =>
+      withRetry(async () => {
+        const res = await fetch(url, {
+          headers: { "X-Apple-Store-Front": `${getCountry(country).storefront},29` },
+          next: { revalidate: CACHE_SECONDS },
+        });
+        if (!res.ok) throw new StoreError("ios", `Autocompletado del App Store respondió ${res.status}`, res.status);
+        return parseHints(await res.text());
+      }),
+    );
   },
 };

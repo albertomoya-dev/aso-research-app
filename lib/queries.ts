@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { opportunityScore } from "./popularity";
 import { positionChange, shiftDate, today } from "./ranking";
 import type { AppSummary } from "./stores/types";
 
@@ -17,12 +18,48 @@ export type KeywordRow = {
   changeWeek: number | null;
   history: HistoryPoint[];
   leader: AppSummary | null;
+  popularity: number | null;
+  difficulty: number | null;
+  opportunity: number | null;
 };
+
+export type KeywordMetrics = { popularity: number | null; difficulty: number | null; prefixLength: number | null };
+
+function withOpportunity(m: KeywordMetrics | undefined) {
+  const popularity = m?.popularity ?? null;
+  const difficulty = m?.difficulty ?? null;
+  return {
+    popularity,
+    difficulty,
+    opportunity: popularity != null && difficulty != null ? opportunityScore(popularity, difficulty) : null,
+  };
+}
+
+async function metricsFor(keywordIds: number[], store: "ios" | "android", country: string) {
+  if (keywordIds.length === 0) return new Map<number, KeywordMetrics>();
+  const rows = await getDb()
+    .select({
+      keywordId: schema.keywordMetrics.keywordId,
+      popularity: schema.keywordMetrics.popularity,
+      difficulty: schema.keywordMetrics.difficulty,
+      prefixLength: schema.keywordMetrics.prefixLength,
+    })
+    .from(schema.keywordMetrics)
+    .where(
+      and(
+        inArray(schema.keywordMetrics.keywordId, keywordIds),
+        eq(schema.keywordMetrics.store, store),
+        eq(schema.keywordMetrics.country, country),
+      ),
+    );
+  return new Map(rows.map(({ keywordId, ...m }) => [keywordId, m]));
+}
 
 const SPARK_DAYS = 30;
 
 /** Keywords of an app with their latest position, changes and the last 30 days. */
-export async function getKeywordRows(appId: number): Promise<KeywordRow[]> {
+export async function getKeywordRows(app: { id: number; store: "ios" | "android"; country: string }): Promise<KeywordRow[]> {
+  const appId = app.id;
   const db = getDb();
   const since = shiftDate(today(), -SPARK_DAYS);
   const [keywords, snapshots] = await Promise.all([
@@ -46,6 +83,11 @@ export async function getKeywordRows(appId: number): Promise<KeywordRow[]> {
   ]);
 
   const byKeyword = Map.groupBy(snapshots, (s) => s.keywordId);
+  const metrics = await metricsFor(
+    keywords.map((k) => k.id),
+    app.store,
+    app.country,
+  );
   return keywords.map((k) => {
     const history = byKeyword.get(k.id) ?? [];
     const latest = history.at(-1);
@@ -59,6 +101,7 @@ export async function getKeywordRows(appId: number): Promise<KeywordRow[]> {
       changeWeek: latest ? positionChange(latest.position, on(shiftDate(latest.date, -7))) : null,
       history: history.map(({ date, position }) => ({ date, position })),
       leader: latest?.top5[0] ?? null,
+      ...withOpportunity(metrics.get(k.id)),
     };
   });
 }
@@ -66,7 +109,12 @@ export async function getKeywordRows(appId: number): Promise<KeywordRow[]> {
 /** Days on each side of an annotation used to compare the average position. */
 export const ANNOTATION_WINDOW = 14;
 
-export async function getKeywordDetail(appId: number, keywordId: number, days: number) {
+export async function getKeywordDetail(
+  app: { id: number; store: "ios" | "android"; country: string },
+  keywordId: number,
+  days: number,
+) {
+  const appId = app.id;
   const db = getDb();
   const since = shiftDate(today(), -days);
   // Annotations near the start of the range need the days before it for their comparison.
@@ -101,6 +149,14 @@ export async function getKeywordDetail(appId: number, keywordId: number, days: n
       .orderBy(desc(schema.annotations.date)),
   ]);
   if (!keyword) return null;
+  const [metrics, trend] = await Promise.all([
+    metricsFor([keywordId], app.store, app.country).then((m) => m.get(keywordId)),
+    db
+      .select({ points: schema.keywordTrends.points, error: schema.keywordTrends.error, fetchedAt: schema.keywordTrends.fetchedAt })
+      .from(schema.keywordTrends)
+      .where(and(eq(schema.keywordTrends.keywordId, keywordId), eq(schema.keywordTrends.country, app.country)))
+      .then((rows) => rows[0] ?? null),
+  ]);
   return {
     keyword,
     since,
@@ -108,5 +164,7 @@ export async function getKeywordDetail(appId: number, keywordId: number, days: n
     history: snapshots.map(({ date, position }) => ({ date, position })),
     latest: snapshots.at(-1) ?? null,
     annotations,
+    metrics: { ...withOpportunity(metrics), prefixLength: metrics?.prefixLength ?? null },
+    trend,
   };
 }
