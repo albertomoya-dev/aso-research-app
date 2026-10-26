@@ -1,0 +1,23 @@
+{
+  "resultCount": 1,
+  "results": [
+    {
+      "trackId": 426826309,
+      "trackName": "Strava: Run, Bike, Hike",
+      "bundleId": "com.strava.stravaride",
+      "artistName": "Strava Inc.",
+      "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/Purple/100x100bb.jpg",
+      "artworkUrl512": "https://is1-ssl.mzstatic.com/image/thumb/Purple/512x512bb.jpg",
+      "trackViewUrl": "https://apps.apple.com/es/app/strava-run-bike-hike/id426826309?uo=4",
+      "averageUserRating": 4.80123,
+      "userRatingCount": 51234,
+      "primaryGenreName": "Health & Fitness",
+      "formattedPrice": "Gratis",
+      "version": "390.0",
+      "currentVersionReleaseDate": "2026-10-14T16:03:11Z",
+      "description": "Strava es la app para corredores y ciclistas.",
+      "releaseNotes": "Mejoras de rendimiento.",
+      "screenshotUrls": ["https://is1-ssl.mzstatic.com/image/1.jpg", "https://is1-ssl.mzstatic.com/image/2.jpg"]
+    }
+  ]
+}
