@@ -12,10 +12,12 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
+import type { MetadataDraft } from "@/lib/metadata-check";
 import type { TrendPoint } from "@/lib/trends";
 
 export const storeEnum = pgEnum("store", ["ios", "android"]);
 export const keywordSourceEnum = pgEnum("keyword_source", ["manual", "ai", "autocomplete"]);
+export const suggestionStatusEnum = pgEnum("suggestion_status", ["pending", "accepted", "dismissed"]);
 
 /** A followed app in one store and one country. */
 export const apps = pgTable(
@@ -32,6 +34,8 @@ export const apps = pgTable(
     /** Last fetched store listing. */
     meta: jsonb("meta").$type<AppMeta>().notNull(),
     metaFetchedAt: timestamp("meta_fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Work-in-progress listing from the metadata editor. */
+    draft: jsonb("draft").$type<MetadataDraft>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("apps_store_id_country_idx").on(t.store, t.storeId, t.country)],
@@ -58,6 +62,8 @@ export const appKeywords = pgTable(
       .notNull()
       .references(() => keywords.id, { onDelete: "cascade" }),
     source: keywordSourceEnum("source").notNull().default("manual"),
+    /** 1–5 as estimated by the AI; null for keywords added by hand. */
+    relevance: integer("relevance"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.keywordId] })],
@@ -133,6 +139,29 @@ export const keywordTrends = pgTable(
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.keywordId, t.country] })],
+);
+
+/** Keyword ideas from Claude, waiting for the user to accept or dismiss them. */
+export const aiSuggestions = pgTable(
+  "ai_suggestions",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    term: text("term").notNull(),
+    language: text("language").notNull(),
+    intent: text("intent").notNull(),
+    relevance: integer("relevance").notNull(),
+    estimatedCompetition: text("estimated_competition").notNull(),
+    reason: text("reason").notNull(),
+    status: suggestionStatusEnum("status").notNull().default("pending"),
+    /** Model that answered and prompt version, to compare suggestion quality later. */
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ai_suggestions_app_term_idx").on(t.appId, t.term)],
 );
 
 export type App = typeof apps.$inferSelect;
