@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { opportunityScore } from "./popularity";
 import { positionChange, shiftDate, today } from "./ranking";
+import { relevanceFactor } from "./suggestions";
 import type { AppSummary } from "./stores/types";
 
 export type HistoryPoint = { date: string; position: number | null };
@@ -10,6 +11,7 @@ export type KeywordRow = {
   id: number;
   term: string;
   source: "manual" | "ai" | "autocomplete";
+  relevance: number | null;
   position: number | null;
   /** Date of the latest snapshot; null when the keyword was never tracked. */
   checkedOn: string | null;
@@ -25,13 +27,13 @@ export type KeywordRow = {
 
 export type KeywordMetrics = { popularity: number | null; difficulty: number | null; prefixLength: number | null };
 
-function withOpportunity(m: KeywordMetrics | undefined) {
+function withOpportunity(m: KeywordMetrics | undefined, relevance: number | null) {
   const popularity = m?.popularity ?? null;
   const difficulty = m?.difficulty ?? null;
   return {
     popularity,
     difficulty,
-    opportunity: popularity != null && difficulty != null ? opportunityScore(popularity, difficulty) : null,
+    opportunity: popularity != null && difficulty != null ? opportunityScore(popularity, difficulty, relevanceFactor(relevance)) : null,
   };
 }
 
@@ -64,7 +66,12 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
   const since = shiftDate(today(), -SPARK_DAYS);
   const [keywords, snapshots] = await Promise.all([
     db
-      .select({ id: schema.keywords.id, term: schema.keywords.term, source: schema.appKeywords.source })
+      .select({
+        id: schema.keywords.id,
+        term: schema.keywords.term,
+        source: schema.appKeywords.source,
+        relevance: schema.appKeywords.relevance,
+      })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
       .where(eq(schema.appKeywords.appId, appId))
@@ -101,7 +108,7 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
       changeWeek: latest ? positionChange(latest.position, on(shiftDate(latest.date, -7))) : null,
       history: history.map(({ date, position }) => ({ date, position })),
       leader: latest?.top5[0] ?? null,
-      ...withOpportunity(metrics.get(k.id)),
+      ...withOpportunity(metrics.get(k.id), k.relevance),
     };
   });
 }
@@ -121,7 +128,7 @@ export async function getKeywordDetail(
   const historySince = shiftDate(since, -ANNOTATION_WINDOW);
   const [keyword, snapshots, annotations] = await Promise.all([
     db
-      .select({ id: schema.keywords.id, term: schema.keywords.term })
+      .select({ id: schema.keywords.id, term: schema.keywords.term, relevance: schema.appKeywords.relevance })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
       .where(and(eq(schema.appKeywords.appId, appId), eq(schema.appKeywords.keywordId, keywordId)))
@@ -164,7 +171,7 @@ export async function getKeywordDetail(
     history: snapshots.map(({ date, position }) => ({ date, position })),
     latest: snapshots.at(-1) ?? null,
     annotations,
-    metrics: { ...withOpportunity(metrics), prefixLength: metrics?.prefixLength ?? null },
+    metrics: { ...withOpportunity(metrics, keyword.relevance), prefixLength: metrics?.prefixLength ?? null },
     trend,
   };
 }

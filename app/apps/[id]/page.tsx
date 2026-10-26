@@ -103,6 +103,12 @@ export default async function AppPage({ params, searchParams }: Props) {
             <Link href={`/apps/${app.id}/descubrir`} className="text-sm font-medium text-brand hover:underline">
               Descubrir más keywords
             </Link>
+            <Link href={`/apps/${app.id}/ideas`} className="text-sm font-medium text-brand hover:underline">
+              Ideas con IA
+            </Link>
+            <Link href={`/apps/${app.id}/metadata`} className="text-sm font-medium text-brand hover:underline">
+              Editor de ficha
+            </Link>
           </div>
           <nav aria-label="Filtrar keywords" className="flex flex-wrap gap-2">
             {FILTERS.map((x) => {

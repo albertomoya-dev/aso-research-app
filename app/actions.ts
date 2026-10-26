@@ -1,11 +1,12 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { getCountry, isCountry } from "@/lib/countries";
+import { followKeywords } from "@/lib/follow";
 import { parseKeywords } from "@/lib/keywords";
 import { trackRankings } from "@/lib/tracking";
 import { getAdapter } from "@/lib/stores";
@@ -74,30 +75,13 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
   const source = z.enum(["manual", "autocomplete"]).catch("manual").parse(formData.get("source"));
   if (terms.length === 0) return { added: 0, skipped: 0, error: "Escribe al menos una keyword." };
 
-  const db = getDb();
-  await db
-    .insert(schema.keywords)
-    .values(terms.map((term) => ({ term })))
-    .onConflictDoNothing();
-  const rows = await db
-    .select({ id: schema.keywords.id })
-    .from(schema.keywords)
-    .where(inArray(schema.keywords.term, terms));
-  const inserted = await db
-    .insert(schema.appKeywords)
-    .values(rows.map((k) => ({ appId, keywordId: k.id, source })))
-    .onConflictDoNothing()
-    .returning({ keywordId: schema.appKeywords.keywordId });
-
-  // Fetch today's position for the new keywords now instead of waiting for the daily job.
-  let trackingFailed = false;
-  if (inserted.length > 0) {
-    const report = await trackRankings({ appId, keywordIds: inserted.map((k) => k.keywordId) });
-    trackingFailed = report.errors.length > 0;
-  }
-
+  const { added, trackingFailed } = await followKeywords(
+    appId,
+    terms.map((term) => ({ term })),
+    source,
+  );
   revalidatePath(`/apps/${appId}`, "layout");
-  return { added: inserted.length, skipped: terms.length - inserted.length, trackingFailed };
+  return { added, skipped: terms.length - added, trackingFailed };
 }
 
 export async function removeKeyword(formData: FormData) {

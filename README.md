@@ -9,7 +9,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 1 | Buscar apps, ver su ficha (metadata) y cargar keywords a mano | Hecho |
 | 2 | Posición diaria y TOP 5 por keyword, gráfico de evolución con anotaciones | Hecho |
 | 3 | Popularidad, dificultad y oportunidad; Google Trends; descubrir keywords con el autocompletado | Hecho |
-| 4 | Sugerencias de keywords con IA | Pendiente |
+| 4 | Ideas de keywords con IA (Claude) y editor de ficha con validación | Hecho |
 
 ## Stack
 
@@ -38,7 +38,7 @@ Las peticiones se hacen siempre desde el servidor, con caché de 6 horas, un má
 
 ### Despliegue en Vercel
 
-Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD` y `CRON_SECRET` en Settings › Environment Variables y ejecuta `npm run db:migrate` contra esa base de datos (también tras cada actualización que traiga migraciones nuevas).
+Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD`, `CRON_SECRET` y, si quieres ideas con IA, `ANTHROPIC_API_KEY` en Settings › Environment Variables y ejecuta `npm run db:migrate` contra esa base de datos (también tras cada actualización que traiga migraciones nuevas).
 
 ## Posiciones
 
@@ -52,10 +52,25 @@ Las tiendas no publican cuántas veces se busca una palabra, así que son estima
 
 - **Popularidad**: se escribe la keyword letra a letra en el buscador de la tienda (autocompletado) hasta que la tienda la sugiere. Cuantas menos letras hagan falta, y cuanto más arriba salga, más se busca. Se recalcula cada semana.
 - **Dificultad**: fuerza del TOP 10 de la búsqueda: cuántas apps llevan la keyword en el título, su valoración y, en App Store, su número de valoraciones. Se recalcula cada día.
-- **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100)`.
+- **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100) × relevancia`. La relevancia solo existe en keywords añadidas desde las ideas con IA (de 1 a 5 → factor 0,6 a 1); las demás cuentan como 1.
 - **Google Trends**: interés semanal en Google de los últimos 12 meses en el país, relativo al pico de la propia keyword. Sirve para ver la estacionalidad, no para comparar keywords. Google Trends no tiene API pública y limita mucho las peticiones: se descargan como máximo 20 keywords por día y se refrescan cada semana.
 
 La pantalla **Descubrir keywords** consulta el autocompletado con una palabra semilla, sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
+
+## Ideas con IA
+
+La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Anthropic) keywords nuevas para la app. Antes de llamar al modelo se reúnen señales reales: la ficha, las keywords que ya sigues y las que descartaste, el autocompletado de la tienda para las palabras del título y la categoría, y las apps que salen en el TOP 5 de tus keywords.
+
+- La respuesta llega como JSON estructurado y se valida con Zod. Se quitan repetidas (también plurales y acentos), las que ya sigues o descartaste y las que contienen marcas de otras apps.
+- Las ideas quedan pendientes hasta que eliges cuáles seguir. Nada se añade solo.
+- La relevancia y la competencia son estimaciones de la IA, no datos de la tienda. La popularidad y la dificultad reales se miden al seguir la keyword.
+- Cada idea guarda el modelo que respondió y la versión del prompt (`PROMPT_VERSION` en `lib/suggestions.ts`).
+- Si el modelo rechaza una petición, la API la reintenta con el modelo alternativo que recomienda Anthropic (fallback del lado del servidor).
+- Sin `ANTHROPIC_API_KEY` la pantalla lo indica y el resto de la app funciona igual.
+
+## Editor de ficha
+
+La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos; para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
 
 ## Comandos
 
