@@ -6,6 +6,8 @@ import { AnnotationForm } from "@/components/annotation-form";
 import { AppIcon } from "@/components/app-icon";
 import { Position, PositionChange } from "@/components/rank";
 import { RankChart } from "@/components/rank-chart";
+import { difficultyLabel } from "@/components/scores";
+import { TrendChart } from "@/components/trend-chart";
 import { StoreBadge } from "@/components/store-badge";
 import { Card } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
@@ -14,6 +16,7 @@ import { getCountry } from "@/lib/countries";
 import { formatDate, formatRating } from "@/lib/format";
 import { ANNOTATION_WINDOW, getKeywordDetail } from "@/lib/queries";
 import { averagePosition, positionChange, RANK_DEPTH, shiftDate, today } from "@/lib/ranking";
+import { peakMonth } from "@/lib/trends";
 
 type Props = {
   params: Promise<{ id: string; keywordId: string }>;
@@ -27,7 +30,7 @@ async function load({ params, searchParams }: Props) {
   const { r } = await searchParams;
   const days = RANGES.includes(Number(r)) ? Number(r) : RANGES[0];
   const app = await loadApp(id);
-  const detail = await getKeywordDetail(app.id, Number(keywordId), days);
+  const detail = await getKeywordDetail(app, Number(keywordId), days);
   if (!detail) notFound();
   return { app, days, ...detail };
 }
@@ -40,7 +43,8 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 const fmtAvg = (n: number | null) => (n == null ? "–" : `#${n.toFixed(1).replace(".", ",")}`);
 
 export default async function KeywordPage(props: Props) {
-  const { app, days, keyword, since, history, latest, annotations } = await load(props);
+  const { app, days, keyword, since, history, latest, annotations, metrics, trend } = await load(props);
+  const peak = trend?.points ? peakMonth(trend.points) : null;
   const end = today();
   const series = dailySeries(history, since, end);
   const depth = latest?.depth ?? RANK_DEPTH;
@@ -77,6 +81,11 @@ export default async function KeywordPage(props: Props) {
           <Stat label="Cambio 7 días">
             <PositionChange change={positionChange(latest?.position, weekAgo?.position)} />
           </Stat>
+          <Stat label="Popularidad">
+            {metrics.popularity ?? "–"}
+          </Stat>
+          <Stat label="Dificultad">{metrics.difficulty != null ? `${difficultyLabel(metrics.difficulty)} · ${metrics.difficulty}` : "–"}</Stat>
+          <Stat label="Oportunidad">{metrics.opportunity ?? "–"}</Stat>
           <Stat label="Mejor posición del periodo">
             {(() => {
               const best = Math.min(...history.filter((h) => h.date >= since && h.position != null).map((h) => h.position!));
@@ -140,6 +149,28 @@ export default async function KeywordPage(props: Props) {
               </div>
             </details>
           </>
+        )}
+      </Card>
+
+      <Card aria-label="Interés en Google" className="p-5">
+        <h2 className="text-[17px] font-semibold">Interés en Google · últimos 12 meses</h2>
+        <p className="text-[13px] text-muted">
+          Google Trends en {getCountry(app.country).name}, de 0 a 100 respecto al pico de esta misma keyword. No sirve para comparar keywords
+          entre sí, pero sí para ver la estacionalidad.
+          {metrics.prefixLength != null &&
+            ` En ${app.store === "ios" ? "App Store" : "Google Play"} aparece en el autocompletado al escribir ${metrics.prefixLength} ${metrics.prefixLength === 1 ? "letra" : "letras"}.`}
+        </p>
+        {trend?.points && trend.points.length > 0 ? (
+          <>
+            {peak && <p className="mt-2 text-sm font-medium">Pico de interés en {peak}: prepara la ficha unas semanas antes.</p>}
+            <div className="mt-3">
+              <TrendChart points={trend.points} />
+            </div>
+          </>
+        ) : (
+          <p className="py-8 text-center text-sm text-muted">
+            {trend?.error ? `Google Trends no respondió (${trend.error}). Se reintentará en la próxima consulta.` : "Se descargará en la próxima consulta diaria."}
+          </p>
         )}
       </Card>
 

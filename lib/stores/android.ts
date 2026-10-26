@@ -61,4 +61,8 @@ export const android: StoreAdapter = {
     const app = await wrap(() => client.app({ appId: id, country, lang }));
     return toMeta(app, country);
   },
+
+  async suggest(prefix, { country, lang }) {
+    return wrap(() => client.suggest({ term: prefix, country, lang }));
+  },
 };

@@ -16,6 +16,8 @@ export type AppSummary = {
   developer: string;
   icon: string;
   rating: number | null;
+  /** Only the App Store returns it in search results. */
+  ratingsCount?: number | null;
   url: string;
 };
 
@@ -42,6 +44,8 @@ export interface StoreAdapter {
   /** Results in store order, so index + 1 is the (approximate) search position. */
   searchApps(term: string, query: StoreQuery & { limit?: number }): Promise<AppSummary[]>;
   getApp(id: string, query: StoreQuery): Promise<AppMeta>;
+  /** Store autocomplete for what the user has typed so far, in the store's order. */
+  suggest(prefix: string, query: StoreQuery): Promise<string[]>;
 }
 
 export class StoreError extends Error {

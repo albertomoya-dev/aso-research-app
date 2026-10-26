@@ -12,6 +12,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
+import type { TrendPoint } from "@/lib/trends";
 
 export const storeEnum = pgEnum("store", ["ios", "android"]);
 export const keywordSourceEnum = pgEnum("keyword_source", ["manual", "ai", "autocomplete"]);
@@ -97,6 +98,42 @@ export const annotations = pgTable("annotations", {
   label: text("label").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Popularity and difficulty of a keyword in one store and country. */
+export const keywordMetrics = pgTable(
+  "keyword_metrics",
+  {
+    keywordId: integer("keyword_id")
+      .notNull()
+      .references(() => keywords.id, { onDelete: "cascade" }),
+    store: storeEnum("store").notNull(),
+    country: text("country").notNull(),
+    /** 0–100 from the store autocomplete. */
+    popularity: integer("popularity"),
+    /** Letters typed before the store suggested it; null when it never did. */
+    prefixLength: integer("prefix_length"),
+    popularityAt: timestamp("popularity_at", { withTimezone: true }),
+    /** 0–100 from the strength of the top 10. */
+    difficulty: integer("difficulty"),
+    difficultyAt: timestamp("difficulty_at", { withTimezone: true }),
+  },
+  (t) => [primaryKey({ columns: [t.keywordId, t.store, t.country] })],
+);
+
+/** Google Trends interest over the last 12 months (relative 0–100). */
+export const keywordTrends = pgTable(
+  "keyword_trends",
+  {
+    keywordId: integer("keyword_id")
+      .notNull()
+      .references(() => keywords.id, { onDelete: "cascade" }),
+    country: text("country").notNull(),
+    points: jsonb("points").$type<TrendPoint[]>(),
+    error: text("error"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.keywordId, t.country] })],
+);
 
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;

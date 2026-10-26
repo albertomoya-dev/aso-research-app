@@ -69,7 +69,9 @@ export type AddKeywordsState = { added: number; skipped: number; error?: string;
 
 export async function addKeywords(_prev: AddKeywordsState, formData: FormData): Promise<AddKeywordsState> {
   const appId = appIdSchema.parse(formData.get("appId"));
-  const terms = parseKeywords(String(formData.get("keywords") ?? ""));
+  // A textarea sends one value; the discovery checklist sends one per ticked keyword.
+  const terms = parseKeywords(formData.getAll("keywords").join("\n"));
+  const source = z.enum(["manual", "autocomplete"]).catch("manual").parse(formData.get("source"));
   if (terms.length === 0) return { added: 0, skipped: 0, error: "Escribe al menos una keyword." };
 
   const db = getDb();
@@ -83,7 +85,7 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
     .where(inArray(schema.keywords.term, terms));
   const inserted = await db
     .insert(schema.appKeywords)
-    .values(rows.map((k) => ({ appId, keywordId: k.id, source: "manual" as const })))
+    .values(rows.map((k) => ({ appId, keywordId: k.id, source })))
     .onConflictDoNothing()
     .returning({ keywordId: schema.appKeywords.keywordId });
 
@@ -94,7 +96,7 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
     trackingFailed = report.errors.length > 0;
   }
 
-  revalidatePath(`/apps/${appId}`);
+  revalidatePath(`/apps/${appId}`, "layout");
   return { added: inserted.length, skipped: terms.length - inserted.length, trackingFailed };
 }
 
