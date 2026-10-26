@@ -136,3 +136,49 @@ export async function removeAnnotation(formData: FormData) {
     .where(and(eq(schema.annotations.id, id), eq(schema.annotations.appId, appId)));
   revalidatePath(`/apps/${appId}`, "layout");
 }
+
+const countrySchema = z.object({
+  appId: z.coerce.number().int().positive(),
+  country: z.string().refine(isCountry, "País no soportado"),
+  copyKeywords: z.literal("on").optional(),
+});
+
+/** Follows the same app in another country's store, optionally with the same keywords, and opens it. */
+export async function followInCountry(formData: FormData) {
+  const { appId, country, copyKeywords } = countrySchema.parse(Object.fromEntries(formData));
+  const db = getDb();
+  const source = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!source) throw new Error("App no encontrada");
+  const meta = await getAdapter(source.store).getApp(source.storeId, { country, lang: getCountry(country).lang });
+  const values = {
+    store: source.store,
+    storeId: meta.id,
+    country,
+    title: meta.title,
+    developer: meta.developer,
+    icon: meta.icon,
+    url: meta.url,
+    meta,
+    metaFetchedAt: new Date(),
+  };
+  const [app] = await db
+    .insert(schema.apps)
+    .values(values)
+    .onConflictDoUpdate({ target: [schema.apps.store, schema.apps.storeId, schema.apps.country], set: values })
+    .returning({ id: schema.apps.id });
+
+  if (copyKeywords) {
+    const terms = await db
+      .select({ term: schema.keywords.term, relevance: schema.appKeywords.relevance })
+      .from(schema.appKeywords)
+      .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
+      .where(eq(schema.appKeywords.appId, appId));
+    await followKeywords(
+      app.id,
+      terms.map((t) => ({ term: t.term, relevance: t.relevance ?? undefined })),
+      "manual",
+    );
+  }
+  revalidatePath("/", "layout");
+  redirect(`/apps/${app.id}`);
+}

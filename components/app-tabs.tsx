@@ -9,6 +9,7 @@ const TABS = [
   { path: "/ideas", label: "Ideas con IA" },
   { path: "/resenas", label: "Reseñas" },
   { path: "/competidores", label: "Competidores" },
+  { path: "/estacionalidad", label: "Estacionalidad" },
   { path: "/metadata", label: "Editor de ficha" },
 ];
 
