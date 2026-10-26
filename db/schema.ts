@@ -13,6 +13,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
+import type { AlertKind, AlertTone } from "@/lib/alerts";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 import type { TrendPoint } from "@/lib/trends";
@@ -198,6 +199,28 @@ export const competitorSnapshots = pgTable("competitor_snapshots", {
   listing: jsonb("listing").$type<Listing>().notNull(),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Something worth a look: a ranking jump, a new #1, a competitor changing its listing. */
+export const alerts = pgTable(
+  "alerts",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<AlertKind>().notNull(),
+    tone: text("tone").$type<AlertTone>().notNull(),
+    keywordId: integer("keyword_id").references(() => keywords.id, { onDelete: "cascade" }),
+    competitorId: integer("competitor_id").references(() => competitors.id, { onDelete: "cascade" }),
+    date: date("date").notNull().default(sql`current_date`),
+    title: text("title").notNull(),
+    detail: text("detail").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Running the daily job twice must not repeat ranking alerts.
+  (t) => [uniqueIndex("alerts_dedupe_idx").on(t.appId, t.kind, t.keywordId, t.date)],
+);
 
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;

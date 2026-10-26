@@ -38,9 +38,20 @@ export async function trackCompetitors(filter: { appId?: number; competitorId?: 
             .where(eq(schema.competitorSnapshots.competitorId, competitor.id))
             .orderBy(desc(schema.competitorSnapshots.fetchedAt))
             .limit(1);
-          if (!last || diffListings(last.listing, listing).length > 0) {
+          const changes = last ? diffListings(last.listing, listing) : [];
+          if (!last || changes.length > 0) {
             await db.insert(schema.competitorSnapshots).values({ competitorId: competitor.id, listing });
-            if (last) report.changed++;
+          }
+          if (changes.length > 0) {
+            report.changed++;
+            await db.insert(schema.alerts).values({
+              appId: competitor.appId,
+              competitorId: competitor.id,
+              kind: "competitor_change",
+              tone: "info",
+              title: `${meta.title} ha cambiado su ficha`,
+              detail: changes.map((c) => c.label).join(", "),
+            });
           }
           await db
             .update(schema.competitors)

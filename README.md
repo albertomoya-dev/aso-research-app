@@ -11,6 +11,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 3 | Popularidad, dificultad y oportunidad; Google Trends; descubrir keywords con el autocompletado | Hecho |
 | 4 | Ideas de keywords con IA (Claude) y editor de ficha con validación | Hecho |
 | 5 | Competidores: cuota de visibilidad en el TOP 5 y cambios en sus fichas | Hecho |
+| 6 | Novedades (alertas) y resumen semanal, también por email | Hecho |
 
 ## Stack
 
@@ -79,6 +80,24 @@ La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 
 - **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. Se muestra la cuota actual (última posición de cada keyword) y su evolución en 30 días para tu app y las cuatro apps más visibles.
 - **Fichas vigiladas**: al pulsar «Vigilar ficha» en una app, la consulta diaria lee su ficha y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. La lista de cambios muestra qué palabras añadió o quitó.
+
+## Novedades y resumen semanal
+
+Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») compara cada keyword con su consulta anterior y crea avisos en **Novedades**:
+
+- entra o sale del TOP 10;
+- sube o baja 5 posiciones o más dentro de las 50 primeras;
+- deja de aparecer en los resultados;
+- cambia el nº 1 (o pasas a serlo);
+- una ficha vigilada cambia.
+
+El menú lateral muestra cuántos avisos quedan sin leer.
+
+**Resumen semanal** compara la última posición de cada keyword con la de hace una semana: cuántas suben y bajan, cuántas están en el TOP 10, la cuota de visibilidad y las que más se mueven. Para recibirlo por email cada lunes:
+
+1. Crea una cuenta gratuita en [Resend](https://resend.com) y una API key.
+2. Añade `RESEND_API_KEY` y `ALERT_EMAIL` (tu correo) en Vercel. Sin dominio propio, Resend solo deja enviar al correo de tu cuenta desde `onboarding@resend.dev`; con dominio verificado, define también `EMAIL_FROM`.
+3. Opcional: `APP_URL` con la dirección pública de la app para los enlaces del email (en Vercel se detecta sola).
 
 ## Comandos
 

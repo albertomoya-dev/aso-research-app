@@ -43,8 +43,8 @@ export function visibilityShare(snapshots: VisibilitySnapshot[], popularity: Map
 }
 
 /** Latest snapshot per keyword, so keywords checked on different days all count once. */
-export function latestPerKeyword(snapshots: VisibilitySnapshot[]): VisibilitySnapshot[] {
-  const latest = new Map<number, VisibilitySnapshot>();
+export function latestPerKeyword<T extends { keywordId: number; date: string }>(snapshots: T[]): T[] {
+  const latest = new Map<number, T>();
   for (const s of snapshots) {
     const current = latest.get(s.keywordId);
     if (!current || s.date > current.date) latest.set(s.keywordId, s);
