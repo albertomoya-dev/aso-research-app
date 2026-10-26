@@ -10,6 +10,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 2 | Posición diaria y TOP 5 por keyword, gráfico de evolución con anotaciones | Hecho |
 | 3 | Popularidad, dificultad y oportunidad; Google Trends; descubrir keywords con el autocompletado | Hecho |
 | 4 | Ideas de keywords con IA (Claude) y editor de ficha con validación | Hecho |
+| 5 | Competidores: cuota de visibilidad en el TOP 5 y cambios en sus fichas | Hecho |
 
 ## Stack
 
@@ -71,6 +72,13 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 ## Editor de ficha
 
 La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos; para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+
+## Competidores
+
+La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
+
+- **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. Se muestra la cuota actual (última posición de cada keyword) y su evolución en 30 días para tu app y las cuatro apps más visibles.
+- **Fichas vigiladas**: al pulsar «Vigilar ficha» en una app, la consulta diaria lee su ficha y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. La lista de cambios muestra qué palabras añadió o quitó.
 
 ## Comandos
 
