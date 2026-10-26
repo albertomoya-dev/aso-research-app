@@ -6,8 +6,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { getCountry, isCountry } from "@/lib/countries";
+import { generateRankAlerts } from "@/lib/alert-jobs";
 import { followKeywords } from "@/lib/follow";
 import { parseKeywords } from "@/lib/keywords";
+import { today } from "@/lib/ranking";
 import { trackRankings } from "@/lib/tracking";
 import { getAdapter } from "@/lib/stores";
 
@@ -103,7 +105,8 @@ export async function unfollowApp(formData: FormData) {
 export async function refreshRankings(formData: FormData) {
   const appId = appIdSchema.parse(formData.get("appId"));
   const report = await trackRankings({ appId });
-  revalidatePath(`/apps/${appId}`, "layout");
+  await generateRankAlerts(today());
+  revalidatePath("/", "layout");
   if (report.errors.length > 0 && report.searches === 0) {
     throw new Error(`No se pudo consultar la tienda: ${report.errors[0].message}`);
   }

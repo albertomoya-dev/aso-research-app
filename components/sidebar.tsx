@@ -1,7 +1,17 @@
 import Link from "next/link";
 import { getDb, hasDatabase, schema } from "@/db";
+import { unreadAlertCount } from "@/lib/alert-jobs";
 import { AppIcon } from "./app-icon";
 import { NavLink } from "./nav-link";
+
+async function unreadAlerts() {
+  if (!hasDatabase()) return 0;
+  try {
+    return await unreadAlertCount();
+  } catch {
+    return 0;
+  }
+}
 
 async function followedApps() {
   if (!hasDatabase()) return [];
@@ -16,7 +26,7 @@ async function followedApps() {
 }
 
 export async function Sidebar() {
-  const apps = await followedApps();
+  const [apps, unread] = await Promise.all([followedApps(), unreadAlerts()]);
   return (
     <nav
       aria-label="Principal"
@@ -32,6 +42,16 @@ export async function Sidebar() {
       <div className="flex gap-1 md:flex-col">
         <NavLink href="/">Panel</NavLink>
         <NavLink href="/buscar">Buscar app</NavLink>
+        <NavLink href="/novedades">
+          Novedades
+          {unread > 0 && (
+            <span className="ml-auto rounded-full bg-brand px-2 py-0.5 font-mono text-xs font-semibold text-on-brand">
+              <span className="sr-only">sin leer: </span>
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </NavLink>
+        <NavLink href="/resumen">Resumen semanal</NavLink>
       </div>
       {apps.length > 0 && (
         <div className="mt-6 hidden md:block">
