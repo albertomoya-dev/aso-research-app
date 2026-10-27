@@ -6,7 +6,11 @@ import {
   buildIconConceptsPrompt,
   buildScreenshotCopyPrompt,
   type CreativeInput,
+  buildLogoPromptsPrompt,
   ICON_CONCEPTS_SYSTEM_PROMPT,
+  LOGO_PROMPTS_SYSTEM_PROMPT,
+  type LogoPrompts,
+  logoPromptsSchema,
   type IconConcepts,
   iconConceptsSchema,
   SCREENSHOT_COPY_SYSTEM_PROMPT,
@@ -91,4 +95,9 @@ export function writeScreenshotCopy(
 /** Asks Claude for four icon concepts in the vector icon system. */
 export function designIconConcepts(input: CreativeInput): Promise<{ output: IconConcepts; model: string }> {
   return askClaude(iconConceptsSchema, ICON_CONCEPTS_SYSTEM_PROMPT, buildIconConceptsPrompt(input));
+}
+
+/** Asks Claude to write prompts for the image generator (logos). */
+export function writeLogoPrompts(input: CreativeInput): Promise<{ output: LogoPrompts; model: string }> {
+  return askClaude(logoPromptsSchema, LOGO_PROMPTS_SYSTEM_PROMPT, buildLogoPromptsPrompt(input));
 }

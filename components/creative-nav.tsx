@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const SECTIONS = [
   { path: "", label: "Screenshots" },
   { path: "/icono", label: "Icono" },
+  { path: "/logo", label: "Logo con IA" },
 ];
 
 /** Segmented control between the creative tools of an app. */

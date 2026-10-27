@@ -259,6 +259,20 @@ export const assetDesigns = pgTable(
   (t) => [uniqueIndex("asset_designs_app_kind_idx").on(t.appId, t.kind)],
 );
 
+/** A logo produced by the image provider, kept as base64 so it survives redeploys. */
+export const generatedImages = pgTable("generated_images", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  prompt: text("prompt").notNull(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
 export type Annotation = typeof annotations.$inferSelect;
