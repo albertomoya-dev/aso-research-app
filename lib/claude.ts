@@ -2,6 +2,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
 import { buildListingPrompt, LISTING_SYSTEM_PROMPT, type ListingOutput, listingOutputSchema, type ListingPromptInput } from "./listing-optimizer";
+import {
+  buildIconConceptsPrompt,
+  buildScreenshotCopyPrompt,
+  type CreativeInput,
+  ICON_CONCEPTS_SYSTEM_PROMPT,
+  type IconConcepts,
+  iconConceptsSchema,
+  SCREENSHOT_COPY_SYSTEM_PROMPT,
+  type ScreenshotCopy,
+  screenshotCopySchema,
+} from "./assets/creative-ai";
 import { buildReviewPrompt, REVIEW_SYSTEM_PROMPT, reviewAnalysisSchema, type ReviewAnalysis } from "./review-analysis";
 import type { Review } from "./stores/types";
 import { buildUserPrompt, modelOutputSchema, type ModelOutput, type PromptInput, SYSTEM_PROMPT } from "./suggestions";
@@ -68,4 +79,16 @@ export function analyzeReviews(input: {
 /** Asks Claude to rewrite the listing around the tracked keywords. `feedback` lists rules the previous try broke. */
 export function rewriteListing(input: ListingPromptInput, feedback?: string[]): Promise<{ output: ListingOutput; model: string }> {
   return askClaude(listingOutputSchema, LISTING_SYSTEM_PROMPT, buildListingPrompt(input, feedback));
+}
+
+/** Asks Claude for screenshot captions built around the tracked keywords. */
+export function writeScreenshotCopy(
+  input: CreativeInput & { count: number; current: { headline: string; subheadline: string }[] },
+): Promise<{ output: ScreenshotCopy; model: string }> {
+  return askClaude(screenshotCopySchema, SCREENSHOT_COPY_SYSTEM_PROMPT, buildScreenshotCopyPrompt(input));
+}
+
+/** Asks Claude for four icon concepts in the vector icon system. */
+export function designIconConcepts(input: CreativeInput): Promise<{ output: IconConcepts; model: string }> {
+  return askClaude(iconConceptsSchema, ICON_CONCEPTS_SYSTEM_PROMPT, buildIconConceptsPrompt(input));
 }

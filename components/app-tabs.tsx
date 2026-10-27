@@ -12,6 +12,7 @@ const TABS = [
   { path: "/competidores", label: "Competidores" },
   { path: "/estacionalidad", label: "Estacionalidad" },
   { path: "/metadata", label: "Editor de ficha" },
+  { path: "/creativos", label: "Creativos" },
 ];
 
 export function AppTabs({ appId }: { appId: string }) {
