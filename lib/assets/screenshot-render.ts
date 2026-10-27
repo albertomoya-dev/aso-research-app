@@ -259,22 +259,47 @@ function drawScreen(
     const sy = crop.y * full.h;
     const iw = crop.w * full.w;
     const ih = crop.h * full.h;
-    // Cover the screen, keeping the top edge (status bar) visible.
-    const scale = Math.max(screen.w / iw, screen.h / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    if (iw > 0 && ih > 0)
-      ctx.drawImage(
-        image,
-        sx,
-        sy,
-        iw,
-        ih,
-        screen.x + (screen.w - dw) / 2,
-        screen.y,
-        dw,
-        dh,
-      );
+    if (iw > 0 && ih > 0) {
+      if (cropped) {
+        // A screen cut out of a store composition: match the width so nothing is lost at the sides.
+        // Phones in those compositions often run off the bottom of the image, so the cut is shorter
+        // than a real screen; the gap below is filled by stretching the last row of the cut, which
+        // continues the app's own background or tab bar.
+        const scale = screen.w / iw;
+        const dh = ih * scale;
+        ctx.drawImage(image, sx, sy, iw, ih, screen.x, screen.y, screen.w, dh);
+        if (dh < screen.h) {
+          const row = Math.max(1, Math.min(ih, 2));
+          ctx.drawImage(
+            image,
+            sx,
+            sy + ih - row,
+            iw,
+            row,
+            screen.x,
+            screen.y + dh - 1,
+            screen.w,
+            screen.h - dh + 1,
+          );
+        }
+      } else {
+        // Cover the screen, keeping the top edge (status bar) visible.
+        const scale = Math.max(screen.w / iw, screen.h / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        ctx.drawImage(
+          image,
+          sx,
+          sy,
+          iw,
+          ih,
+          screen.x + (screen.w - dw) / 2,
+          screen.y,
+          dw,
+          dh,
+        );
+      }
+    }
   } else {
     const g = ctx.createLinearGradient(0, screen.y, 0, screen.y + screen.h);
     g.addColorStop(0, "#f4f4f7");
