@@ -1,6 +1,6 @@
 /**
  * Raster image generation for logos. Claude does not draw, so this talks to one of two
- * providers through their REST APIs: OpenAI Images (gpt-image-1) or Google Gemini
+ * providers through their REST APIs: OpenAI Images (gpt-image-2.5-flare, or gpt-image-2.5-sunburst for higher quality) or Google Gemini
  * (gemini-2.5-flash-image, or an Imagen model). Picked by IMAGE_PROVIDER, or by which key exists.
  */
 
@@ -10,7 +10,7 @@ export type GeneratedImage = { mime: string; base64: string };
 
 export class ImageGenError extends Error {}
 
-const DEFAULT_MODEL: Record<ImageProvider, string> = { openai: "gpt-image-1", gemini: "gemini-2.5-flash-image" };
+const DEFAULT_MODEL: Record<ImageProvider, string> = { openai: "gpt-image-2.5-flare", gemini: "gemini-2.5-flash-image" };
 
 export function imageProvider(): ImageProvider | null {
   const wanted = process.env.IMAGE_PROVIDER?.trim().toLowerCase();
