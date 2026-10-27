@@ -176,6 +176,7 @@ export function ScreenshotStudio({
   // Thumbnails of the gallery: the first slide rendered with each template.
   const first = spec.slides[0];
   const firstImage = first?.image ?? null;
+  const firstAsIs = first?.asIs ?? false;
   const secondImage = spec.slides[1]?.image ?? null;
   const firstHeadline = first?.headline ?? "";
   const firstSub = first?.subheadline ?? "";
@@ -183,8 +184,12 @@ export function ScreenshotStudio({
     let cancelled = false;
     const timer = setTimeout(async () => {
       await ensureFonts(font, [500, 600, 700, 800]);
-      const img = await imageFor(firstImage).catch(() => null);
-      const pair = await imageFor(secondImage ?? firstImage).catch(() => null);
+      const img = firstAsIs
+        ? null
+        : await imageFor(firstImage).catch(() => null);
+      const pair = firstAsIs
+        ? null
+        : await imageFor(secondImage ?? firstImage).catch(() => null);
       const background = await backgroundFor();
       if (cancelled) return;
       for (const t of TEMPLATES) {
@@ -197,7 +202,8 @@ export function ScreenshotStudio({
               id: "thumb",
               headline: firstHeadline || "Tu *titular* aquí",
               subheadline: firstSub,
-              image: firstImage,
+              // A finished store composition would show a device inside the device: use an empty screen instead.
+              image: firstAsIs ? null : firstImage,
               layout: "text-top",
               keyword: null,
               asIs: false,
@@ -236,6 +242,7 @@ export function ScreenshotStudio({
     imageFor,
     backgroundFor,
     firstImage,
+    firstAsIs,
     secondImage,
     firstHeadline,
     firstSub,
@@ -282,7 +289,7 @@ export function ScreenshotStudio({
     if (!file || !slide) return;
     try {
       const data = await shrinkImage(file);
-      updateSlide(slide.id, { image: data });
+      updateSlide(slide.id, { image: data, asIs: false });
     } catch {
       setStatus({ kind: "error", text: "No se pudo leer la imagen." });
     }
@@ -662,7 +669,9 @@ export function ScreenshotStudio({
                   {slide.image && (
                     <button
                       type="button"
-                      onClick={() => updateSlide(slide.id, { image: null })}
+                      onClick={() =>
+                        updateSlide(slide.id, { image: null, asIs: false })
+                      }
                       className={buttonSecondary}
                     >
                       Quitar imagen
@@ -684,18 +693,19 @@ export function ScreenshotStudio({
                   storeImages.includes(slide.image) &&
                   !slide.asIs && (
                     <p className="text-xs text-warn-fg">
-                      Esta captura viene de la tienda y suele llevar ya su
-                      propio texto y su propio móvil, así que dentro del marco
-                      se verá un móvil sobre otro. Para las plantillas, sube una
-                      captura en bruto de la app, o marca la casilla de arriba
-                      para usarla tal cual.
+                      Esta captura viene de la tienda y ya lleva su propio texto
+                      y su propio móvil, así que dentro del marco se verá un
+                      móvil sobre otro. Para aplicar una plantilla, sube una
+                      captura en bruto de la app (la pantalla tal cual se ve en
+                      el móvil, sin montaje).
                     </p>
                   )}
                 {storeImages.length > 0 && (
                   <div>
                     <p className="mb-1.5 text-xs text-muted">
-                      O usa una de las capturas publicadas en la tienda
-                      (montajes ya terminados, mejor tal cual):
+                      O usa una de las capturas publicadas en la tienda. Son
+                      montajes ya terminados, así que se muestran tal cual, sin
+                      plantilla:
                     </p>
                     <ul className="flex flex-wrap gap-2">
                       {storeImages.map((src, i) => (
@@ -703,7 +713,7 @@ export function ScreenshotStudio({
                           <button
                             type="button"
                             onClick={() =>
-                              updateSlide(slide.id, { image: src })
+                              updateSlide(slide.id, { image: src, asIs: true })
                             }
                             aria-label={`Captura ${i + 1} de la tienda`}
                             className={`block overflow-hidden rounded-md border-2 ${slide.image === src ? "border-brand" : "border-line hover:border-line-strong"}`}

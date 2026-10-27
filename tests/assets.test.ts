@@ -106,6 +106,12 @@ describe("screenshot templates", () => {
     expect(parsed.slides[0].asIs).toBe(false);
   });
 
+  it("shows store screenshots as they are by default, and empty slides with the template", () => {
+    const spec = defaultScreenshotSpec("ios", "App", ["https://a/1.png"]);
+    expect(spec.slides[0].asIs).toBe(true);
+    expect(defaultScreenshotSpec("ios", "App", []).slides[0].asIs).toBe(false);
+  });
+
   it("accepts a generated backdrop URL and an as-is slide", () => {
     const spec = defaultScreenshotSpec("ios", "App", ["x"]);
     spec.backgroundImage = "/api/assets/generated/12";

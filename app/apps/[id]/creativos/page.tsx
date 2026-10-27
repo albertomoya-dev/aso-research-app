@@ -24,6 +24,29 @@ export const metadata: Metadata = { title: "Screenshots" };
 // Claude writes the captions and the image provider draws backdrops in this request.
 export const maxDuration = 300;
 
+/**
+ * Designs saved before the "as is" flag existed get it set for store screenshots, which are finished
+ * compositions; a design saved with the flag keeps whatever the user chose.
+ */
+function withStoreImagesAsIs(
+  spec: ScreenshotSpec,
+  raw: unknown,
+  storeImages: string[],
+): ScreenshotSpec {
+  const rawSlides =
+    (raw as { slides?: { asIs?: unknown }[] } | null)?.slides ?? [];
+  return {
+    ...spec,
+    slides: spec.slides.map((s, i) =>
+      rawSlides[i]?.asIs === undefined &&
+      s.image !== null &&
+      storeImages.includes(s.image)
+        ? { ...s, asIs: true }
+        : s,
+    ),
+  };
+}
+
 export default async function ScreenshotsPage({ params }: Props) {
   const app = await loadApp((await params).id);
   const saved = await getDb().query.assetDesigns.findFirst({

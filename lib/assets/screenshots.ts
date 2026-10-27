@@ -273,7 +273,8 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
       image,
       layout,
       keyword: null,
-      asIs: false,
+      // Store screenshots are finished compositions (text, device…): show them as they are.
+      asIs: image !== null,
     })),
   };
 }
