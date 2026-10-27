@@ -16,7 +16,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 8 | Estacionalidad de keywords y la misma app en varios países | Hecho |
 | 9 | Keywords del TOP 10: extraer las palabras clave de las fichas de las 10 primeras apps | Hecho |
 | 10 | Creativos: screenshots con marco de dispositivo e icono vectorial, con textos y conceptos de Claude | Hecho |
-| 11 | Logos con un proveedor de imágenes generativas (OpenAI o Gemini) | Pendiente |
+| 11 | Logos con un proveedor de imágenes generativas (OpenAI o Gemini) | Hecho |
 | 12 | Vídeo promocional a partir de las pantallas | Pendiente |
 
 ## Stack
@@ -46,7 +46,7 @@ Las peticiones se hacen siempre desde el servidor, con caché de 6 horas, un má
 
 ### Despliegue en Vercel
 
-Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD`, `CRON_SECRET` y, si quieres ideas con IA, `ANTHROPIC_API_KEY` en Settings › Environment Variables y ejecuta `npm run db:migrate` contra esa base de datos (también tras cada actualización que traiga migraciones nuevas).
+Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD`, `CRON_SECRET`, si quieres ideas con IA, `ANTHROPIC_API_KEY`, y si quieres logos con IA, `OPENAI_API_KEY` o `GEMINI_API_KEY`, en Settings › Environment Variables y ejecuta `npm run db:migrate` contra esa base de datos (también tras cada actualización que traiga migraciones nuevas).
 
 ## Posiciones
 
@@ -117,6 +117,8 @@ La pestaña **Creativos** monta los recursos gráficos de la ficha en el navegad
 - **Screenshots**: una pantalla por captura con marco de iPhone, iPad o Android (o sin marco), fondo liso o degradado, titular y subtítulo. Puedes subir tus capturas (se reducen a 1800 px de alto para que el conjunto quepa en un guardado) o usar las que ya tienes publicadas en la tienda, que pasan por `/api/assets/image` para que el canvas pueda exportarlas. Los tamaños son los que aceptan las tiendas: iPhone 6,9" (1320×2868), 6,7" (1290×2796), 6,5" (1284×2778), iPad 13" (2064×2752) y Android 1080×1920, 1440×2560 y tablet 1440×2560. En el titular, las palabras entre `*asteriscos*` se pintan con el color de acento. Se descargan como PNG o todas en un ZIP.
 - **Textos con IA**: Claude escribe un titular (2–5 palabras) y un subtítulo por pantalla a partir de la ficha y de las keywords seguidas, ordenadas por oportunidad, y anota a qué keyword apunta cada pantalla.
 - **Icono**: un diseño vectorial (fondo liso o degradado, letra o símbolo, placa opcional, brillo y sombra) que se previsualiza con la máscara de App Store y la circular de Google Play y a 64, 40 y 29 px, junto al icono actual. Avisa si el símbolo contrasta poco o casi toca el borde. Se exporta a 1024×1024 (App Store) y 512×512 (Google Play). Claude propone cuatro conceptos en ese mismo sistema.
+
+- **Logo con IA**: Claude no dibuja, así que esta pantalla llama a un proveedor de imágenes con un prompt (que Claude puede escribir a partir de la ficha y las keywords, en tres direcciones visuales). Las imágenes se guardan en la tabla `generated_images` en base64 y se sirven por `/api/assets/generated/[id]`; se descargan reencodadas a PNG de 1024 (App Store) y 512 (Google Play). Proveedores: OpenAI (`OPENAI_API_KEY`, modelo `gpt-image-1` por defecto, calidad `OPENAI_IMAGE_QUALITY`) o Google (`GEMINI_API_KEY`, `gemini-2.5-flash-image` por defecto, o un modelo `imagen-*`). Con una clave basta; `IMAGE_PROVIDER` elige cuando hay las dos. Cada imagen cuesta dinero en la cuenta del proveedor.
 
 El diseño de cada tipo se guarda en la tabla `asset_designs` (uno por app y tipo); las capturas subidas viajan en base64, por lo que el límite del cuerpo de las server actions está en 4 MB (`next.config.ts`).
 

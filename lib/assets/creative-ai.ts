@@ -156,3 +156,41 @@ export function toIconSpec(c: IconConcepts["concepts"][number], fallbackLetter: 
   const parsed = iconSpecSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
 }
+
+// ---------- Prompts for the image generator ----------
+
+export const logoPromptsSchema = z.object({
+  prompts: z.array(
+    z.object({
+      name: z.string(),
+      /** The prompt for the image model, in English. */
+      prompt: z.string(),
+      rationale: z.string(),
+    }),
+  ),
+});
+export type LogoPrompts = z.infer<typeof logoPromptsSchema>;
+
+export const LOGO_PROMPTS_SYSTEM_PROMPT = `You write prompts for an image generation model (OpenAI gpt-image or Google Gemini) to produce app icons. The output of that model is used directly as the App Store / Google Play icon, so the prompt must describe a finished icon, not a mockup.
+
+Write 3 prompts, each a different visual direction (for example: flat geometric symbol, soft 3D glossy object, bold lettermark, playful mascot). Each prompt, in English, must:
+- Describe one single centred subject that represents what the app does, with bold simple shapes that stay readable at 60 px.
+- Fix the composition: "square app icon, subject centred, fills the frame with small even margins, flat solid or soft gradient background, no border, no rounded-corner frame, no device, no mockup, no hands, no shadow outside the icon".
+- Name the exact colours (a background colour and one or two accent colours) that fit the category and stand out from the big competitors in it.
+- Say "no text, no letters, no words" unless the direction is a lettermark; for a lettermark give the exact 1–2 uppercase letters and a typeface style, and still forbid any other text.
+- Say the style explicitly (flat vector, glossy 3D render, paper cut, isometric…) and "high quality, crisp edges, professional app icon".
+- Be 60 to 120 words. No lists, no line breaks.
+
+Also return name (2–4 Spanish words) and rationale (one Spanish sentence linking it to the app and its keywords).`;
+
+export function buildLogoPromptsPrompt(input: CreativeInput): string {
+  return describeApp(input);
+}
+
+/** Trims the prompts and drops empty ones. */
+export function cleanLogoPrompts(output: LogoPrompts): LogoPrompts["prompts"] {
+  return output.prompts
+    .map((p) => ({ name: p.name.trim().slice(0, 60), prompt: p.prompt.replace(/\s+/g, " ").trim().slice(0, 1500), rationale: p.rationale.trim().slice(0, 300) }))
+    .filter((p) => p.prompt.length > 20)
+    .slice(0, 4);
+}

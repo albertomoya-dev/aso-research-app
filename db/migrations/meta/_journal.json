@@ -57,6 +57,13 @@
       "when": 1793110705206,
       "tag": "0007_asset_designs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793111375043,
+      "tag": "0008_generated_images",
+      "breakpoints": true
     }
   ]
 }
