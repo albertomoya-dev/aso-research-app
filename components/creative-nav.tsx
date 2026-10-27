@@ -7,6 +7,7 @@ const SECTIONS = [
   { path: "", label: "Screenshots" },
   { path: "/icono", label: "Icono" },
   { path: "/logo", label: "Logo con IA" },
+  { path: "/video", label: "Vídeo" },
 ];
 
 /** Segmented control between the creative tools of an app. */

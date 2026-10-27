@@ -17,7 +17,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 9 | Keywords del TOP 10: extraer las palabras clave de las fichas de las 10 primeras apps | Hecho |
 | 10 | Creativos: screenshots con marco de dispositivo e icono vectorial, con textos y conceptos de Claude | Hecho |
 | 11 | Logos con un proveedor de imágenes generativas (OpenAI o Gemini) | Hecho |
-| 12 | Vídeo promocional a partir de las pantallas | Pendiente |
+| 12 | Vídeo promocional a partir de las pantallas | Hecho |
 
 ## Stack
 
@@ -119,6 +119,8 @@ La pestaña **Creativos** monta los recursos gráficos de la ficha en el navegad
 - **Icono**: un diseño vectorial (fondo liso o degradado, letra o símbolo, placa opcional, brillo y sombra) que se previsualiza con la máscara de App Store y la circular de Google Play y a 64, 40 y 29 px, junto al icono actual. Avisa si el símbolo contrasta poco o casi toca el borde. Se exporta a 1024×1024 (App Store) y 512×512 (Google Play). Claude propone cuatro conceptos en ese mismo sistema.
 
 - **Logo con IA**: Claude no dibuja, así que esta pantalla llama a un proveedor de imágenes con un prompt (que Claude puede escribir a partir de la ficha y las keywords, en tres direcciones visuales). Las imágenes se guardan en la tabla `generated_images` en base64 y se sirven por `/api/assets/generated/[id]`; se descargan reencodadas a PNG de 1024 (App Store) y 512 (Google Play). Proveedores: OpenAI (`OPENAI_API_KEY`, modelo `gpt-image-1` por defecto, calidad `OPENAI_IMAGE_QUALITY`) o Google (`GEMINI_API_KEY`, `gemini-2.5-flash-image` por defecto, o un modelo `imagen-*`). Con una clave basta; `IMAGE_PROVIDER` elige cuando hay las dos. Cada imagen cuesta dinero en la cuenta del proveedor.
+
+- **Vídeo**: anima el conjunto de screenshots guardado (los textos entran con un fundido, el móvil hace un zoom lento, transiciones de fundido o deslizamiento) y lo codifica en el navegador con WebCodecs (H.264 High 4.0, 10 Mb/s) y [`mp4-muxer`](https://github.com/Vanilagy/mp4-muxer) en 886×1920 (app preview de App Store, que exige entre 15 y 30 s y avisa si no se cumple), 1080×1920 (YouTube/Shorts, que es lo que Google Play enlaza) o 1080×1080. Sin sonido. Si el navegador no tiene WebCodecs con H.264 (Firefox, Safari antiguo), graba un WebM a tiempo real con `MediaRecorder`. Los ajustes del vídeo no se guardan.
 
 El diseño de cada tipo se guarda en la tabla `asset_designs` (uno por app y tipo); las capturas subidas viajan en base64, por lo que el límite del cuerpo de las server actions está en 4 MB (`next.config.ts`).
 

@@ -10,6 +10,19 @@ export type DrawOptions = {
   fontFamily: string;
 };
 
+/** Per-frame tweaks for the promo video: text fades and slides in, the device zooms gently. */
+export type SlideAnimation = {
+  textAlpha: number;
+  /** Vertical offset of the text block, as a fraction of the canvas width. */
+  textShift: number;
+  /** 1 = normal size; the device scales around its centre. */
+  deviceZoom: number;
+  /** Vertical offset of the device, as a fraction of the canvas width. */
+  deviceShift: number;
+};
+
+const STILL: SlideAnimation = { textAlpha: 1, textShift: 0, deviceZoom: 1, deviceShift: 0 };
+
 const FRAME_ASPECT: Record<FrameKind, number> = { iphone: 2.06, android: 2.12, ipad: 1.33, "android-tablet": 1.56 };
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -190,11 +203,33 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
 }
 
 /** Draws a slide at the preset's full size. Scale the context first to render a preview. */
-export function drawSlide(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, slide: Slide, image: CanvasImageSource | null, opts: DrawOptions) {
+export function drawSlide(
+  ctx: CanvasRenderingContext2D,
+  spec: ScreenshotSpec,
+  slide: Slide,
+  image: CanvasImageSource | null,
+  opts: DrawOptions,
+  anim: SlideAnimation = STILL,
+  size?: { width: number; height: number },
+) {
   const preset = getPreset(spec.device);
-  const { width: w, height: h } = preset;
+  const w = size?.width ?? preset.width;
+  const h = size?.height ?? preset.height;
   const theme = spec.theme;
   paintBackground(ctx, theme, w, h);
+
+  const text = (block: TextBlock, top: number) => {
+    ctx.save();
+    ctx.globalAlpha = anim.textAlpha;
+    ctx.translate(0, anim.textShift * w);
+    drawTextBlock(ctx, block, top, w, theme, opts);
+    ctx.restore();
+  };
+  const device = (r: Rect) => {
+    const z = anim.deviceZoom;
+    const zoomed = { x: r.x + (r.w * (1 - z)) / 2, y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w, w: r.w * z, h: r.h * z };
+    drawDevice(ctx, preset.frame, zoomed, theme, image, spec.showFrame);
+  };
 
   const block = measureText(ctx, slide, theme, w, opts);
   const topPad = h * 0.065;
@@ -205,19 +240,19 @@ export function drawSlide(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, s
   const hasText = block.height > 0;
 
   if (slide.layout === "text-top") {
-    if (hasText) drawTextBlock(ctx, block, topPad, w, theme, opts);
+    if (hasText) text(block, topPad);
     const textBottom = hasText ? topPad + block.height + gap : topPad;
     const free = h - textBottom - deviceH;
     // Centre a device that fits; otherwise let it run off the bottom edge, as store sets usually do.
     const deviceY = free > 0 ? textBottom + Math.min(free / 2, h * 0.04) : textBottom;
-    drawDevice(ctx, preset.frame, { x: deviceX, y: deviceY, w: deviceW, h: deviceH }, theme, image, spec.showFrame);
+    device({ x: deviceX, y: deviceY, w: deviceW, h: deviceH });
   } else {
     const textTop = hasText ? h - topPad - block.height : h - topPad;
     const limit = hasText ? textTop - gap : textTop;
     const free = limit - deviceH;
     const deviceY = free > 0 ? limit - deviceH - Math.min(free / 2, h * 0.04) : limit - deviceH;
-    drawDevice(ctx, preset.frame, { x: deviceX, y: deviceY, w: deviceW, h: deviceH }, theme, image, spec.showFrame);
-    if (hasText) drawTextBlock(ctx, block, textTop, w, theme, opts);
+    device({ x: deviceX, y: deviceY, w: deviceW, h: deviceH });
+    if (hasText) text(block, textTop);
   }
 }
 
