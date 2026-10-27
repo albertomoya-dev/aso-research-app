@@ -3,7 +3,17 @@ import type { HistoryPoint } from "@/lib/queries";
 /** "#4", or "> 200" when the app is outside the fetched results. */
 export function Position({ position, depth, checked = true }: { position: number | null; depth: number | null; checked?: boolean }) {
   if (!checked) return <span className="text-muted">Sin datos</span>;
-  if (position == null) return <span className="text-muted">&gt; {depth ?? 200}</span>;
+  if (position == null) {
+    const shown = depth ?? 200;
+    return (
+      <span
+        className="cursor-help text-muted underline decoration-dotted underline-offset-4"
+        title={`No aparece entre los ${shown} resultados que devuelve la tienda para esta búsqueda`}
+      >
+        &gt; {shown}
+      </span>
+    );
+  }
   return <span>#{position}</span>;
 }
 
