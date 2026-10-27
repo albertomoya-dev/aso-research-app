@@ -108,6 +108,8 @@ export const screenshotSpecSchema = z.object({
   deviceRotate: z.number().min(-25).max(25).default(0),
   /** Horizontal shift of the device as a fraction of the width. */
   deviceOffsetX: z.number().min(-0.5).max(0.5).default(0),
+  // Moves the phone up (negative) or down (positive), as a fraction of the slide height.
+  deviceOffsetY: z.number().min(-0.5).max(0.5).default(0),
   /** Odd slides mirror the shift and the rotation, so a set alternates left and right. */
   alternate: z.boolean().default(false),
   /** Shows the next slide's screen on a second device behind the first. */
@@ -258,7 +260,7 @@ export function getTemplate(id: string): Template {
 /** Applies a template's look to a spec, keeping its slides, device preset and images. */
 export function applyTemplate(spec: ScreenshotSpec, template: Template): ScreenshotSpec {
   const { layout, ...style } = template.style;
-  return { ...spec, ...style, template: template.id, slides: spec.slides.map((s) => ({ ...s, layout })) };
+  return { ...spec, ...style, deviceOffsetY: 0, template: template.id, slides: spec.slides.map((s) => ({ ...s, layout })) };
 }
 
 export function slideId(): string {
@@ -277,6 +279,7 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
     template: TEMPLATES[0].id,
     backgroundImage: null,
     backgroundDim: 0.3,
+    deviceOffsetY: 0,
     slides: sources.map((image, i) => ({
       id: slideId(),
       headline: i === 0 ? `*${title}*` : "",

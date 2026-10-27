@@ -667,6 +667,7 @@ export function drawSlide(
   const mirror = spec.alternate && pos.index % 2 === 1 ? -1 : 1;
   const rotate = spec.deviceRotate * mirror;
   const offsetX = spec.deviceOffsetX * mirror * w;
+  const offsetY = (spec.deviceOffsetY ?? 0) * h;
 
   const text = (block: TextBlock, top: number) => {
     ctx.save();
@@ -679,7 +680,7 @@ export function drawSlide(
     const z = anim.deviceZoom;
     const zoomed = {
       x: r.x + offsetX + (r.w * (1 - z)) / 2,
-      y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w,
+      y: r.y + offsetY + (r.h * (1 - z)) / 2 + anim.deviceShift * w,
       w: r.w * z,
       h: r.h * z,
     };

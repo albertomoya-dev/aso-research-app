@@ -210,3 +210,15 @@ describe("zip", () => {
     expect(zip.length).toBe(2 * (30 + 6) + 4 + 2 * (46 + 6) + 22);
   });
 });
+
+describe("deviceOffsetY", () => {
+  it("defaults to 0 for designs saved before it existed and is reset by a template", async () => {
+    const { screenshotSpecSchema, defaultScreenshotSpec, applyTemplate, TEMPLATES } = await import("@/lib/assets/screenshots");
+    const spec = defaultScreenshotSpec("android", "App", []);
+    const { deviceOffsetY: _omit, ...old } = spec;
+    void _omit;
+    expect(screenshotSpecSchema.parse(old).deviceOffsetY).toBe(0);
+    expect(screenshotSpecSchema.safeParse({ ...spec, deviceOffsetY: 0.8 }).success).toBe(false);
+    expect(applyTemplate({ ...spec, deviceOffsetY: 0.2 }, TEMPLATES[1]).deviceOffsetY).toBe(0);
+  });
+});

@@ -1053,6 +1053,23 @@ export function ScreenshotStudio({
                 }
               />
             </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Desplazamiento vertical{" "}
+                <span className="font-mono text-xs text-muted">
+                  {Math.round(spec.deviceOffsetY * 100)}%
+                </span>
+              </span>
+              <input
+                type="range"
+                min={-50}
+                max={50}
+                value={Math.round(spec.deviceOffsetY * 100)}
+                onChange={(e) =>
+                  update({ deviceOffsetY: Number(e.target.value) / 100 })
+                }
+              />
+            </label>
             <label className="flex items-center gap-2 text-[13px] text-ink-soft">
               <input
                 type="checkbox"
