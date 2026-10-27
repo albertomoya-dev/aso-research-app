@@ -1,9 +1,47 @@
-import { getPreset, type FrameKind, type Line, type ScreenshotSpec, type Slide, type ScreenshotTheme, wrapWords } from "./screenshots";
+import {
+  type Crop,
+  getPreset,
+  type FrameKind,
+  type Line,
+  type ScreenshotSpec,
+  type Slide,
+  type ScreenshotTheme,
+  wrapWords,
+} from "./screenshots";
 
 /**
  * Draws one store screenshot on a 2D canvas context. Browser only (needs a canvas);
  * the layout maths is proportional to the canvas width so every preset looks alike.
  */
+
+/** What goes on a device screen: an image, or a cut-out of one (the app screen inside a store composition). */
+export type ScreenSource =
+  | CanvasImageSource
+  | { image: CanvasImageSource; crop: Crop };
+
+export function screenSource(
+  image: CanvasImageSource | null,
+  crop: Crop | null | undefined,
+): ScreenSource | null {
+  if (!image) return null;
+  return crop ? { image, crop } : image;
+}
+
+function sourceSize(image: CanvasImageSource): { w: number; h: number } {
+  const w =
+    "naturalWidth" in image
+      ? image.naturalWidth
+      : "videoWidth" in image
+        ? image.videoWidth
+        : (image as { width: number }).width;
+  const h =
+    "naturalHeight" in image
+      ? image.naturalHeight
+      : "videoHeight" in image
+        ? image.videoHeight
+        : (image as { height: number }).height;
+  return { w: Number(w) || 0, h: Number(h) || 0 };
+}
 
 export type DrawOptions = {
   /** CSS font family stack; the app passes the one from `body` so Inter is used. */
@@ -13,9 +51,26 @@ export type DrawOptions = {
 };
 
 /** Draws an image so it covers the whole rectangle, cropping the overflow (like CSS object-fit: cover). */
-export function drawCover(ctx: CanvasRenderingContext2D, image: CanvasImageSource, x: number, y: number, w: number, h: number) {
-  const iw = "naturalWidth" in image ? image.naturalWidth : "videoWidth" in image ? image.videoWidth : (image as { width: number }).width;
-  const ih = "naturalHeight" in image ? image.naturalHeight : "videoHeight" in image ? image.videoHeight : (image as { height: number }).height;
+export function drawCover(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const iw =
+    "naturalWidth" in image
+      ? image.naturalWidth
+      : "videoWidth" in image
+        ? image.videoWidth
+        : (image as { width: number }).width;
+  const ih =
+    "naturalHeight" in image
+      ? image.naturalHeight
+      : "videoHeight" in image
+        ? image.videoHeight
+        : (image as { height: number }).height;
   if (!iw || !ih) return;
   const k = Math.max(w / iw, h / ih);
   const dw = iw * k;
@@ -34,9 +89,19 @@ export type SlideAnimation = {
   deviceShift: number;
 };
 
-const STILL: SlideAnimation = { textAlpha: 1, textShift: 0, deviceZoom: 1, deviceShift: 0 };
+const STILL: SlideAnimation = {
+  textAlpha: 1,
+  textShift: 0,
+  deviceZoom: 1,
+  deviceShift: 0,
+};
 
-const FRAME_ASPECT: Record<FrameKind, number> = { iphone: 2.06, android: 2.12, ipad: 1.33, "android-tablet": 1.56 };
+const FRAME_ASPECT: Record<FrameKind, number> = {
+  iphone: 2.06,
+  android: 2.12,
+  ipad: 1.33,
+  "android-tablet": 1.56,
+};
 
 type Rect = { x: number; y: number; w: number; h: number };
 
@@ -51,7 +116,12 @@ function roundRect(ctx: CanvasRenderingContext2D, r: Rect, radius: number) {
   ctx.closePath();
 }
 
-export function paintBackground(ctx: CanvasRenderingContext2D, theme: ScreenshotTheme, w: number, h: number) {
+export function paintBackground(
+  ctx: CanvasRenderingContext2D,
+  theme: ScreenshotTheme,
+  w: number,
+  h: number,
+) {
   if (theme.background2) {
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, theme.background);
@@ -67,17 +137,37 @@ function font(weight: number, size: number, family: string) {
   return `${weight} ${size}px ${family}`;
 }
 
-type TextBlock = { headline: Line[]; sub: Line[]; headSize: number; subSize: number; height: number };
+type TextBlock = {
+  headline: Line[];
+  sub: Line[];
+  headSize: number;
+  subSize: number;
+  height: number;
+};
 
-function measureText(ctx: CanvasRenderingContext2D, slide: Slide, theme: ScreenshotTheme, w: number, opts: DrawOptions, textScale: number): TextBlock {
+function measureText(
+  ctx: CanvasRenderingContext2D,
+  slide: Slide,
+  theme: ScreenshotTheme,
+  w: number,
+  opts: DrawOptions,
+  textScale: number,
+): TextBlock {
   const maxWidth = w * 0.85;
   const headSize = Math.round(w * 0.078 * textScale);
   const subSize = Math.round(w * 0.04 * Math.min(textScale, 1.15));
   ctx.font = font(theme.weight, headSize, opts.fontFamily);
-  const headline = slide.headline.trim() ? wrapWords(slide.headline, maxWidth, (s) => ctx.measureText(s).width) : [];
+  const headline = slide.headline.trim()
+    ? wrapWords(slide.headline, maxWidth, (s) => ctx.measureText(s).width)
+    : [];
   ctx.font = font(500, subSize, opts.fontFamily);
-  const sub = slide.subheadline.trim() ? wrapWords(slide.subheadline, maxWidth, (s) => ctx.measureText(s).width) : [];
-  const height = headline.length * headSize * 1.12 + (headline.length && sub.length ? headSize * 0.4 : 0) + sub.length * subSize * 1.35;
+  const sub = slide.subheadline.trim()
+    ? wrapWords(slide.subheadline, maxWidth, (s) => ctx.measureText(s).width)
+    : [];
+  const height =
+    headline.length * headSize * 1.12 +
+    (headline.length && sub.length ? headSize * 0.4 : 0) +
+    sub.length * subSize * 1.35;
   return { headline, sub, headSize, subSize, height };
 }
 
@@ -107,31 +197,84 @@ function drawLines(
   }
 }
 
-function drawTextBlock(ctx: CanvasRenderingContext2D, block: TextBlock, top: number, w: number, theme: ScreenshotTheme, opts: DrawOptions) {
+function drawTextBlock(
+  ctx: CanvasRenderingContext2D,
+  block: TextBlock,
+  top: number,
+  w: number,
+  theme: ScreenshotTheme,
+  opts: DrawOptions,
+) {
   let y = top;
   if (block.headline.length) {
     ctx.font = font(theme.weight, block.headSize, opts.fontFamily);
-    drawLines(ctx, block.headline, block.headSize, block.headSize * 1.12, y, w, theme, theme.text);
-    y += block.headline.length * block.headSize * 1.12 + (block.sub.length ? block.headSize * 0.4 : 0);
+    drawLines(
+      ctx,
+      block.headline,
+      block.headSize,
+      block.headSize * 1.12,
+      y,
+      w,
+      theme,
+      theme.text,
+    );
+    y +=
+      block.headline.length * block.headSize * 1.12 +
+      (block.sub.length ? block.headSize * 0.4 : 0);
   }
   if (block.sub.length) {
     ctx.font = font(500, block.subSize, opts.fontFamily);
-    drawLines(ctx, block.sub, block.subSize, block.subSize * 1.35, y, w, theme, theme.subtext);
+    drawLines(
+      ctx,
+      block.sub,
+      block.subSize,
+      block.subSize * 1.35,
+      y,
+      w,
+      theme,
+      theme.subtext,
+    );
   }
 }
 
-function drawScreen(ctx: CanvasRenderingContext2D, screen: Rect, radius: number, image: CanvasImageSource | null) {
+function drawScreen(
+  ctx: CanvasRenderingContext2D,
+  screen: Rect,
+  radius: number,
+  source: ScreenSource | null,
+) {
   ctx.save();
   roundRect(ctx, screen, radius);
   ctx.clip();
-  if (image) {
-    const iw = "naturalWidth" in image ? image.naturalWidth : (image as ImageBitmap).width;
-    const ih = "naturalHeight" in image ? image.naturalHeight : (image as ImageBitmap).height;
+  if (source) {
+    const cropped = "crop" in source && !("width" in source);
+    const image = cropped
+      ? (source as { image: CanvasImageSource }).image
+      : (source as CanvasImageSource);
+    const full = sourceSize(image);
+    const crop = cropped
+      ? (source as { crop: Crop }).crop
+      : { x: 0, y: 0, w: 1, h: 1 };
+    const sx = crop.x * full.w;
+    const sy = crop.y * full.h;
+    const iw = crop.w * full.w;
+    const ih = crop.h * full.h;
     // Cover the screen, keeping the top edge (status bar) visible.
     const scale = Math.max(screen.w / iw, screen.h / ih);
     const dw = iw * scale;
     const dh = ih * scale;
-    ctx.drawImage(image, screen.x + (screen.w - dw) / 2, screen.y, dw, dh);
+    if (iw > 0 && ih > 0)
+      ctx.drawImage(
+        image,
+        sx,
+        sy,
+        iw,
+        ih,
+        screen.x + (screen.w - dw) / 2,
+        screen.y,
+        dw,
+        dh,
+      );
   } else {
     const g = ctx.createLinearGradient(0, screen.y, 0, screen.y + screen.h);
     g.addColorStop(0, "#f4f4f7");
@@ -142,13 +285,24 @@ function drawScreen(ctx: CanvasRenderingContext2D, screen: Rect, radius: number,
     ctx.font = `500 ${Math.round(screen.w * 0.05)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("Sube una captura", screen.x + screen.w / 2, screen.y + screen.h * 0.4);
+    ctx.fillText(
+      "Sube una captura",
+      screen.x + screen.w / 2,
+      screen.y + screen.h * 0.4,
+    );
     ctx.textAlign = "start";
   }
   ctx.restore();
 }
 
-function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect, theme: ScreenshotTheme, image: CanvasImageSource | null, showFrame: boolean) {
+function drawDevice(
+  ctx: CanvasRenderingContext2D,
+  frame: FrameKind,
+  outer: Rect,
+  theme: ScreenshotTheme,
+  image: ScreenSource | null,
+  showFrame: boolean,
+) {
   const dark = theme.frame === "dark";
   if (!showFrame) {
     ctx.save();
@@ -163,7 +317,8 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
     return;
   }
   const isTablet = frame === "ipad" || frame === "android-tablet";
-  const radius = outer.w * (frame === "iphone" ? 0.145 : frame === "android" ? 0.12 : 0.06);
+  const radius =
+    outer.w * (frame === "iphone" ? 0.145 : frame === "android" ? 0.12 : 0.06);
   const bezel = outer.w * (isTablet ? 0.03 : frame === "iphone" ? 0.03 : 0.022);
 
   // Side buttons sit just outside the body.
@@ -177,10 +332,25 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
     ]) {
       ctx.fillRect(outer.x - bw, outer.y + outer.h * y, bw + 1, outer.h * h);
     }
-    ctx.fillRect(outer.x + outer.w - 1, outer.y + outer.h * 0.26, bw + 1, outer.h * 0.13);
+    ctx.fillRect(
+      outer.x + outer.w - 1,
+      outer.y + outer.h * 0.26,
+      bw + 1,
+      outer.h * 0.13,
+    );
   } else if (frame === "android") {
-    ctx.fillRect(outer.x + outer.w - 1, outer.y + outer.h * 0.2, bw + 1, outer.h * 0.12);
-    ctx.fillRect(outer.x + outer.w - 1, outer.y + outer.h * 0.35, bw + 1, outer.h * 0.07);
+    ctx.fillRect(
+      outer.x + outer.w - 1,
+      outer.y + outer.h * 0.2,
+      bw + 1,
+      outer.h * 0.12,
+    );
+    ctx.fillRect(
+      outer.x + outer.w - 1,
+      outer.y + outer.h * 0.35,
+      bw + 1,
+      outer.h * 0.07,
+    );
   }
 
   ctx.save();
@@ -197,7 +367,12 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
   ctx.strokeStyle = dark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.18)";
   ctx.stroke();
 
-  const screen = { x: outer.x + bezel, y: outer.y + bezel, w: outer.w - bezel * 2, h: outer.h - bezel * 2 };
+  const screen = {
+    x: outer.x + bezel,
+    y: outer.y + bezel,
+    w: outer.w - bezel * 2,
+    h: outer.h - bezel * 2,
+  };
   roundRect(ctx, screen, radius - bezel);
   ctx.fillStyle = "#000000";
   ctx.fill();
@@ -205,12 +380,23 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
 
   ctx.fillStyle = "#050507";
   if (frame === "iphone") {
-    const pill = { x: outer.x + outer.w / 2 - outer.w * 0.135, y: screen.y + outer.w * 0.028, w: outer.w * 0.27, h: outer.w * 0.078 };
+    const pill = {
+      x: outer.x + outer.w / 2 - outer.w * 0.135,
+      y: screen.y + outer.w * 0.028,
+      w: outer.w * 0.27,
+      h: outer.w * 0.078,
+    };
     roundRect(ctx, pill, pill.h / 2);
     ctx.fill();
   } else if (frame === "android") {
     ctx.beginPath();
-    ctx.arc(outer.x + outer.w / 2, screen.y + outer.w * 0.05, outer.w * 0.022, 0, Math.PI * 2);
+    ctx.arc(
+      outer.x + outer.w / 2,
+      screen.y + outer.w * 0.05,
+      outer.w * 0.022,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 }
@@ -224,9 +410,17 @@ function withAlpha(hex: string, alpha: number): string {
 export type SlidePosition = { index: number; count: number };
 
 /** Background decoration, drawn between the background and the device. */
-function drawDecor(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, w: number, h: number, device: Rect, pos: SlidePosition) {
+function drawDecor(
+  ctx: CanvasRenderingContext2D,
+  spec: ScreenshotSpec,
+  w: number,
+  h: number,
+  device: Rect,
+  pos: SlidePosition,
+) {
   const { accent } = spec.theme;
-  const light = spec.theme.background === "#ffffff" || spec.theme.background === "#f6f6f8";
+  const light =
+    spec.theme.background === "#ffffff" || spec.theme.background === "#f6f6f8";
   const soft = light ? withAlpha(accent, 0.12) : "rgba(255,255,255,0.08)";
   ctx.save();
   switch (spec.decor) {
@@ -271,9 +465,30 @@ function drawDecor(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, w: numbe
       const cy = device.y + device.h * 0.35;
       const r = device.w * 0.62;
       ctx.moveTo(cx - r, cy);
-      ctx.bezierCurveTo(cx - r, cy - r * 1.1, cx + r * 0.2, cy - r * 1.05, cx + r * 0.9, cy - r * 0.4);
-      ctx.bezierCurveTo(cx + r * 1.25, cy + r * 0.3, cx + r * 0.5, cy + r * 1.1, cx - r * 0.2, cy + r * 0.95);
-      ctx.bezierCurveTo(cx - r * 0.9, cy + r * 0.8, cx - r * 1.05, cy + r * 0.4, cx - r, cy);
+      ctx.bezierCurveTo(
+        cx - r,
+        cy - r * 1.1,
+        cx + r * 0.2,
+        cy - r * 1.05,
+        cx + r * 0.9,
+        cy - r * 0.4,
+      );
+      ctx.bezierCurveTo(
+        cx + r * 1.25,
+        cy + r * 0.3,
+        cx + r * 0.5,
+        cy + r * 1.1,
+        cx - r * 0.2,
+        cy + r * 0.95,
+      );
+      ctx.bezierCurveTo(
+        cx - r * 0.9,
+        cy + r * 0.8,
+        cx - r * 1.05,
+        cy + r * 0.4,
+        cx - r,
+        cy,
+      );
       ctx.fill();
       break;
     }
@@ -282,18 +497,20 @@ function drawDecor(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, w: numbe
       ctx.translate(w / 2, h / 2);
       ctx.rotate(-Math.PI / 6);
       const band = w * 0.22;
-      for (let x = -w * 2 - (pos.index % 2) * band; x < w * 2; x += band * 2) ctx.fillRect(x, -h, band, h * 2);
+      for (let x = -w * 2 - (pos.index % 2) * band; x < w * 2; x += band * 2)
+        ctx.fillRect(x, -h, band, h * 2);
       break;
     }
     case "dots": {
       ctx.fillStyle = light ? withAlpha(accent, 0.2) : "rgba(255,255,255,0.14)";
       const step = w * 0.07;
       const r = w * 0.006;
-      for (let y = step / 2; y < h; y += step) for (let x = step / 2; x < w; x += step) {
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      for (let y = step / 2; y < h; y += step)
+        for (let x = step / 2; x < w; x += step) {
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
       break;
     }
     case "wave": {
@@ -301,15 +518,32 @@ function drawDecor(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, w: numbe
       const top = h * 0.62;
       ctx.beginPath();
       ctx.moveTo(0, top + h * 0.05);
-      ctx.bezierCurveTo(w * 0.3, top - h * 0.06, w * 0.6, top + h * 0.1, w, top - h * 0.02);
+      ctx.bezierCurveTo(
+        w * 0.3,
+        top - h * 0.06,
+        w * 0.6,
+        top + h * 0.1,
+        w,
+        top - h * 0.02,
+      );
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = withAlpha(spec.theme.background2 ?? spec.theme.background, 0.35);
+      ctx.fillStyle = withAlpha(
+        spec.theme.background2 ?? spec.theme.background,
+        0.35,
+      );
       ctx.beginPath();
       ctx.moveTo(0, top + h * 0.12);
-      ctx.bezierCurveTo(w * 0.35, top + h * 0.02, w * 0.65, top + h * 0.18, w, top + h * 0.06);
+      ctx.bezierCurveTo(
+        w * 0.35,
+        top + h * 0.02,
+        w * 0.65,
+        top + h * 0.18,
+        w,
+        top + h * 0.06,
+      );
       ctx.lineTo(w, h);
       ctx.lineTo(0, h);
       ctx.closePath();
@@ -342,13 +576,20 @@ function drawDeviceTransformed(
   r: Rect,
   rotate: number,
   theme: ScreenshotTheme,
-  image: CanvasImageSource | null,
+  image: ScreenSource | null,
   showFrame: boolean,
 ) {
   ctx.save();
   ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
   ctx.rotate((rotate * Math.PI) / 180);
-  drawDevice(ctx, frame, { x: -r.w / 2, y: -r.h / 2, w: r.w, h: r.h }, theme, image, showFrame);
+  drawDevice(
+    ctx,
+    frame,
+    { x: -r.w / 2, y: -r.h / 2, w: r.w, h: r.h },
+    theme,
+    image,
+    showFrame,
+  );
   ctx.restore();
 }
 
@@ -357,13 +598,13 @@ export function drawSlide(
   ctx: CanvasRenderingContext2D,
   spec: ScreenshotSpec,
   slide: Slide,
-  image: CanvasImageSource | null,
+  image: ScreenSource | null,
   opts: DrawOptions,
   anim: SlideAnimation = STILL,
   size?: { width: number; height: number },
   pos: SlidePosition = { index: 0, count: 1 },
   /** Screen shown on the second device of a "pair" layout (usually the next slide's). */
-  pairImage: CanvasImageSource | null = null,
+  pairImage: ScreenSource | null = null,
 ) {
   const preset = getPreset(spec.device);
   const w = size?.width ?? preset.width;
@@ -373,7 +614,17 @@ export function drawSlide(
 
   // A finished composition from the store: show it edge to edge and draw nothing on top.
   if (slide.asIs) {
-    if (image) drawCover(ctx, image, 0, 0, w, h);
+    if (image)
+      drawCover(
+        ctx,
+        "crop" in image && !("width" in image)
+          ? (image as { image: CanvasImageSource }).image
+          : (image as CanvasImageSource),
+        0,
+        0,
+        w,
+        h,
+      );
     return;
   }
 
@@ -401,18 +652,44 @@ export function drawSlide(
   };
   const device = (r: Rect) => {
     const z = anim.deviceZoom;
-    const zoomed = { x: r.x + offsetX + (r.w * (1 - z)) / 2, y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w, w: r.w * z, h: r.h * z };
+    const zoomed = {
+      x: r.x + offsetX + (r.w * (1 - z)) / 2,
+      y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w,
+      w: r.w * z,
+      h: r.h * z,
+    };
     drawDecor(ctx, spec, w, h, zoomed, pos);
     if (spec.pair) {
       // The companion sits behind, on the other side, slightly smaller and leaning the other way.
       const k = 0.88;
-      const back = { x: zoomed.x - offsetX * 2.2 + (zoomed.w * (1 - k)) / 2, y: zoomed.y + zoomed.h * 0.08, w: zoomed.w * k, h: zoomed.h * k };
+      const back = {
+        x: zoomed.x - offsetX * 2.2 + (zoomed.w * (1 - k)) / 2,
+        y: zoomed.y + zoomed.h * 0.08,
+        w: zoomed.w * k,
+        h: zoomed.h * k,
+      };
       ctx.save();
       ctx.globalAlpha = 0.92;
-      drawDeviceTransformed(ctx, preset.frame, back, -rotate * 0.6 + (spec.deviceRotate === 0 ? -4 * mirror : 0), theme, pairImage, spec.showFrame);
+      drawDeviceTransformed(
+        ctx,
+        preset.frame,
+        back,
+        -rotate * 0.6 + (spec.deviceRotate === 0 ? -4 * mirror : 0),
+        theme,
+        pairImage,
+        spec.showFrame,
+      );
       ctx.restore();
     }
-    drawDeviceTransformed(ctx, preset.frame, zoomed, rotate, theme, image, spec.showFrame);
+    drawDeviceTransformed(
+      ctx,
+      preset.frame,
+      zoomed,
+      rotate,
+      theme,
+      image,
+      spec.showFrame,
+    );
   };
 
   const block = measureText(ctx, slide, theme, w, opts, spec.textScale);
@@ -428,13 +705,17 @@ export function drawSlide(
     const textBottom = hasText ? topPad + block.height + gap : topPad;
     const free = h - textBottom - deviceH;
     // Centre a device that fits; otherwise let it run off the bottom edge, as store sets usually do.
-    const deviceY = free > 0 ? textBottom + Math.min(free / 2, h * 0.04) : textBottom;
+    const deviceY =
+      free > 0 ? textBottom + Math.min(free / 2, h * 0.04) : textBottom;
     device({ x: deviceX, y: deviceY, w: deviceW, h: deviceH });
   } else {
     const textTop = hasText ? h - topPad - block.height : h - topPad;
     const limit = hasText ? textTop - gap : textTop;
     const free = limit - deviceH;
-    const deviceY = free > 0 ? limit - deviceH - Math.min(free / 2, h * 0.04) : limit - deviceH;
+    const deviceY =
+      free > 0
+        ? limit - deviceH - Math.min(free / 2, h * 0.04)
+        : limit - deviceH;
     device({ x: deviceX, y: deviceY, w: deviceW, h: deviceH });
     if (hasText) text(block, textTop);
   }
@@ -453,10 +734,10 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 export async function renderSlidePng(
   spec: ScreenshotSpec,
   slide: Slide,
-  image: CanvasImageSource | null,
+  image: ScreenSource | null,
   opts: DrawOptions,
   pos: SlidePosition = { index: 0, count: 1 },
-  pairImage: CanvasImageSource | null = null,
+  pairImage: ScreenSource | null = null,
 ): Promise<Blob> {
   const preset = getPreset(spec.device);
   const canvas = document.createElement("canvas");
@@ -464,12 +745,30 @@ export async function renderSlidePng(
   canvas.height = preset.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas no disponible");
-  drawSlide(ctx, spec, slide, image, opts, undefined, undefined, pos, pairImage);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No se pudo exportar el PNG"))), "image/png"));
+  drawSlide(
+    ctx,
+    spec,
+    slide,
+    image,
+    opts,
+    undefined,
+    undefined,
+    pos,
+    pairImage,
+  );
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("No se pudo exportar el PNG"))),
+      "image/png",
+    ),
+  );
 }
 
 /** Shrinks an uploaded screenshot so a whole set fits in one save (JPEG, max height 1800px). */
-export async function shrinkImage(file: File, maxHeight = 1800): Promise<string> {
+export async function shrinkImage(
+  file: File,
+  maxHeight = 1800,
+): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
     const img = await loadImage(url);
@@ -489,10 +788,16 @@ export async function shrinkImage(file: File, maxHeight = 1800): Promise<string>
 /** The real font stack of the page, so canvas text matches the UI (next/font renames Inter). */
 export function pageFontFamily(): string {
   if (typeof document === "undefined") return "Inter, system-ui, sans-serif";
-  return getComputedStyle(document.body).fontFamily || "Inter, system-ui, sans-serif";
+  return (
+    getComputedStyle(document.body).fontFamily || "Inter, system-ui, sans-serif"
+  );
 }
 
 export async function ensureFonts(family: string, weights: number[]) {
   if (typeof document === "undefined" || !("fonts" in document)) return;
-  await Promise.all(weights.map((w) => document.fonts.load(`${w} 32px ${family}`).catch(() => [])));
+  await Promise.all(
+    weights.map((w) =>
+      document.fonts.load(`${w} 32px ${family}`).catch(() => []),
+    ),
+  );
 }

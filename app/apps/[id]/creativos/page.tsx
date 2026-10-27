@@ -25,26 +25,30 @@ export const metadata: Metadata = { title: "Screenshots" };
 export const maxDuration = 300;
 
 /**
- * Designs saved before the "as is" flag existed get it set for store screenshots, which are finished
- * compositions; a design saved with the flag keeps whatever the user chose.
+ * Designs saved before the "as is" flag and the crop existed: their store screenshots are finished
+ * compositions, so they are shown as they are and the browser scans them once for the app screen.
+ * A design saved with the flag keeps whatever the user chose.
  */
 function withStoreImagesAsIs(
   spec: ScreenshotSpec,
   raw: unknown,
   storeImages: string[],
-): ScreenshotSpec {
+): { spec: ScreenshotSpec; detect: string[] } {
   const rawSlides =
     (raw as { slides?: { asIs?: unknown }[] } | null)?.slides ?? [];
-  return {
-    ...spec,
-    slides: spec.slides.map((s, i) =>
+  const detect: string[] = [];
+  const slides = spec.slides.map((s, i) => {
+    if (
       rawSlides[i]?.asIs === undefined &&
       s.image !== null &&
       storeImages.includes(s.image)
-        ? { ...s, asIs: true }
-        : s,
-    ),
-  };
+    ) {
+      detect.push(s.id);
+      return { ...s, asIs: true };
+    }
+    return s;
+  });
+  return { spec: { ...spec, slides }, detect };
 }
 
 export default async function ScreenshotsPage({ params }: Props) {
@@ -72,9 +76,16 @@ export default async function ScreenshotsPage({ params }: Props) {
     .limit(24);
   const provider = imageProvider();
   const parsed = saved ? screenshotSpecSchema.safeParse(saved.spec) : null;
-  const initial: ScreenshotSpec = parsed?.success
-    ? parsed.data
+  const loaded = parsed?.success
+    ? withStoreImagesAsIs(parsed.data, saved?.spec, storeImages)
+    : null;
+  const initial: ScreenshotSpec = loaded
+    ? loaded.spec
     : defaultScreenshotSpec(app.store, app.title, storeImages);
+  // A fresh design scans every store screenshot for the app screen; a loaded one only those just migrated.
+  const detectSlides = loaded
+    ? loaded.detect
+    : initial.slides.filter((s) => s.image).map((s) => s.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -103,6 +114,7 @@ export default async function ScreenshotsPage({ params }: Props) {
         aiEnabled={hasAnthropicKey()}
         providerLabel={provider ? IMAGE_PROVIDER_LABEL[provider] : null}
         backgrounds={backgrounds}
+        detectSlides={detectSlides}
         savedAt={saved?.updatedAt.toISOString() ?? null}
       />
     </div>

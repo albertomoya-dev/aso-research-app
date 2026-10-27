@@ -25,10 +25,12 @@ import {
   loadImage,
   pageFontFamily,
   renderSlidePng,
+  screenSource,
   shrinkImage,
 } from "@/lib/assets/screenshot-render";
 import {
   applyTemplate,
+  type Crop,
   DECOR_LABEL,
   DECORS,
   getPreset,
@@ -44,7 +46,9 @@ import {
   TEMPLATES,
   THEME_PRESETS,
 } from "@/lib/assets/screenshots";
+import { detectScreen } from "@/lib/assets/screen-detect";
 import { buildZip } from "@/lib/assets/zip";
+import { CropEditor } from "./crop-editor";
 import type { Store } from "@/lib/stores/types";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
@@ -60,6 +64,8 @@ type Props = {
   providerLabel: string | null;
   /** Backdrops already generated for this app. */
   backgrounds: { id: number; prompt: string }[];
+  /** Slides whose store screenshot should be scanned once for the app screen (the page could not do it). */
+  detectSlides: string[];
   savedAt: string | null;
 };
 
@@ -75,6 +81,7 @@ export function ScreenshotStudio({
   aiEnabled,
   providerLabel,
   backgrounds: initialBackgrounds,
+  detectSlides,
   savedAt,
 }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
@@ -142,10 +149,9 @@ export function ScreenshotStudio({
         const canvas = canvases.current.get(sl.id);
         if (!canvas) continue;
         const img = await imageFor(sl.image).catch(() => null);
+        const nextSlide = spec.slides[(index + 1) % count];
         const pair = spec.pair
-          ? await imageFor(
-              spec.slides[(index + 1) % count]?.image ?? null,
-            ).catch(() => null)
+          ? await imageFor(nextSlide?.image ?? null).catch(() => null)
           : null;
         if (cancelled) return;
         const scale = PREVIEW_WIDTH / preset.width;
@@ -158,12 +164,12 @@ export function ScreenshotStudio({
           ctx,
           spec,
           sl,
-          img,
+          screenSource(img, sl.crop),
           { fontFamily: font, background },
           undefined,
           undefined,
           { index, count },
-          pair,
+          screenSource(pair, nextSlide?.crop),
         );
       }
     }, 120);
@@ -177,7 +183,9 @@ export function ScreenshotStudio({
   const first = spec.slides[0];
   const firstImage = first?.image ?? null;
   const firstAsIs = first?.asIs ?? false;
+  const firstCrop = first?.crop ?? null;
   const secondImage = spec.slides[1]?.image ?? null;
+  const secondCrop = spec.slides[1]?.crop ?? null;
   const firstHeadline = first?.headline ?? "";
   const firstSub = first?.subheadline ?? "";
   useEffect(() => {
@@ -186,10 +194,13 @@ export function ScreenshotStudio({
       await ensureFonts(font, [500, 600, 700, 800]);
       const img = firstAsIs
         ? null
-        : await imageFor(firstImage).catch(() => null);
+        : screenSource(await imageFor(firstImage).catch(() => null), firstCrop);
       const pair = firstAsIs
         ? null
-        : await imageFor(secondImage ?? firstImage).catch(() => null);
+        : screenSource(
+            await imageFor(secondImage ?? firstImage).catch(() => null),
+            secondImage ? secondCrop : firstCrop,
+          );
       const background = await backgroundFor();
       if (cancelled) return;
       for (const t of TEMPLATES) {
@@ -207,6 +218,7 @@ export function ScreenshotStudio({
               layout: "text-top",
               keyword: null,
               asIs: false,
+              crop: firstAsIs ? null : firstCrop,
             },
           ],
         };
@@ -243,6 +255,8 @@ export function ScreenshotStudio({
     backgroundFor,
     firstImage,
     firstAsIs,
+    firstCrop,
+    secondCrop,
     secondImage,
     firstHeadline,
     firstSub,
@@ -264,6 +278,7 @@ export function ScreenshotStudio({
       layout: slide?.layout ?? "text-top",
       keyword: null,
       asIs: false,
+      crop: null,
     };
     setSpec((s) => ({ ...s, slides: [...s.slides, next] }));
     setSelected(spec.slides.length);
@@ -391,24 +406,107 @@ export function ScreenshotStudio({
     await deleteGeneratedImage(appId, id);
   }
 
+  type ImageMode = "raw" | "crop" | "asis";
+  const modeOf = (sl: Slide): ImageMode =>
+    sl.asIs ? "asis" : sl.crop ? "crop" : "raw";
+
+  /** Finds the app screen inside the image, or falls back to a centred box the user can adjust. */
+  async function autoCrop(src: string): Promise<Crop> {
+    const img = await imageFor(src).catch(() => null);
+    const found = img ? detectScreen(img) : null;
+    return found ?? { x: 0.15, y: 0.2, w: 0.7, h: 0.7 };
+  }
+
+  async function setImageMode(sl: Slide, mode: ImageMode) {
+    if (mode === "crop") {
+      const crop = sl.crop ?? (sl.image ? await autoCrop(sl.image) : null);
+      updateSlide(sl.id, { asIs: false, crop });
+    } else {
+      updateSlide(sl.id, {
+        asIs: mode === "asis",
+        crop: mode === "asis" ? sl.crop : null,
+      });
+    }
+  }
+
+  async function redetect(sl: Slide) {
+    if (!sl.image) return;
+    const img = await imageFor(sl.image).catch(() => null);
+    const found = img ? detectScreen(img) : null;
+    if (found) updateSlide(sl.id, { asIs: false, crop: found });
+    else
+      setStatus({
+        kind: "error",
+        text: "No se ha encontrado un móvil con marco oscuro en la imagen; marca la pantalla arrastrando sobre la imagen.",
+      });
+  }
+
+  /** A store screenshot is a finished composition: cut the app screen out of it, or show it as it is. */
+  async function pickStoreImage(sl: Slide, src: string) {
+    const img = await imageFor(src).catch(() => null);
+    const found = img ? detectScreen(img) : null;
+    updateSlide(sl.id, { image: src, asIs: !found, crop: found });
+  }
+
+  // Slides the page marked for detection (fresh designs, or saved before the crop existed) get it once.
+  const detectOnce = useRef(detectSlides);
+  useEffect(() => {
+    const ids = detectOnce.current;
+    detectOnce.current = [];
+    if (ids.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const found = new Map<string, Crop>();
+      for (const sl of initial.slides) {
+        if (!ids.includes(sl.id) || !sl.image) continue;
+        const img = await imageFor(sl.image).catch(() => null);
+        const crop = img ? detectScreen(img) : null;
+        if (crop) found.set(sl.id, crop);
+      }
+      if (cancelled || found.size === 0) return;
+      setSpec((s) => ({
+        ...s,
+        slides: s.slides.map((sl) =>
+          found.has(sl.id)
+            ? { ...sl, asIs: false, crop: found.get(sl.id)! }
+            : sl,
+        ),
+      }));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initial, imageFor]);
+
+  /** Copies this slide's crop to every other slide that shows a store screenshot. */
+  function cropAllStoreImages(crop: Crop) {
+    setSpec((s) => ({
+      ...s,
+      slides: s.slides.map((sl) =>
+        sl.image && storeImages.includes(sl.image)
+          ? { ...sl, asIs: false, crop }
+          : sl,
+      ),
+    }));
+  }
+
   async function exportOne() {
     if (!slide) return;
     setExporting(true);
     try {
       const img = await imageFor(slide.image).catch(() => null);
       const count = spec.slides.length;
+      const nextSlide = spec.slides[(selected + 1) % count];
       const pair = spec.pair
-        ? await imageFor(
-            spec.slides[(selected + 1) % count]?.image ?? null,
-          ).catch(() => null)
+        ? await imageFor(nextSlide?.image ?? null).catch(() => null)
         : null;
       const blob = await renderSlidePng(
         spec,
         slide,
-        img,
+        screenSource(img, slide.crop),
         { fontFamily: font, background: await backgroundFor() },
         { index: selected, count },
-        pair,
+        screenSource(pair, nextSlide?.crop),
       );
       downloadBlob(`${slug(appTitle)}-${preset.id}-${selected + 1}.png`, blob);
     } catch (err) {
@@ -429,18 +527,17 @@ export function ScreenshotStudio({
       const background = await backgroundFor();
       for (const [i, sl] of spec.slides.entries()) {
         const img = await imageFor(sl.image).catch(() => null);
+        const nextSlide = spec.slides[(i + 1) % count];
         const pair = spec.pair
-          ? await imageFor(spec.slides[(i + 1) % count]?.image ?? null).catch(
-              () => null,
-            )
+          ? await imageFor(nextSlide?.image ?? null).catch(() => null)
           : null;
         const blob = await renderSlidePng(
           spec,
           sl,
-          img,
+          screenSource(img, sl.crop),
           { fontFamily: font, background },
           { index: i, count },
-          pair,
+          screenSource(pair, nextSlide?.crop),
         );
         entries.push({
           name: `${String(i + 1).padStart(2, "0")}-${preset.id}.png`,
@@ -467,88 +564,89 @@ export function ScreenshotStudio({
   );
 
   return (
-    // The preview strip sticks to the top of the page on wide screens, so the slide editor and the
-    // settings column can scroll underneath it while every change stays visible.
-    <div className="flex flex-col gap-6">
-      <div className="lg:sticky lg:-top-7 lg:z-10 lg:-mt-7 lg:bg-panel lg:pt-7">
-        <Card className="px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[15px] font-semibold">Vista previa</h2>
-              <p className="mt-0.5 text-xs text-muted">
-                {preset.label} · {preset.width}×{preset.height} px ·{" "}
-                {spec.slides.length}{" "}
-                {spec.slides.length === 1 ? "pantalla" : "pantallas"}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={exportOne}
-                disabled={exporting}
-                className={buttonSecondary}
-              >
-                Descargar PNG
-              </button>
-              <button
-                type="button"
-                onClick={exportAll}
-                disabled={exporting}
-                className={buttonSecondary}
-              >
-                {exporting ? "Exportando…" : "Descargar todo (ZIP)"}
-              </button>
-            </div>
-          </div>
-          <div className="-mx-5 mt-3 overflow-x-auto px-5 pb-1">
-            <ul className="flex min-w-max gap-3">
-              {spec.slides.map((sl, i) => (
-                <li key={sl.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(i)}
-                    aria-pressed={i === selected}
-                    aria-label={`Pantalla ${i + 1}`}
-                    className={`block overflow-hidden rounded-lg border-2 ${i === selected ? "border-brand" : "border-line hover:border-line-strong"}`}
-                  >
-                    <canvas
-                      ref={(el) => {
-                        if (el) canvases.current.set(sl.id, el);
-                        else canvases.current.delete(sl.id);
-                      }}
-                      style={{
-                        height: `min(${previewHeight}px, 30vh)`,
-                        aspectRatio: `${preset.width} / ${preset.height}`,
-                      }}
-                      className="block w-auto bg-surface-muted"
-                    />
-                  </button>
-                  <p className="mt-1.5 text-center font-mono text-xs text-muted">
-                    {i + 1}
-                    {sl.keyword ? ` · ${sl.keyword}` : ""}
-                  </p>
-                </li>
-              ))}
-              <li>
+    // Two columns from the top: the preview strip and the slide editor on the left, the settings on the
+    // right. On wide screens the strip sticks to the top of its column, so the editor and the settings
+    // scroll underneath it and every change stays visible.
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+      <div className="flex min-w-0 flex-col gap-4 lg:self-stretch">
+        <div className="lg:sticky lg:-top-7 lg:z-10 lg:-mt-7 lg:bg-panel lg:pt-7">
+          <Card className="px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[15px] font-semibold">Vista previa</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  {preset.label} · {preset.width}×{preset.height} px ·{" "}
+                  {spec.slides.length}{" "}
+                  {spec.slides.length === 1 ? "pantalla" : "pantallas"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={addSlide}
-                  disabled={spec.slides.length >= 10}
-                  className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-line-strong px-6 text-[13px] text-muted hover:border-muted hover:text-ink disabled:opacity-50"
-                  style={{
-                    height: `min(${previewHeight + 4}px, calc(30vh + 4px))`,
-                    width: PREVIEW_WIDTH * 0.7,
-                  }}
+                  onClick={exportOne}
+                  disabled={exporting}
+                  className={buttonSecondary}
                 >
-                  + Añadir pantalla
+                  Descargar PNG
                 </button>
-              </li>
-            </ul>
-          </div>
-        </Card>
-      </div>
+                <button
+                  type="button"
+                  onClick={exportAll}
+                  disabled={exporting}
+                  className={buttonSecondary}
+                >
+                  {exporting ? "Exportando…" : "Descargar todo (ZIP)"}
+                </button>
+              </div>
+            </div>
+            <div className="-mx-5 mt-3 overflow-x-auto px-5 pb-1">
+              <ul className="flex min-w-max gap-3">
+                {spec.slides.map((sl, i) => (
+                  <li key={sl.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(i)}
+                      aria-pressed={i === selected}
+                      aria-label={`Pantalla ${i + 1}`}
+                      className={`block overflow-hidden rounded-lg border-2 ${i === selected ? "border-brand" : "border-line hover:border-line-strong"}`}
+                    >
+                      <canvas
+                        ref={(el) => {
+                          if (el) canvases.current.set(sl.id, el);
+                          else canvases.current.delete(sl.id);
+                        }}
+                        style={{
+                          height: `min(${previewHeight}px, 30vh)`,
+                          aspectRatio: `${preset.width} / ${preset.height}`,
+                        }}
+                        className="block w-auto bg-surface-muted"
+                      />
+                    </button>
+                    <p className="mt-1.5 text-center font-mono text-xs text-muted">
+                      {i + 1}
+                      {sl.keyword ? ` · ${sl.keyword}` : ""}
+                    </p>
+                  </li>
+                ))}
+                <li>
+                  <button
+                    type="button"
+                    onClick={addSlide}
+                    disabled={spec.slides.length >= 10}
+                    className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-line-strong px-6 text-[13px] text-muted hover:border-muted hover:text-ink disabled:opacity-50"
+                    style={{
+                      height: `min(${previewHeight + 4}px, calc(30vh + 4px))`,
+                      width: PREVIEW_WIDTH * 0.7,
+                    }}
+                  >
+                    + Añadir pantalla
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </Card>
+        </div>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
         {slide && (
           <Card className="px-5 py-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -678,43 +776,96 @@ export function ScreenshotStudio({
                     </button>
                   )}
                 </div>
-                <label className="flex items-center gap-2 text-[13px] font-normal text-ink-soft">
-                  <input
-                    type="checkbox"
-                    checked={slide.asIs}
-                    onChange={(e) =>
-                      updateSlide(slide.id, { asIs: e.target.checked })
-                    }
-                  />
-                  La imagen ya es un montaje terminado: usarla tal cual, sin
-                  marco, texto ni fondo
-                </label>
-                {slide.image &&
-                  storeImages.includes(slide.image) &&
-                  !slide.asIs && (
-                    <p className="text-xs text-warn-fg">
-                      Esta captura viene de la tienda y ya lleva su propio texto
-                      y su propio móvil, así que dentro del marco se verá un
-                      móvil sobre otro. Para aplicar una plantilla, sube una
-                      captura en bruto de la app (la pantalla tal cual se ve en
-                      el móvil, sin montaje).
-                    </p>
-                  )}
+                {slide.image && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-[13px] font-medium text-ink-soft">
+                      Cómo usar la imagen
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          ["raw", "Captura en bruto, dentro del marco"],
+                          ["crop", "Recortar la pantalla de un montaje"],
+                          ["asis", "Tal cual, sin plantilla"],
+                        ] as [ImageMode, string][]
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setImageMode(slide, mode)}
+                          aria-pressed={modeOf(slide) === mode}
+                          className={`rounded-md border px-2 py-1 text-xs ${modeOf(slide) === mode ? "border-brand text-ink" : "border-line-strong text-ink-soft hover:border-muted"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {modeOf(slide) === "crop" && (
+                      <div className="flex flex-col gap-2">
+                        <CropEditor
+                          src={slide.image}
+                          crop={slide.crop}
+                          onChange={(crop) =>
+                            updateSlide(slide.id, { asIs: false, crop })
+                          }
+                        />
+                        <p className="text-xs text-muted">
+                          Solo la zona marcada se usa como pantalla de la app
+                          dentro del marco de la plantilla. Arrastra sobre la
+                          imagen para ajustarla.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => redetect(slide)}
+                            className={buttonSecondary}
+                          >
+                            Detectar la pantalla
+                          </button>
+                          {slide.crop && storeImages.includes(slide.image) && (
+                            <button
+                              type="button"
+                              onClick={() => cropAllStoreImages(slide.crop!)}
+                              className={buttonSecondary}
+                            >
+                              Aplicar este recorte a todas las capturas de la
+                              tienda
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {modeOf(slide) === "raw" &&
+                      storeImages.includes(slide.image) && (
+                        <p className="text-xs text-warn-fg">
+                          Esta captura viene de la tienda y ya lleva su propio
+                          texto y su propio móvil, así que dentro del marco se
+                          verá un móvil sobre otro. Elige «Recortar la pantalla
+                          de un montaje» para usar solo la pantalla de la app.
+                        </p>
+                      )}
+                    {modeOf(slide) === "asis" && (
+                      <p className="text-xs text-muted">
+                        La imagen se muestra entera, sin marco, texto, fondo ni
+                        plantilla. Para que la plantilla se aplique, elige
+                        «Recortar la pantalla de un montaje».
+                      </p>
+                    )}
+                  </div>
+                )}
                 {storeImages.length > 0 && (
                   <div>
                     <p className="mb-1.5 text-xs text-muted">
                       O usa una de las capturas publicadas en la tienda. Son
-                      montajes ya terminados, así que se muestran tal cual, sin
-                      plantilla:
+                      montajes ya terminados: se busca el móvil dentro y se
+                      recorta su pantalla para la plantilla.
                     </p>
                     <ul className="flex flex-wrap gap-2">
                       {storeImages.map((src, i) => (
                         <li key={src}>
                           <button
                             type="button"
-                            onClick={() =>
-                              updateSlide(slide.id, { image: src, asIs: true })
-                            }
+                            onClick={() => pickStoreImage(slide, src)}
                             aria-label={`Captura ${i + 1} de la tienda`}
                             className={`block overflow-hidden rounded-md border-2 ${slide.image === src ? "border-brand" : "border-line hover:border-line-strong"}`}
                           >
@@ -735,487 +886,485 @@ export function ScreenshotStudio({
             </div>
           </Card>
         )}
+      </div>
 
-        <div className="flex flex-col gap-4">
-          {aiEnabled && (
-            <Card className="px-5 py-4">
-              <h2 className="text-[15px] font-semibold">Textos con IA</h2>
-              <p className="mt-1 text-xs text-muted">
-                Claude redacta un titular y un subtítulo por pantalla a partir
-                de la ficha y de tus keywords con más oportunidad. Sustituye los
-                textos actuales.
-              </p>
+      <div className="flex flex-col gap-4">
+        {aiEnabled && (
+          <Card className="px-5 py-4">
+            <h2 className="text-[15px] font-semibold">Textos con IA</h2>
+            <p className="mt-1 text-xs text-muted">
+              Claude redacta un titular y un subtítulo por pantalla a partir de
+              la ficha y de tus keywords con más oportunidad. Sustituye los
+              textos actuales.
+            </p>
+            <input
+              value={focus}
+              onChange={(e) => setFocus(e.target.value)}
+              maxLength={200}
+              placeholder="Enfoque (opcional): tono, público, oferta…"
+              className={`${inputClass} mt-3 w-full`}
+            />
+            <button
+              type="button"
+              onClick={writeCopy}
+              disabled={writing}
+              aria-busy={writing}
+              className={`${buttonPrimary} mt-2 w-full`}
+            >
+              {writing ? "Redactando…" : "Redactar textos"}
+            </button>
+            {notes.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-1 text-xs text-ink-soft">
+                {notes.map((n) => (
+                  <li key={n}>· {n}</li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
+
+        <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Plantillas</h2>
+          <p className="mt-1 text-xs text-muted">
+            Aplica una composición completa: fondo, adorno, pose del móvil y
+            texto. Después puedes afinar cada ajuste.
+          </p>
+          <ul className="mt-3 grid grid-cols-3 gap-2">
+            {TEMPLATES.map((t) => {
+              const active = spec.template === t.id;
+              return (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    onClick={() => pickTemplate(t.id)}
+                    aria-pressed={active}
+                    title={t.description}
+                    className={`flex w-full flex-col items-center gap-1.5 rounded-lg border-2 p-1.5 text-xs ${active ? "border-brand text-ink" : "border-line text-ink-soft hover:border-line-strong"}`}
+                  >
+                    <canvas
+                      ref={(el) => {
+                        if (el) thumbs.current.set(t.id, el);
+                        else thumbs.current.delete(t.id);
+                      }}
+                      style={{
+                        width: THUMB_WIDTH,
+                        height: Math.round(
+                          (THUMB_WIDTH * preset.height) / preset.width,
+                        ),
+                      }}
+                      className="block max-w-full rounded-md bg-surface-muted"
+                    />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+
+        <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Dispositivo</h2>
+          <div className="mt-3 flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              Tamaño
+              <select
+                value={spec.device}
+                onChange={(e) => update({ device: e.target.value })}
+                className={inputClass}
+              >
+                {presetsFor(store).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label} · {p.width}×{p.height} · {p.note}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Tamaño del móvil{" "}
+                <span className="font-mono text-xs text-muted">
+                  {Math.round(spec.deviceScale * 100)}%
+                </span>
+              </span>
               <input
-                value={focus}
-                onChange={(e) => setFocus(e.target.value)}
-                maxLength={200}
-                placeholder="Enfoque (opcional): tono, público, oferta…"
-                className={`${inputClass} mt-3 w-full`}
+                type="range"
+                min={50}
+                max={100}
+                value={Math.round(spec.deviceScale * 100)}
+                onChange={(e) =>
+                  update({ deviceScale: Number(e.target.value) / 100 })
+                }
+              />
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <input
+                type="checkbox"
+                checked={spec.showFrame}
+                onChange={(e) => update({ showFrame: e.target.checked })}
+              />
+              Mostrar el marco del dispositivo
+            </label>
+            {spec.showFrame && (
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+                Color del marco
+                <select
+                  value={spec.theme.frame}
+                  onChange={(e) =>
+                    updateTheme({ frame: e.target.value as "dark" | "light" })
+                  }
+                  className={inputClass}
+                >
+                  <option value="dark">Oscuro</option>
+                  <option value="light">Claro</option>
+                </select>
+              </label>
+            )}
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Inclinación{" "}
+                <span className="font-mono text-xs text-muted">
+                  {spec.deviceRotate}°
+                </span>
+              </span>
+              <input
+                type="range"
+                min={-25}
+                max={25}
+                value={spec.deviceRotate}
+                onChange={(e) =>
+                  update({ deviceRotate: Number(e.target.value) })
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Desplazamiento horizontal{" "}
+                <span className="font-mono text-xs text-muted">
+                  {Math.round(spec.deviceOffsetX * 100)}%
+                </span>
+              </span>
+              <input
+                type="range"
+                min={-50}
+                max={50}
+                value={Math.round(spec.deviceOffsetX * 100)}
+                onChange={(e) =>
+                  update({ deviceOffsetX: Number(e.target.value) / 100 })
+                }
+              />
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <input
+                type="checkbox"
+                checked={spec.alternate}
+                onChange={(e) => update({ alternate: e.target.checked })}
+              />
+              Alternar el lado en cada pantalla
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <input
+                type="checkbox"
+                checked={spec.pair}
+                onChange={(e) => update({ pair: e.target.checked })}
+              />
+              Mostrar la siguiente pantalla detrás
+            </label>
+          </div>
+        </Card>
+
+        <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Estilo</h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {THEME_PRESETS.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => updateTheme(t.theme)}
+                  className="flex items-center gap-1.5 rounded-md border border-line-strong px-2 py-1 text-xs text-ink-soft hover:border-muted"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="inline-block size-4 rounded-sm border border-line"
+                    style={{
+                      background: t.theme.background2
+                        ? `linear-gradient(${t.theme.background}, ${t.theme.background2})`
+                        : t.theme.background,
+                    }}
+                  />
+                  {t.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <ColorField
+              label="Fondo"
+              value={spec.theme.background}
+              onChange={(v) => updateTheme({ background: v })}
+            />
+            <ColorField
+              label="Fondo (degradado)"
+              value={spec.theme.background2 ?? spec.theme.background}
+              onChange={(v) => updateTheme({ background2: v })}
+              onClear={
+                spec.theme.background2
+                  ? () => updateTheme({ background2: null })
+                  : undefined
+              }
+            />
+            <ColorField
+              label="Titular"
+              value={spec.theme.text}
+              onChange={(v) => updateTheme({ text: v })}
+            />
+            <ColorField
+              label="Subtítulo"
+              value={spec.theme.subtext}
+              onChange={(v) => updateTheme({ subtext: v })}
+            />
+            <ColorField
+              label="Acento (*resaltado*)"
+              value={spec.theme.accent}
+              onChange={(v) => updateTheme({ accent: v })}
+            />
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              Peso del titular
+              <select
+                value={spec.theme.weight}
+                onChange={(e) =>
+                  updateTheme({
+                    weight: Number(e.target.value) as 600 | 700 | 800,
+                  })
+                }
+                className={inputClass}
+              >
+                <option value={600}>Semibold</option>
+                <option value={700}>Bold</option>
+                <option value={800}>Extra bold</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              Alineación
+              <select
+                value={spec.theme.align}
+                onChange={(e) =>
+                  updateTheme({ align: e.target.value as "center" | "left" })
+                }
+                className={inputClass}
+              >
+                <option value="center">Centrado</option>
+                <option value="left">Izquierda</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              Adorno de fondo
+              <select
+                value={spec.decor}
+                onChange={(e) =>
+                  update({ decor: e.target.value as ScreenshotSpec["decor"] })
+                }
+                className={inputClass}
+              >
+                {DECORS.map((d) => (
+                  <option key={d} value={d}>
+                    {DECOR_LABEL[d]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Tamaño del texto{" "}
+                <span className="font-mono text-xs text-muted">
+                  {Math.round(spec.textScale * 100)}%
+                </span>
+              </span>
+              <input
+                type="range"
+                min={70}
+                max={150}
+                value={Math.round(spec.textScale * 100)}
+                onChange={(e) =>
+                  update({ textScale: Number(e.target.value) / 100 })
+                }
+              />
+            </label>
+          </div>
+        </Card>
+
+        <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Fondo con IA</h2>
+          {providerLabel ? (
+            <>
+              <p className="mt-1 text-xs text-muted">
+                {providerLabel} dibuja un fondo vertical según la temática de la
+                app; Claude puede proponer el prompt a partir de la ficha y las
+                keywords. El fondo se aplica a todas las pantallas, debajo del
+                adorno y del móvil.
+              </p>
+              {aiEnabled && (
+                <>
+                  <input
+                    value={bgFocus}
+                    onChange={(e) => setBgFocus(e.target.value)}
+                    maxLength={200}
+                    placeholder="Enfoque (opcional): motivos, ambiente, colores…"
+                    className={`${inputClass} mt-3 w-full`}
+                  />
+                  <button
+                    type="button"
+                    onClick={proposeBackgrounds}
+                    disabled={bgWriting}
+                    aria-busy={bgWriting}
+                    className={`${buttonSecondary} mt-2 w-full`}
+                  >
+                    {bgWriting ? "Proponiendo…" : "Proponer fondos con Claude"}
+                  </button>
+                  {bgPrompts.length > 0 && (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {bgPrompts.map((p) => (
+                        <li key={p.name}>
+                          <button
+                            type="button"
+                            onClick={() => setBgPrompt(p.prompt)}
+                            title={p.rationale}
+                            aria-pressed={bgPrompt === p.prompt}
+                            className={`rounded-md border px-2 py-1 text-xs ${bgPrompt === p.prompt ? "border-brand text-ink" : "border-line-strong text-ink-soft hover:border-muted"}`}
+                          >
+                            {p.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+              <textarea
+                value={bgPrompt}
+                onChange={(e) => setBgPrompt(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="Prompt en inglés para el modelo de imágenes: colores, motivos, estilo… Sin texto ni móviles."
+                className={`${inputClass} mt-3 w-full py-2 text-xs`}
               />
               <button
                 type="button"
-                onClick={writeCopy}
-                disabled={writing}
-                aria-busy={writing}
+                onClick={generateBackground}
+                disabled={bgGenerating || bgPrompt.trim().length < 10}
+                aria-busy={bgGenerating}
                 className={`${buttonPrimary} mt-2 w-full`}
               >
-                {writing ? "Redactando…" : "Redactar textos"}
+                {bgGenerating ? "Generando fondo…" : "Generar fondo"}
               </button>
-              {notes.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-1 text-xs text-ink-soft">
-                  {notes.map((n) => (
-                    <li key={n}>· {n}</li>
-                  ))}
-                </ul>
-              )}
-            </Card>
-          )}
-
-          <Card className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Plantillas</h2>
+            </>
+          ) : (
             <p className="mt-1 text-xs text-muted">
-              Aplica una composición completa: fondo, adorno, pose del móvil y
-              texto. Después puedes afinar cada ajuste.
+              Para generar fondos hace falta un proveedor de imágenes: añade{" "}
+              <code className="font-mono">OPENAI_API_KEY</code> o{" "}
+              <code className="font-mono">GEMINI_API_KEY</code> en Vercel.
             </p>
-            <ul className="mt-3 grid grid-cols-3 gap-2">
-              {TEMPLATES.map((t) => {
-                const active = spec.template === t.id;
+          )}
+          {backgrounds.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {backgrounds.map((b) => {
+                const url = `/api/assets/generated/${b.id}`;
+                const active = spec.backgroundImage === url;
                 return (
-                  <li key={t.id}>
+                  <li key={b.id} className="relative">
                     <button
                       type="button"
-                      onClick={() => pickTemplate(t.id)}
+                      onClick={() =>
+                        update({ backgroundImage: active ? null : url })
+                      }
                       aria-pressed={active}
-                      title={t.description}
-                      className={`flex w-full flex-col items-center gap-1.5 rounded-lg border-2 p-1.5 text-xs ${active ? "border-brand text-ink" : "border-line text-ink-soft hover:border-line-strong"}`}
+                      title={b.prompt}
+                      className={`block overflow-hidden rounded-md border-2 ${active ? "border-brand" : "border-line hover:border-line-strong"}`}
                     >
-                      <canvas
-                        ref={(el) => {
-                          if (el) thumbs.current.set(t.id, el);
-                          else thumbs.current.delete(t.id);
-                        }}
-                        style={{
-                          width: THUMB_WIDTH,
-                          height: Math.round(
-                            (THUMB_WIDTH * preset.height) / preset.width,
-                          ),
-                        }}
-                        className="block max-w-full rounded-md bg-surface-muted"
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={url}
+                        alt=""
+                        className="h-24 w-auto bg-surface-muted object-cover"
+                        loading="lazy"
                       />
-                      <span className="truncate">{t.label}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeBackground(b.id)}
+                      aria-label="Borrar este fondo"
+                      className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-line-strong bg-surface text-xs text-muted hover:text-danger"
+                    >
+                      ×
                     </button>
                   </li>
                 );
               })}
             </ul>
-          </Card>
-
-          <Card className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Dispositivo</h2>
-            <div className="mt-3 flex flex-col gap-3">
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                Tamaño
-                <select
-                  value={spec.device}
-                  onChange={(e) => update({ device: e.target.value })}
-                  className={inputClass}
-                >
-                  {presetsFor(store).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label} · {p.width}×{p.height} · {p.note}
-                    </option>
-                  ))}
-                </select>
-              </label>
+          )}
+          {spec.backgroundImage && (
+            <div className="mt-3 flex flex-col gap-2">
               <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
                 <span className="flex justify-between">
-                  Tamaño del móvil{" "}
+                  Velo del color de fondo{" "}
                   <span className="font-mono text-xs text-muted">
-                    {Math.round(spec.deviceScale * 100)}%
+                    {Math.round(spec.backgroundDim * 100)}%
                   </span>
                 </span>
                 <input
                   type="range"
-                  min={50}
-                  max={100}
-                  value={Math.round(spec.deviceScale * 100)}
+                  min={0}
+                  max={90}
+                  value={Math.round(spec.backgroundDim * 100)}
                   onChange={(e) =>
-                    update({ deviceScale: Number(e.target.value) / 100 })
+                    update({ backgroundDim: Number(e.target.value) / 100 })
                   }
                 />
               </label>
-              <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <input
-                  type="checkbox"
-                  checked={spec.showFrame}
-                  onChange={(e) => update({ showFrame: e.target.checked })}
-                />
-                Mostrar el marco del dispositivo
-              </label>
-              {spec.showFrame && (
-                <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                  Color del marco
-                  <select
-                    value={spec.theme.frame}
-                    onChange={(e) =>
-                      updateTheme({ frame: e.target.value as "dark" | "light" })
-                    }
-                    className={inputClass}
-                  >
-                    <option value="dark">Oscuro</option>
-                    <option value="light">Claro</option>
-                  </select>
-                </label>
-              )}
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                <span className="flex justify-between">
-                  Inclinación{" "}
-                  <span className="font-mono text-xs text-muted">
-                    {spec.deviceRotate}°
-                  </span>
-                </span>
-                <input
-                  type="range"
-                  min={-25}
-                  max={25}
-                  value={spec.deviceRotate}
-                  onChange={(e) =>
-                    update({ deviceRotate: Number(e.target.value) })
-                  }
-                />
-              </label>
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                <span className="flex justify-between">
-                  Desplazamiento horizontal{" "}
-                  <span className="font-mono text-xs text-muted">
-                    {Math.round(spec.deviceOffsetX * 100)}%
-                  </span>
-                </span>
-                <input
-                  type="range"
-                  min={-50}
-                  max={50}
-                  value={Math.round(spec.deviceOffsetX * 100)}
-                  onChange={(e) =>
-                    update({ deviceOffsetX: Number(e.target.value) / 100 })
-                  }
-                />
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <input
-                  type="checkbox"
-                  checked={spec.alternate}
-                  onChange={(e) => update({ alternate: e.target.checked })}
-                />
-                Alternar el lado en cada pantalla
-              </label>
-              <label className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <input
-                  type="checkbox"
-                  checked={spec.pair}
-                  onChange={(e) => update({ pair: e.target.checked })}
-                />
-                Mostrar la siguiente pantalla detrás
-              </label>
+              <button
+                type="button"
+                onClick={() => update({ backgroundImage: null })}
+                className={buttonSecondary}
+              >
+                Quitar el fondo
+              </button>
             </div>
-          </Card>
+          )}
+        </Card>
 
-          <Card className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Estilo</h2>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {THEME_PRESETS.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => updateTheme(t.theme)}
-                    className="flex items-center gap-1.5 rounded-md border border-line-strong px-2 py-1 text-xs text-ink-soft hover:border-muted"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="inline-block size-4 rounded-sm border border-line"
-                      style={{
-                        background: t.theme.background2
-                          ? `linear-gradient(${t.theme.background}, ${t.theme.background2})`
-                          : t.theme.background,
-                      }}
-                    />
-                    {t.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <ColorField
-                label="Fondo"
-                value={spec.theme.background}
-                onChange={(v) => updateTheme({ background: v })}
-              />
-              <ColorField
-                label="Fondo (degradado)"
-                value={spec.theme.background2 ?? spec.theme.background}
-                onChange={(v) => updateTheme({ background2: v })}
-                onClear={
-                  spec.theme.background2
-                    ? () => updateTheme({ background2: null })
-                    : undefined
+        <Card className="px-5 py-4">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving || bytes > MAX_SPEC_BYTES}
+            className={`${buttonPrimary} w-full`}
+          >
+            {saving ? "Guardando…" : "Guardar diseño"}
+          </button>
+          <p aria-live="polite" className="mt-2 text-xs">
+            {status ? (
+              <span
+                className={
+                  status.kind === "error" ? "text-danger" : "text-ink-soft"
                 }
-              />
-              <ColorField
-                label="Titular"
-                value={spec.theme.text}
-                onChange={(v) => updateTheme({ text: v })}
-              />
-              <ColorField
-                label="Subtítulo"
-                value={spec.theme.subtext}
-                onChange={(v) => updateTheme({ subtext: v })}
-              />
-              <ColorField
-                label="Acento (*resaltado*)"
-                value={spec.theme.accent}
-                onChange={(v) => updateTheme({ accent: v })}
-              />
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                Peso del titular
-                <select
-                  value={spec.theme.weight}
-                  onChange={(e) =>
-                    updateTheme({
-                      weight: Number(e.target.value) as 600 | 700 | 800,
-                    })
-                  }
-                  className={inputClass}
-                >
-                  <option value={600}>Semibold</option>
-                  <option value={700}>Bold</option>
-                  <option value={800}>Extra bold</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                Alineación
-                <select
-                  value={spec.theme.align}
-                  onChange={(e) =>
-                    updateTheme({ align: e.target.value as "center" | "left" })
-                  }
-                  className={inputClass}
-                >
-                  <option value="center">Centrado</option>
-                  <option value="left">Izquierda</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                Adorno de fondo
-                <select
-                  value={spec.decor}
-                  onChange={(e) =>
-                    update({ decor: e.target.value as ScreenshotSpec["decor"] })
-                  }
-                  className={inputClass}
-                >
-                  {DECORS.map((d) => (
-                    <option key={d} value={d}>
-                      {DECOR_LABEL[d]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                <span className="flex justify-between">
-                  Tamaño del texto{" "}
-                  <span className="font-mono text-xs text-muted">
-                    {Math.round(spec.textScale * 100)}%
-                  </span>
-                </span>
-                <input
-                  type="range"
-                  min={70}
-                  max={150}
-                  value={Math.round(spec.textScale * 100)}
-                  onChange={(e) =>
-                    update({ textScale: Number(e.target.value) / 100 })
-                  }
-                />
-              </label>
-            </div>
-          </Card>
-
-          <Card className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Fondo con IA</h2>
-            {providerLabel ? (
-              <>
-                <p className="mt-1 text-xs text-muted">
-                  {providerLabel} dibuja un fondo vertical según la temática de
-                  la app; Claude puede proponer el prompt a partir de la ficha y
-                  las keywords. El fondo se aplica a todas las pantallas, debajo
-                  del adorno y del móvil.
-                </p>
-                {aiEnabled && (
-                  <>
-                    <input
-                      value={bgFocus}
-                      onChange={(e) => setBgFocus(e.target.value)}
-                      maxLength={200}
-                      placeholder="Enfoque (opcional): motivos, ambiente, colores…"
-                      className={`${inputClass} mt-3 w-full`}
-                    />
-                    <button
-                      type="button"
-                      onClick={proposeBackgrounds}
-                      disabled={bgWriting}
-                      aria-busy={bgWriting}
-                      className={`${buttonSecondary} mt-2 w-full`}
-                    >
-                      {bgWriting
-                        ? "Proponiendo…"
-                        : "Proponer fondos con Claude"}
-                    </button>
-                    {bgPrompts.length > 0 && (
-                      <ul className="mt-2 flex flex-wrap gap-1.5">
-                        {bgPrompts.map((p) => (
-                          <li key={p.name}>
-                            <button
-                              type="button"
-                              onClick={() => setBgPrompt(p.prompt)}
-                              title={p.rationale}
-                              aria-pressed={bgPrompt === p.prompt}
-                              className={`rounded-md border px-2 py-1 text-xs ${bgPrompt === p.prompt ? "border-brand text-ink" : "border-line-strong text-ink-soft hover:border-muted"}`}
-                            >
-                              {p.name}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </>
-                )}
-                <textarea
-                  value={bgPrompt}
-                  onChange={(e) => setBgPrompt(e.target.value)}
-                  rows={4}
-                  maxLength={2000}
-                  placeholder="Prompt en inglés para el modelo de imágenes: colores, motivos, estilo… Sin texto ni móviles."
-                  className={`${inputClass} mt-3 w-full py-2 text-xs`}
-                />
-                <button
-                  type="button"
-                  onClick={generateBackground}
-                  disabled={bgGenerating || bgPrompt.trim().length < 10}
-                  aria-busy={bgGenerating}
-                  className={`${buttonPrimary} mt-2 w-full`}
-                >
-                  {bgGenerating ? "Generando fondo…" : "Generar fondo"}
-                </button>
-              </>
+              >
+                {status.text}
+              </span>
+            ) : savedAt ? (
+              <span className="text-muted">
+                Guardado por última vez el{" "}
+                {new Date(savedAt).toLocaleString("es-ES")}.
+              </span>
             ) : (
-              <p className="mt-1 text-xs text-muted">
-                Para generar fondos hace falta un proveedor de imágenes: añade{" "}
-                <code className="font-mono">OPENAI_API_KEY</code> o{" "}
-                <code className="font-mono">GEMINI_API_KEY</code> en Vercel.
-              </p>
+              <span className="text-muted">Aún no guardado.</span>
             )}
-            {backgrounds.length > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {backgrounds.map((b) => {
-                  const url = `/api/assets/generated/${b.id}`;
-                  const active = spec.backgroundImage === url;
-                  return (
-                    <li key={b.id} className="relative">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          update({ backgroundImage: active ? null : url })
-                        }
-                        aria-pressed={active}
-                        title={b.prompt}
-                        className={`block overflow-hidden rounded-md border-2 ${active ? "border-brand" : "border-line hover:border-line-strong"}`}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={url}
-                          alt=""
-                          className="h-24 w-auto bg-surface-muted object-cover"
-                          loading="lazy"
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeBackground(b.id)}
-                        aria-label="Borrar este fondo"
-                        className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-line-strong bg-surface text-xs text-muted hover:text-danger"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {spec.backgroundImage && (
-              <div className="mt-3 flex flex-col gap-2">
-                <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
-                  <span className="flex justify-between">
-                    Velo del color de fondo{" "}
-                    <span className="font-mono text-xs text-muted">
-                      {Math.round(spec.backgroundDim * 100)}%
-                    </span>
-                  </span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={90}
-                    value={Math.round(spec.backgroundDim * 100)}
-                    onChange={(e) =>
-                      update({ backgroundDim: Number(e.target.value) / 100 })
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => update({ backgroundImage: null })}
-                  className={buttonSecondary}
-                >
-                  Quitar el fondo
-                </button>
-              </div>
-            )}
-          </Card>
-
-          <Card className="px-5 py-4">
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving || bytes > MAX_SPEC_BYTES}
-              className={`${buttonPrimary} w-full`}
-            >
-              {saving ? "Guardando…" : "Guardar diseño"}
-            </button>
-            <p aria-live="polite" className="mt-2 text-xs">
-              {status ? (
-                <span
-                  className={
-                    status.kind === "error" ? "text-danger" : "text-ink-soft"
-                  }
-                >
-                  {status.text}
-                </span>
-              ) : savedAt ? (
-                <span className="text-muted">
-                  Guardado por última vez el{" "}
-                  {new Date(savedAt).toLocaleString("es-ES")}.
-                </span>
-              ) : (
-                <span className="text-muted">Aún no guardado.</span>
-              )}
+          </p>
+          {bytes > MAX_SPEC_BYTES && (
+            <p className="mt-1 text-xs text-warn-fg">
+              El conjunto pesa {(bytes / 1_000_000).toFixed(1)} MB; el máximo es
+              3,5 MB. Quita alguna captura.
             </p>
-            {bytes > MAX_SPEC_BYTES && (
-              <p className="mt-1 text-xs text-warn-fg">
-                El conjunto pesa {(bytes / 1_000_000).toFixed(1)} MB; el máximo
-                es 3,5 MB. Quita alguna captura.
-              </p>
-            )}
-          </Card>
-        </div>
+          )}
+        </Card>
       </div>
     </div>
   );
