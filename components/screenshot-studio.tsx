@@ -577,7 +577,8 @@ export function ScreenshotStudio({
                 <p className="mt-0.5 text-xs text-muted">
                   {preset.label} · {preset.width}×{preset.height} px ·{" "}
                   {spec.slides.length}{" "}
-                  {spec.slides.length === 1 ? "pantalla" : "pantallas"}
+                  {spec.slides.length === 1 ? "pantalla" : "pantallas"} · Pulsa
+                  una pantalla para editar su texto
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -650,9 +651,33 @@ export function ScreenshotStudio({
         {slide && (
           <Card className="px-5 py-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[15px] font-semibold">
-                Pantalla {selected + 1}
-              </h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-[15px] font-semibold">
+                  Pantalla {selected + 1}
+                </h2>
+                {spec.slides.length > 1 && (
+                  <div
+                    role="group"
+                    aria-label="Elegir pantalla"
+                    className="flex flex-wrap gap-1"
+                  >
+                    {spec.slides.map((sl, i) => (
+                      <button
+                        key={sl.id}
+                        type="button"
+                        onClick={() => setSelected(i)}
+                        aria-pressed={i === selected}
+                        title={
+                          sl.headline ? stripMarks(sl.headline) : "Sin texto"
+                        }
+                        className={`h-7 min-w-7 rounded-md border px-2 text-xs ${i === selected ? "border-brand bg-brand text-white" : "border-line-strong text-ink-soft hover:border-muted"}`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-1.5">
                 <button
                   type="button"
@@ -683,6 +708,20 @@ export function ScreenshotStudio({
               </div>
             </div>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {slide.asIs && (
+                <p className="rounded-md bg-warn-bg px-3 py-2 text-xs text-warn-fg md:col-span-2">
+                  Esta pantalla usa la captura «tal cual», así que el texto no
+                  se dibuja.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setImageMode(slide, "crop")}
+                    className="font-medium underline"
+                  >
+                    Recortar la pantalla y usar la plantilla
+                  </button>{" "}
+                  para que se vea.
+                </p>
+              )}
               <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft md:col-span-2">
                 <span className="flex justify-between">
                   Titular
