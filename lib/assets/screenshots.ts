@@ -67,16 +67,51 @@ export const slideSchema = z.object({
 });
 export type Slide = z.infer<typeof slideSchema>;
 
+export const DECORS = ["none", "glow", "circles", "blob", "stripes", "dots", "wave", "card"] as const;
+export type Decor = (typeof DECORS)[number];
+
+export const DECOR_LABEL: Record<Decor, string> = {
+  none: "Sin adorno",
+  glow: "Resplandor",
+  circles: "Círculos panorámicos",
+  blob: "Mancha",
+  stripes: "Rayas",
+  dots: "Puntos",
+  wave: "Ola",
+  card: "Tarjeta",
+};
+
+/** Fields added after the first release carry defaults so saved designs keep parsing. */
 export const screenshotSpecSchema = z.object({
   version: z.literal(1),
   device: z.string().min(1),
   theme: themeSchema,
   /** Device width as a fraction of the canvas width. */
-  deviceScale: z.number().min(0.5).max(1),
+  deviceScale: z.number().min(0.4).max(1),
   showFrame: z.boolean(),
+  /** Template this design started from, for the gallery highlight. */
+  template: z.string().default("classic"),
+  /** Degrees; positive leans right. */
+  deviceRotate: z.number().min(-25).max(25).default(0),
+  /** Horizontal shift of the device as a fraction of the width. */
+  deviceOffsetX: z.number().min(-0.5).max(0.5).default(0),
+  /** Odd slides mirror the shift and the rotation, so a set alternates left and right. */
+  alternate: z.boolean().default(false),
+  /** Shows the next slide's screen on a second device behind the first. */
+  pair: z.boolean().default(false),
+  decor: z.enum(DECORS).default("none"),
+  /** Multiplier on the headline and subheadline sizes. */
+  textScale: z.number().min(0.7).max(1.5).default(1),
   slides: z.array(slideSchema).min(1).max(10),
 });
 export type ScreenshotSpec = z.infer<typeof screenshotSpecSchema>;
+
+/** Everything a template sets; the slides and the device size are left alone. */
+export type TemplateStyle = Pick<ScreenshotSpec, "theme" | "deviceScale" | "showFrame" | "deviceRotate" | "deviceOffsetX" | "alternate" | "pair" | "decor" | "textScale"> & {
+  layout: Slide["layout"];
+};
+
+export type Template = { id: string; label: string; description: string; style: TemplateStyle };
 
 /** Ready-made palettes; the first one follows the app's own accent. */
 export const THEME_PRESETS: { id: string; label: string; theme: ScreenshotTheme }[] = [
@@ -112,6 +147,103 @@ export const THEME_PRESETS: { id: string; label: string; theme: ScreenshotTheme 
   },
 ];
 
+const dark = (accent: string, bg = "#0f1115", bg2: string | null = "#1c2033"): ScreenshotTheme => ({
+  background: bg,
+  background2: bg2,
+  text: "#ffffff",
+  subtext: "#b6bccb",
+  accent,
+  frame: "dark",
+  weight: 700,
+  align: "center",
+});
+
+/** Ready-made looks, like a template gallery. Each one is a full style, so picking one is reversible by picking another. */
+export const TEMPLATES: Template[] = [
+  {
+    id: "classic",
+    label: "Clásico",
+    description: "Titular arriba y móvil centrado. Lo que cualquier tienda espera.",
+    style: { theme: THEME_PRESETS[0].theme, deviceScale: 0.8, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "none", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "tilt",
+    label: "Inclinado",
+    description: "El móvil ladeado y alternando de lado, con un resplandor detrás.",
+    style: { theme: dark("#8c96ff"), deviceScale: 0.82, showFrame: true, deviceRotate: -8, deviceOffsetX: 0.05, alternate: true, pair: false, decor: "glow", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "duo",
+    label: "Dúo",
+    description: "Dos móviles: el principal delante y la siguiente pantalla asomando detrás.",
+    style: { theme: dark("#ffd166", "#0b3d91", "#1565c0"), deviceScale: 0.66, showFrame: true, deviceRotate: 0, deviceOffsetX: 0.1, alternate: true, pair: true, decor: "circles", textScale: 0.95, layout: "text-top" },
+  },
+  {
+    id: "panorama",
+    label: "Panorámica",
+    description: "Círculos que continúan de una captura a la siguiente en la galería de la tienda.",
+    style: { theme: dark("#ffffff", "#ff6b4a", "#c62e78"), deviceScale: 0.78, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "circles", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "card",
+    label: "Tarjeta",
+    description: "Fondo claro y el móvil sobre una tarjeta de color. Sobrio, estilo productividad.",
+    style: { theme: { ...THEME_PRESETS[1].theme, accent: "#5e6ad2" }, deviceScale: 0.72, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "card", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "glow",
+    label: "Resplandor",
+    description: "Oscuro con un halo de color detrás del móvil y acento neón.",
+    style: { theme: dark("#4cc26b", "#07090d", "#0f1a14"), deviceScale: 0.8, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "glow", textScale: 1.05, layout: "text-top" },
+  },
+  {
+    id: "minimal",
+    label: "Minimal",
+    description: "Blanco, sin marco, texto a la izquierda. Para apps de diseño cuidado.",
+    style: { theme: THEME_PRESETS[5].theme, deviceScale: 0.84, showFrame: false, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "none", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "wave",
+    label: "Ola",
+    description: "Una ola de color en la base, texto abajo. Bien para salud y viajes.",
+    style: { theme: { ...THEME_PRESETS[2].theme, accent: "#ffd166" }, deviceScale: 0.78, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "wave", textScale: 1, layout: "text-bottom" },
+  },
+  {
+    id: "stripes",
+    label: "Rayas",
+    description: "Bandas diagonales y el móvil inclinado. Enérgico, para fitness o juegos.",
+    style: { theme: THEME_PRESETS[4].theme, deviceScale: 0.8, showFrame: true, deviceRotate: 6, deviceOffsetX: -0.04, alternate: true, pair: false, decor: "stripes", textScale: 1.05, layout: "text-top" },
+  },
+  {
+    id: "dots",
+    label: "Puntos",
+    description: "Trama de puntos sobre verde profundo. Tranquilo, para finanzas o educación.",
+    style: { theme: THEME_PRESETS[3].theme, deviceScale: 0.78, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "dots", textScale: 1, layout: "text-top" },
+  },
+  {
+    id: "bold",
+    label: "Gran titular",
+    description: "Titular enorme y el móvil cortado abajo. Una idea por pantalla.",
+    style: { theme: dark("#ffcc80", "#111111", "#2a2a2a"), deviceScale: 0.92, showFrame: true, deviceRotate: 0, deviceOffsetX: 0, alternate: false, pair: false, decor: "blob", textScale: 1.3, layout: "text-top" },
+  },
+  {
+    id: "float",
+    label: "Flotante",
+    description: "Móvil pequeño, ladeado y flotando sobre círculos; texto abajo.",
+    style: { theme: dark("#8fdba5", "#0f3b2e", "#1a6b4f"), deviceScale: 0.7, showFrame: true, deviceRotate: 7, deviceOffsetX: 0.03, alternate: true, pair: false, decor: "circles", textScale: 1, layout: "text-bottom" },
+  },
+];
+
+export function getTemplate(id: string): Template {
+  return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];
+}
+
+/** Applies a template's look to a spec, keeping its slides, device preset and images. */
+export function applyTemplate(spec: ScreenshotSpec, template: Template): ScreenshotSpec {
+  const { layout, ...style } = template.style;
+  return { ...spec, ...style, template: template.id, slides: spec.slides.map((s) => ({ ...s, layout })) };
+}
+
 export function slideId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -120,18 +252,18 @@ export function slideId(): string {
 export function defaultScreenshotSpec(store: Store, title: string, images: string[]): ScreenshotSpec {
   const preset = presetsFor(store)[0];
   const sources = images.length > 0 ? images.slice(0, 5) : [null];
+  const { layout, ...style } = TEMPLATES[0].style;
   return {
     version: 1,
     device: preset.id,
-    theme: THEME_PRESETS[0].theme,
-    deviceScale: 0.8,
-    showFrame: true,
+    ...style,
+    template: TEMPLATES[0].id,
     slides: sources.map((image, i) => ({
       id: slideId(),
       headline: i === 0 ? `*${title}*` : "",
       subheadline: "",
       image,
-      layout: "text-top",
+      layout,
       keyword: null,
     })),
   };

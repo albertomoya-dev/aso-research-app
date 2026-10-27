@@ -5,6 +5,9 @@ import { type CopyResult, generateScreenshotCopy, saveDesign } from "@/app/asset
 import { downloadBlob, slug } from "@/lib/assets/download";
 import { drawSlide, ensureFonts, loadImage, pageFontFamily, renderSlidePng, shrinkImage } from "@/lib/assets/screenshot-render";
 import {
+  applyTemplate,
+  DECOR_LABEL,
+  DECORS,
   getPreset,
   HEADLINE_SOFT_LIMIT,
   MAX_SPEC_BYTES,
@@ -15,6 +18,7 @@ import {
   specBytes,
   stripMarks,
   SUBHEADLINE_SOFT_LIMIT,
+  TEMPLATES,
   THEME_PRESETS,
 } from "@/lib/assets/screenshots";
 import { buildZip } from "@/lib/assets/zip";
@@ -33,6 +37,7 @@ type Props = {
 };
 
 const PREVIEW_WIDTH = 230;
+const THUMB_WIDTH = 96;
 
 export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages, aiEnabled, savedAt }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
@@ -45,6 +50,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
   const [exporting, setExporting] = useState(false);
   const images = useRef(new Map<string, HTMLImageElement>());
   const canvases = useRef(new Map<string, HTMLCanvasElement>());
+  const thumbs = useRef(new Map<string, HTMLCanvasElement>());
   const font = useMemo(() => pageFontFamily(), []);
   const preset = getPreset(spec.device);
   const slide = spec.slides[Math.min(selected, spec.slides.length - 1)];
@@ -69,10 +75,12 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     let cancelled = false;
     const timer = setTimeout(async () => {
       await ensureFonts(font, [500, spec.theme.weight]);
-      for (const sl of spec.slides) {
+      const count = spec.slides.length;
+      for (const [index, sl] of spec.slides.entries()) {
         const canvas = canvases.current.get(sl.id);
         if (!canvas) continue;
         const img = await imageFor(sl.image).catch(() => null);
+        const pair = spec.pair ? await imageFor(spec.slides[(index + 1) % count]?.image ?? null).catch(() => null) : null;
         if (cancelled) return;
         const scale = PREVIEW_WIDTH / preset.width;
         canvas.width = Math.round(preset.width * scale);
@@ -80,7 +88,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        drawSlide(ctx, spec, sl, img, { fontFamily: font });
+        drawSlide(ctx, spec, sl, img, { fontFamily: font }, undefined, undefined, { index, count }, pair);
       }
     }, 120);
     return () => {
@@ -88,6 +96,50 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
       clearTimeout(timer);
     };
   }, [spec, preset, font, imageFor]);
+
+  // Thumbnails of the gallery: the first slide rendered with each template.
+  const first = spec.slides[0];
+  const firstImage = first?.image ?? null;
+  const secondImage = spec.slides[1]?.image ?? null;
+  const firstHeadline = first?.headline ?? "";
+  const firstSub = first?.subheadline ?? "";
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      await ensureFonts(font, [500, 600, 700, 800]);
+      const img = await imageFor(firstImage).catch(() => null);
+      const pair = await imageFor(secondImage ?? firstImage).catch(() => null);
+      if (cancelled) return;
+      for (const t of TEMPLATES) {
+        const canvas = thumbs.current.get(t.id);
+        if (!canvas) continue;
+        const base: ScreenshotSpec = {
+          ...spec,
+          slides: [{ id: "thumb", headline: firstHeadline || "Tu *titular* aquí", subheadline: firstSub, image: firstImage, layout: "text-top", keyword: null }],
+        };
+        const tspec = applyTemplate(base, t);
+        const scale = THUMB_WIDTH / preset.width;
+        canvas.width = Math.round(preset.width * scale);
+        canvas.height = Math.round(preset.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        ctx.setTransform(scale, 0, 0, scale, 0, 0);
+        drawSlide(ctx, tspec, tspec.slides[0], img, { fontFamily: font }, undefined, undefined, { index: 0, count: 2 }, tspec.pair ? pair : null);
+      }
+    }, 150);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // Only the inputs that change the thumbnails, not every keystroke on other slides.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, font, imageFor, firstImage, secondImage, firstHeadline, firstSub, spec.device]);
+
+  function pickTemplate(id: string) {
+    const t = TEMPLATES.find((x) => x.id === id);
+    if (!t) return;
+    setSpec((s) => applyTemplate(s, t));
+  }
 
   function addSlide() {
     const next: Slide = { id: slideId(), headline: "", subheadline: "", image: null, layout: slide?.layout ?? "text-top", keyword: null };
@@ -158,7 +210,9 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     setExporting(true);
     try {
       const img = await imageFor(slide.image).catch(() => null);
-      const blob = await renderSlidePng(spec, slide, img, { fontFamily: font });
+      const count = spec.slides.length;
+      const pair = spec.pair ? await imageFor(spec.slides[(selected + 1) % count]?.image ?? null).catch(() => null) : null;
+      const blob = await renderSlidePng(spec, slide, img, { fontFamily: font }, { index: selected, count }, pair);
       downloadBlob(`${slug(appTitle)}-${preset.id}-${selected + 1}.png`, blob);
     } catch (err) {
       setStatus({ kind: "error", text: err instanceof Error ? err.message : "No se pudo exportar." });
@@ -171,9 +225,11 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     setExporting(true);
     try {
       const entries = [];
+      const count = spec.slides.length;
       for (const [i, sl] of spec.slides.entries()) {
         const img = await imageFor(sl.image).catch(() => null);
-        const blob = await renderSlidePng(spec, sl, img, { fontFamily: font });
+        const pair = spec.pair ? await imageFor(spec.slides[(i + 1) % count]?.image ?? null).catch(() => null) : null;
+        const blob = await renderSlidePng(spec, sl, img, { fontFamily: font }, { index: i, count }, pair);
         entries.push({ name: `${String(i + 1).padStart(2, "0")}-${preset.id}.png`, data: new Uint8Array(await blob.arrayBuffer()) });
       }
       downloadBlob(`${slug(appTitle)}-${preset.id}.zip`, new Blob([buildZip(entries)], { type: "application/zip" }));
@@ -383,6 +439,37 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         )}
 
         <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Plantillas</h2>
+          <p className="mt-1 text-xs text-muted">Aplica una composición completa: fondo, adorno, pose del móvil y texto. Después puedes afinar cada ajuste.</p>
+          <ul className="mt-3 grid grid-cols-3 gap-2">
+            {TEMPLATES.map((t) => {
+              const active = spec.template === t.id;
+              return (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    onClick={() => pickTemplate(t.id)}
+                    aria-pressed={active}
+                    title={t.description}
+                    className={`flex w-full flex-col items-center gap-1.5 rounded-lg border-2 p-1.5 text-xs ${active ? "border-brand text-ink" : "border-line text-ink-soft hover:border-line-strong"}`}
+                  >
+                    <canvas
+                      ref={(el) => {
+                        if (el) thumbs.current.set(t.id, el);
+                        else thumbs.current.delete(t.id);
+                      }}
+                      style={{ width: THUMB_WIDTH, height: Math.round((THUMB_WIDTH * preset.height) / preset.width) }}
+                      className="block max-w-full rounded-md bg-surface-muted"
+                    />
+                    <span className="truncate">{t.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+
+        <Card className="px-5 py-4">
           <h2 className="text-[15px] font-semibold">Dispositivo</h2>
           <div className="mt-3 flex flex-col gap-3">
             <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
@@ -414,6 +501,26 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
                 </select>
               </label>
             )}
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Inclinación <span className="font-mono text-xs text-muted">{spec.deviceRotate}°</span>
+              </span>
+              <input type="range" min={-25} max={25} value={spec.deviceRotate} onChange={(e) => update({ deviceRotate: Number(e.target.value) })} />
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Desplazamiento horizontal <span className="font-mono text-xs text-muted">{Math.round(spec.deviceOffsetX * 100)}%</span>
+              </span>
+              <input type="range" min={-50} max={50} value={Math.round(spec.deviceOffsetX * 100)} onChange={(e) => update({ deviceOffsetX: Number(e.target.value) / 100 })} />
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <input type="checkbox" checked={spec.alternate} onChange={(e) => update({ alternate: e.target.checked })} />
+              Alternar el lado en cada pantalla
+            </label>
+            <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+              <input type="checkbox" checked={spec.pair} onChange={(e) => update({ pair: e.target.checked })} />
+              Mostrar la siguiente pantalla detrás
+            </label>
           </div>
         </Card>
 
@@ -462,6 +569,22 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
                 <option value="center">Centrado</option>
                 <option value="left">Izquierda</option>
               </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              Adorno de fondo
+              <select value={spec.decor} onChange={(e) => update({ decor: e.target.value as ScreenshotSpec["decor"] })} className={inputClass}>
+                {DECORS.map((d) => (
+                  <option key={d} value={d}>
+                    {DECOR_LABEL[d]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+              <span className="flex justify-between">
+                Tamaño del texto <span className="font-mono text-xs text-muted">{Math.round(spec.textScale * 100)}%</span>
+              </span>
+              <input type="range" min={70} max={150} value={Math.round(spec.textScale * 100)} onChange={(e) => update({ textScale: Number(e.target.value) / 100 })} />
             </label>
           </div>
         </Card>
