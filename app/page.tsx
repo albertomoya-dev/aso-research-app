@@ -49,7 +49,7 @@ export default async function Home() {
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
           {apps.map((app) => (
             <li key={app.id}>
-              <Link href={`/apps/${app.id}`} className="block h-full rounded-xl border border-line bg-surface p-5 hover:border-brand">
+              <Link href={`/apps/${app.id}`} className="block h-full rounded-xl border border-line bg-surface p-5 shadow-[inset_0_1px_0_0_var(--edge)] transition-colors hover:border-line-strong hover:bg-surface-muted">
                 <div className="flex items-center gap-3.5">
                   <AppIcon src={app.icon} size={56} />
                   <div className="min-w-0">
