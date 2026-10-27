@@ -14,6 +14,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 6 | Novedades (alertas) y resumen semanal, también por email | Hecho |
 | 7 | Análisis de reseñas con IA (tu app y competidores) | Hecho |
 | 8 | Estacionalidad de keywords y la misma app en varios países | Hecho |
+| 9 | Keywords del TOP 10: extraer las palabras clave de las fichas de las 10 primeras apps | Hecho |
 
 ## Stack
 
@@ -60,6 +61,12 @@ Las tiendas no publican cuántas veces se busca una palabra, así que son estima
 - **Google Trends**: interés semanal en Google de los últimos 12 meses en el país, relativo al pico de la propia keyword. Sirve para ver la estacionalidad, no para comparar keywords. Google Trends no tiene API pública y limita mucho las peticiones: se descargan como máximo 20 keywords por día y se refrescan cada semana.
 
 La pantalla **Descubrir keywords** consulta el autocompletado con una palabra semilla, sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
+
+## Keywords del TOP 10
+
+La pestaña **Keywords del TOP 10** busca una keyword que sigues (o todas, hasta 8), o cualquier otra búsqueda, y lee la ficha completa de las 10 primeras apps, sin contar la tuya. De su título, descripción corta (Google Play) y descripción saca palabras y frases de 1 a 3 palabras, sin artículos ni preposiciones, y muestra en cuántas apps aparece cada una, en cuántos títulos y cuántas veces en total. Las que solo usa una app se descartan porque suelen ser nombres de marca.
+
+La puntuación suma, por cada app que la usa, 3 si está en el título, 2 en la descripción corta y 1 en la descripción, con un extra para las frases. Puedes seguir las que elijas (se consulta su posición en el momento) o exportarlas a CSV. En App Store no se lee el subtítulo porque la API pública no lo devuelve.
 
 ## Ideas con IA
 

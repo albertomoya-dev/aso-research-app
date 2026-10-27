@@ -7,6 +7,7 @@ const TABS = [
   { path: "", label: "Keywords" },
   { path: "/descubrir", label: "Descubrir" },
   { path: "/ideas", label: "Ideas con IA" },
+  { path: "/top10", label: "Keywords del TOP 10" },
   { path: "/resenas", label: "Reseñas" },
   { path: "/competidores", label: "Competidores" },
   { path: "/estacionalidad", label: "Estacionalidad" },
