@@ -56,10 +56,10 @@ function font(weight: number, size: number, family: string) {
 
 type TextBlock = { headline: Line[]; sub: Line[]; headSize: number; subSize: number; height: number };
 
-function measureText(ctx: CanvasRenderingContext2D, slide: Slide, theme: ScreenshotTheme, w: number, opts: DrawOptions): TextBlock {
+function measureText(ctx: CanvasRenderingContext2D, slide: Slide, theme: ScreenshotTheme, w: number, opts: DrawOptions, textScale: number): TextBlock {
   const maxWidth = w * 0.85;
-  const headSize = Math.round(w * 0.078);
-  const subSize = Math.round(w * 0.04);
+  const headSize = Math.round(w * 0.078 * textScale);
+  const subSize = Math.round(w * 0.04 * Math.min(textScale, 1.15));
   ctx.font = font(theme.weight, headSize, opts.fontFamily);
   const headline = slide.headline.trim() ? wrapWords(slide.headline, maxWidth, (s) => ctx.measureText(s).width) : [];
   ctx.font = font(500, subSize, opts.fontFamily);
@@ -202,6 +202,143 @@ function drawDevice(ctx: CanvasRenderingContext2D, frame: FrameKind, outer: Rect
   }
 }
 
+function withAlpha(hex: string, alpha: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Position of this slide in the set, so panoramic decorations continue across screenshots. */
+export type SlidePosition = { index: number; count: number };
+
+/** Background decoration, drawn between the background and the device. */
+function drawDecor(ctx: CanvasRenderingContext2D, spec: ScreenshotSpec, w: number, h: number, device: Rect, pos: SlidePosition) {
+  const { accent } = spec.theme;
+  const light = spec.theme.background === "#ffffff" || spec.theme.background === "#f6f6f8";
+  const soft = light ? withAlpha(accent, 0.12) : "rgba(255,255,255,0.08)";
+  ctx.save();
+  switch (spec.decor) {
+    case "glow": {
+      const cx = device.x + device.w / 2;
+      const cy = device.y + device.h * 0.4;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.75);
+      g.addColorStop(0, withAlpha(accent, 0.55));
+      g.addColorStop(0.5, withAlpha(accent, 0.12));
+      g.addColorStop(1, withAlpha(accent, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+      break;
+    }
+    case "circles": {
+      // Circle centres live in "set space" (x in widths), so neighbours share each circle.
+      const circles = [
+        { x: 0.15, y: 0.78, r: 0.55 },
+        { x: 1.35, y: 0.2, r: 0.42 },
+        { x: 2.6, y: 0.9, r: 0.6 },
+        { x: 3.9, y: 0.3, r: 0.38 },
+        { x: 5.1, y: 0.75, r: 0.5 },
+        { x: 6.4, y: 0.15, r: 0.45 },
+        { x: 7.7, y: 0.85, r: 0.55 },
+        { x: 9.0, y: 0.35, r: 0.4 },
+        { x: 10.2, y: 0.8, r: 0.5 },
+      ];
+      ctx.fillStyle = soft;
+      for (const c of circles) {
+        const x = (c.x - pos.index) * w;
+        if (x + c.r * w < -w * 0.1 || x - c.r * w > w * 1.1) continue;
+        ctx.beginPath();
+        ctx.arc(x, c.y * h, c.r * w, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "blob": {
+      ctx.fillStyle = withAlpha(accent, light ? 0.18 : 0.28);
+      ctx.beginPath();
+      const cx = device.x + device.w / 2;
+      const cy = device.y + device.h * 0.35;
+      const r = device.w * 0.62;
+      ctx.moveTo(cx - r, cy);
+      ctx.bezierCurveTo(cx - r, cy - r * 1.1, cx + r * 0.2, cy - r * 1.05, cx + r * 0.9, cy - r * 0.4);
+      ctx.bezierCurveTo(cx + r * 1.25, cy + r * 0.3, cx + r * 0.5, cy + r * 1.1, cx - r * 0.2, cy + r * 0.95);
+      ctx.bezierCurveTo(cx - r * 0.9, cy + r * 0.8, cx - r * 1.05, cy + r * 0.4, cx - r, cy);
+      ctx.fill();
+      break;
+    }
+    case "stripes": {
+      ctx.fillStyle = soft;
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(-Math.PI / 6);
+      const band = w * 0.22;
+      for (let x = -w * 2 - (pos.index % 2) * band; x < w * 2; x += band * 2) ctx.fillRect(x, -h, band, h * 2);
+      break;
+    }
+    case "dots": {
+      ctx.fillStyle = light ? withAlpha(accent, 0.2) : "rgba(255,255,255,0.14)";
+      const step = w * 0.07;
+      const r = w * 0.006;
+      for (let y = step / 2; y < h; y += step) for (let x = step / 2; x < w; x += step) {
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      break;
+    }
+    case "wave": {
+      ctx.fillStyle = withAlpha(accent, 0.9);
+      const top = h * 0.62;
+      ctx.beginPath();
+      ctx.moveTo(0, top + h * 0.05);
+      ctx.bezierCurveTo(w * 0.3, top - h * 0.06, w * 0.6, top + h * 0.1, w, top - h * 0.02);
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = withAlpha(spec.theme.background2 ?? spec.theme.background, 0.35);
+      ctx.beginPath();
+      ctx.moveTo(0, top + h * 0.12);
+      ctx.bezierCurveTo(w * 0.35, top + h * 0.02, w * 0.65, top + h * 0.18, w, top + h * 0.06);
+      ctx.lineTo(w, h);
+      ctx.lineTo(0, h);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "card": {
+      const pad = w * 0.06;
+      const card = { x: pad, y: device.y - w * 0.07, w: w - pad * 2, h: h };
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.12)";
+      ctx.shadowBlur = w * 0.05;
+      ctx.shadowOffsetY = w * 0.015;
+      roundRect(ctx, card, w * 0.06);
+      ctx.fillStyle = accent;
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+    default:
+      break;
+  }
+  ctx.restore();
+}
+
+/** Draws a device rotated about its centre, so tilted layouts keep the shadow and frame intact. */
+function drawDeviceTransformed(
+  ctx: CanvasRenderingContext2D,
+  frame: FrameKind,
+  r: Rect,
+  rotate: number,
+  theme: ScreenshotTheme,
+  image: CanvasImageSource | null,
+  showFrame: boolean,
+) {
+  ctx.save();
+  ctx.translate(r.x + r.w / 2, r.y + r.h / 2);
+  ctx.rotate((rotate * Math.PI) / 180);
+  drawDevice(ctx, frame, { x: -r.w / 2, y: -r.h / 2, w: r.w, h: r.h }, theme, image, showFrame);
+  ctx.restore();
+}
+
 /** Draws a slide at the preset's full size. Scale the context first to render a preview. */
 export function drawSlide(
   ctx: CanvasRenderingContext2D,
@@ -211,12 +348,20 @@ export function drawSlide(
   opts: DrawOptions,
   anim: SlideAnimation = STILL,
   size?: { width: number; height: number },
+  pos: SlidePosition = { index: 0, count: 1 },
+  /** Screen shown on the second device of a "pair" layout (usually the next slide's). */
+  pairImage: CanvasImageSource | null = null,
 ) {
   const preset = getPreset(spec.device);
   const w = size?.width ?? preset.width;
   const h = size?.height ?? preset.height;
   const theme = spec.theme;
   paintBackground(ctx, theme, w, h);
+
+  // Odd slides mirror the tilt and the shift so a set alternates left and right.
+  const mirror = spec.alternate && pos.index % 2 === 1 ? -1 : 1;
+  const rotate = spec.deviceRotate * mirror;
+  const offsetX = spec.deviceOffsetX * mirror * w;
 
   const text = (block: TextBlock, top: number) => {
     ctx.save();
@@ -227,11 +372,21 @@ export function drawSlide(
   };
   const device = (r: Rect) => {
     const z = anim.deviceZoom;
-    const zoomed = { x: r.x + (r.w * (1 - z)) / 2, y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w, w: r.w * z, h: r.h * z };
-    drawDevice(ctx, preset.frame, zoomed, theme, image, spec.showFrame);
+    const zoomed = { x: r.x + offsetX + (r.w * (1 - z)) / 2, y: r.y + (r.h * (1 - z)) / 2 + anim.deviceShift * w, w: r.w * z, h: r.h * z };
+    drawDecor(ctx, spec, w, h, zoomed, pos);
+    if (spec.pair) {
+      // The companion sits behind, on the other side, slightly smaller and leaning the other way.
+      const k = 0.88;
+      const back = { x: zoomed.x - offsetX * 2.2 + (zoomed.w * (1 - k)) / 2, y: zoomed.y + zoomed.h * 0.08, w: zoomed.w * k, h: zoomed.h * k };
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      drawDeviceTransformed(ctx, preset.frame, back, -rotate * 0.6 + (spec.deviceRotate === 0 ? -4 * mirror : 0), theme, pairImage, spec.showFrame);
+      ctx.restore();
+    }
+    drawDeviceTransformed(ctx, preset.frame, zoomed, rotate, theme, image, spec.showFrame);
   };
 
-  const block = measureText(ctx, slide, theme, w, opts);
+  const block = measureText(ctx, slide, theme, w, opts, spec.textScale);
   const topPad = h * 0.065;
   const gap = w * 0.07;
   const deviceW = w * spec.deviceScale;
@@ -266,14 +421,21 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /** Renders the slide at full size and returns a PNG. */
-export async function renderSlidePng(spec: ScreenshotSpec, slide: Slide, image: CanvasImageSource | null, opts: DrawOptions): Promise<Blob> {
+export async function renderSlidePng(
+  spec: ScreenshotSpec,
+  slide: Slide,
+  image: CanvasImageSource | null,
+  opts: DrawOptions,
+  pos: SlidePosition = { index: 0, count: 1 },
+  pairImage: CanvasImageSource | null = null,
+): Promise<Blob> {
   const preset = getPreset(spec.device);
   const canvas = document.createElement("canvas");
   canvas.width = preset.width;
   canvas.height = preset.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas no disponible");
-  drawSlide(ctx, spec, slide, image, opts);
+  drawSlide(ctx, spec, slide, image, opts, undefined, undefined, pos, pairImage);
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No se pudo exportar el PNG"))), "image/png"));
 }
 

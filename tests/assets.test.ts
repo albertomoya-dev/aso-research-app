@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cleanScreenshotCopy, toIconSpec } from "@/lib/assets/creative-ai";
 import { checkIcon, contrastRatio, defaultIconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
-import { defaultScreenshotSpec, DEVICE_PRESETS, parseRuns, screenshotSpecSchema, stripMarks, wrapWords } from "@/lib/assets/screenshots";
+import { applyTemplate, DECORS, defaultScreenshotSpec, DEVICE_PRESETS, getTemplate, parseRuns, screenshotSpecSchema, stripMarks, TEMPLATES, wrapWords } from "@/lib/assets/screenshots";
 import { buildZip, crc32, listZip } from "@/lib/assets/zip";
 
 describe("parseRuns", () => {
@@ -56,6 +56,51 @@ describe("screenshot spec", () => {
       expect(p.height).toBeGreaterThan(p.width);
       if (p.store === "android") expect(p.height / p.width).toBeCloseTo(16 / 9, 1);
     }
+  });
+});
+
+describe("screenshot templates", () => {
+  it("has unique ids and valid styles", () => {
+    const ids = TEMPLATES.map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const t of TEMPLATES) {
+      expect(DECORS).toContain(t.style.decor);
+      const spec = applyTemplate(defaultScreenshotSpec("ios", "App", []), t);
+      expect(screenshotSpecSchema.safeParse(spec).success).toBe(true);
+      expect(spec.template).toBe(t.id);
+    }
+  });
+
+  it("applies the style to the whole set but keeps the texts and images", () => {
+    const base = defaultScreenshotSpec("ios", "App", ["https://a/1.png", "https://a/2.png"]);
+    base.slides[0].headline = "Hola *mundo*";
+    const spec = applyTemplate(base, getTemplate("duo"));
+    expect(spec.pair).toBe(true);
+    expect(spec.decor).toBe("circles");
+    expect(spec.slides.map((s) => s.image)).toEqual(base.slides.map((s) => s.image));
+    expect(spec.slides[0].headline).toBe("Hola *mundo*");
+    expect(spec.slides.every((s) => s.layout === "text-top")).toBe(true);
+  });
+
+  it("falls back to the first template for an unknown id", () => {
+    expect(getTemplate("nope").id).toBe(TEMPLATES[0].id);
+  });
+
+  it("still parses designs saved before templates existed", () => {
+    const old = {
+      version: 1,
+      device: "iphone-6.9",
+      theme: defaultScreenshotSpec("ios", "App", []).theme,
+      deviceScale: 0.8,
+      showFrame: true,
+      slides: [{ id: "a", headline: "x", subheadline: "", image: null, layout: "text-top", keyword: null }],
+    };
+    const parsed = screenshotSpecSchema.parse(old);
+    expect(parsed.template).toBe("classic");
+    expect(parsed.decor).toBe("none");
+    expect(parsed.deviceRotate).toBe(0);
+    expect(parsed.textScale).toBe(1);
+    expect(parsed.pair).toBe(false);
   });
 });
 
