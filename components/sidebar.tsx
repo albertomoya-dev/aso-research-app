@@ -38,7 +38,7 @@ export function Sidebar() {
           <rect width="28" height="28" rx="7" fill="var(--brand)" />
           <path d="M8 19l5-6 3 3 5-7" stroke="var(--on-brand)" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        <span className="text-[17px] font-bold">Rankeo</span>
+        <span className="text-[17px] font-semibold">Rankeo</span>
       </Link>
       <div className="flex gap-1 md:flex-col">
         <NavLink href="/">Panel</NavLink>

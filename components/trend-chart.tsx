@@ -28,7 +28,7 @@ export function TrendChart({ points }: { points: TrendPoint[] }) {
               const p = active ? (payload?.[0]?.payload as TrendPoint | undefined) : undefined;
               if (!p) return null;
               return (
-                <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-md">
+                <div className="rounded-lg border border-line-strong bg-surface-muted px-3 py-2 text-sm">
                   <div className="text-xs text-muted">Semana del {week.format(date(p.date))}</div>
                   <div className="font-mono text-base font-semibold">{p.value}</div>
                 </div>

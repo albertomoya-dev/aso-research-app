@@ -156,12 +156,12 @@ function AppDetail({ meta }: { meta: AppMeta }) {
           <AppIcon src={meta.icon} size={84} />
           <div>
             <StoreBadge store={meta.store} country={meta.country} />
-            <h2 className="mt-1.5 text-[22px] font-bold">{meta.title}</h2>
+            <h2 className="mt-1.5 text-[22px] font-semibold">{meta.title}</h2>
             <div className="text-sm text-muted">
               {meta.developer}
               {meta.category && ` · ${meta.category}`}
             </div>
-            <a href={meta.url} target="_blank" rel="noreferrer" className="text-sm text-brand underline">
+            <a href={meta.url} target="_blank" rel="noreferrer" className="text-sm text-link underline">
               Ver en la tienda
             </a>
           </div>

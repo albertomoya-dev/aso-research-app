@@ -23,7 +23,7 @@ export default async function MetadataPage({ params }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+        <Link href={`/apps/${app.id}`} className="text-link hover:underline">
           {app.title}
         </Link>{" "}
         / Editor de ficha

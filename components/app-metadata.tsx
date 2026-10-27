@@ -27,7 +27,7 @@ export function AppMetadata({ meta }: { meta: AppMeta }) {
     <div className="flex flex-col gap-6">
       <dl className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-[10px] bg-surface-muted px-3.5 py-3">
+          <div key={s.label} className="rounded-lg bg-surface-muted px-3.5 py-3">
             <dt className="text-xs text-muted">{s.label}</dt>
             <dd className="mt-0.5 text-lg font-semibold">{s.value}</dd>
           </div>
@@ -37,7 +37,7 @@ export function AppMetadata({ meta }: { meta: AppMeta }) {
       <div className="flex flex-col gap-3.5">
         <h3 className="text-[15px] font-semibold">Metadata publicada</h3>
         {fieldsFor(meta).map((f) => (
-          <div key={f.label} className="rounded-[10px] border border-line px-3.5 py-3">
+          <div key={f.label} className="rounded-lg border border-line px-3.5 py-3">
             <div className="flex justify-between gap-3 text-xs text-muted">
               <span className="font-semibold tracking-wider uppercase">{f.label}</span>
               {f.limit && f.value != null && <CharCount count={[...f.value].length} limit={f.limit} />}

@@ -21,7 +21,7 @@ export function KeywordForm({ appId }: { appId: number }) {
           rows={3}
           onChange={(e) => setTotal(parseKeywords(e.target.value).length)}
           placeholder="app para correr, rutas para correr, entrenamiento 5k"
-          className="resize-y rounded-[10px] border border-line-strong bg-surface px-3 py-2.5 text-sm font-normal text-ink focus:border-brand focus:outline-3 focus:outline-brand-soft"
+          className="resize-y rounded-lg border border-line-strong bg-surface px-3 py-2.5 text-sm font-normal text-ink focus:border-brand focus:outline-2 focus:outline-brand/50"
         />
       </label>
       <button type="submit" disabled={pending || total === 0} className={buttonPrimary}>

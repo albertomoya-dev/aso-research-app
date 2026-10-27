@@ -63,7 +63,7 @@ export default async function AppPage({ params, searchParams }: Props) {
         <div className="flex items-center gap-3.5">
           <AppIcon src={app.icon} size={56} />
           <div>
-            <h1 className="text-2xl font-bold">{app.title}</h1>
+            <h1 className="text-2xl font-semibold">{app.title}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
               <StoreBadge store={app.store} country={app.country} />
               <span>{getCountry(app.country).name}</span>
@@ -149,7 +149,7 @@ export default async function AppPage({ params, searchParams }: Props) {
                 {visible.map((k) => (
                   <tr key={k.id} className="border-t border-line">
                     <td className="px-5 py-3">
-                      <Link href={`/apps/${app.id}/keywords/${k.id}`} className="font-semibold hover:text-brand hover:underline">
+                      <Link href={`/apps/${app.id}/keywords/${k.id}`} className="font-semibold hover:text-link hover:underline">
                         {k.term}
                       </Link>
                       {rankStatus(k.position) === "within-reach" && (

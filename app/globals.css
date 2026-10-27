@@ -1,28 +1,31 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f5f6f8;
+  /* Linear-inspired palette, see DESIGN.md. Light mode uses Linear's inverse surfaces. */
+  --bg: #f7f8f8;
   --surface: #ffffff;
-  --surface-muted: #f0f1f4;
-  --line: #e3e6eb;
-  --line-strong: #d5d9e0;
-  --ink: #14171f;
-  --ink-soft: #3a4150;
-  --muted: #5b6372;
-  --brand: #3046c5;
-  --brand-strong: #1f2f8a;
-  --brand-soft: #ebeefb;
+  --surface-muted: #f0f1f2;
+  --line: #e4e5e8;
+  --line-strong: #d3d5da;
+  --ink: #0f1011;
+  --ink-soft: #3c3f45;
+  --muted: #62666d;
+  --brand: #5e6ad2;
+  --brand-hover: #4f5bc4;
+  --brand-strong: #3d48a8;
+  --brand-soft: #eceefb;
   --on-brand: #ffffff;
-  --ios-bg: #ebeefb;
-  --ios-fg: #1f2f8a;
-  --android-bg: #ddf3e6;
-  --android-fg: #135c33;
-  --danger: #b42318;
-  --danger-soft: #fdecea;
-  --warn-bg: #fff1dd;
+  --link: #4f5bc4;
+  --ios-bg: #eceefb;
+  --ios-fg: #3d48a8;
+  --android-bg: #e3f4e7;
+  --android-fg: #1b6e30;
+  --danger: #c52828;
+  --danger-soft: #fcebeb;
+  --warn-bg: #fff3e0;
   --warn-fg: #8a4b00;
-  --up: #1e7b46;
-  --down: #b42318;
+  --up: #1f8a3b;
+  --down: #c52828;
   /* Chart series, fixed order (validated for colour-blind separation). */
   --series-1: #2a78d6;
   --series-2: #eb6834;
@@ -33,28 +36,30 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1218;
-    --surface: #171b23;
-    --surface-muted: #1f242e;
-    --line: #2a303b;
-    --line-strong: #3a4250;
-    --ink: #e8eaf0;
-    --ink-soft: #c5cad4;
-    --muted: #9aa3b2;
-    --brand: #8c9cf5;
-    --brand-strong: #c3ccfa;
-    --brand-soft: #222a55;
-    --on-brand: #0f1218;
-    --ios-bg: #222a55;
-    --ios-fg: #c3ccfa;
-    --android-bg: #143823;
-    --android-fg: #a3e4bd;
-    --danger: #ff8a80;
-    --danger-soft: #3a1c1a;
-    --warn-bg: #3a2a12;
+    --bg: #08090a;
+    --surface: #0f1011;
+    --surface-muted: #18191a;
+    --line: #23252a;
+    --line-strong: #34343a;
+    --ink: #f7f8f8;
+    --ink-soft: #d0d6e0;
+    --muted: #8a8f98;
+    --brand: #5e6ad2;
+    --brand-hover: #828fff;
+    --brand-strong: #c7cbf5;
+    --brand-soft: #1c1f3a;
+    --on-brand: #ffffff;
+    --link: #828fff;
+    --ios-bg: #1c1f3a;
+    --ios-fg: #c7cbf5;
+    --android-bg: #11291a;
+    --android-fg: #8fdba5;
+    --danger: #ff7b72;
+    --danger-soft: #2d1414;
+    --warn-bg: #2e2210;
     --warn-fg: #ffcc80;
-    --up: #6fd49a;
-    --down: #ff8a80;
+    --up: #4cc26b;
+    --down: #ff7b72;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -73,9 +78,11 @@
   --color-ink-soft: var(--ink-soft);
   --color-muted: var(--muted);
   --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
   --color-brand-strong: var(--brand-strong);
   --color-brand-soft: var(--brand-soft);
   --color-on-brand: var(--on-brand);
+  --color-link: var(--link);
   --color-ios-bg: var(--ios-bg);
   --color-ios-fg: var(--ios-fg);
   --color-android-bg: var(--android-bg);
@@ -86,11 +93,18 @@
   --color-warn-fg: var(--warn-fg);
   --color-up: var(--up);
   --color-down: var(--down);
-  --font-sans: var(--font-plex-sans), system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
+  font-feature-settings: "cv01", "ss03";
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.02em;
 }

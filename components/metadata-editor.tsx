@@ -52,7 +52,7 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                 <div className="flex items-baseline justify-between gap-3">
                   <label htmlFor={id} className="text-[13px] font-medium text-ink-soft">
                     {f.label}
-                    {changed && <span className="ml-2 text-xs font-normal text-brand">modificado</span>}
+                    {changed && <span className="ml-2 text-xs font-normal text-link">modificado</span>}
                   </label>
                   <span id={`${id}-count`} className={`font-mono text-xs ${f.over ? "font-semibold text-danger" : "text-muted"}`}>
                     {f.length}/{f.limit}
@@ -64,7 +64,7 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                   <button
                     type="button"
                     onClick={() => set("keywordField", extra)}
-                    className="self-start text-[13px] font-medium text-brand hover:underline"
+                    className="self-start text-[13px] font-medium text-link hover:underline"
                   >
                     Añadir las palabras que faltan ({report.missingWords.length}) → {charCount(extra)}/100
                   </button>

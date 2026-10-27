@@ -16,7 +16,7 @@ const DAYS = 30;
 const TONE = {
   up: { icon: "▲", label: "Mejora", className: "text-up" },
   down: { icon: "▼", label: "Empeora", className: "text-down" },
-  info: { icon: "●", label: "Aviso", className: "text-brand" },
+  info: { icon: "●", label: "Aviso", className: "text-link" },
 } as const;
 
 type Props = { searchParams: Promise<{ app?: string }> };
