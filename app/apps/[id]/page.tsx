@@ -14,10 +14,11 @@ import { buttonPrimary, buttonSecondary, Card } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
 import { getCountry } from "@/lib/countries";
 import { formatDate } from "@/lib/format";
+import { isKeywordSort, KEYWORD_SORTS, sortKeywordRows, type KeywordSort, type SortDir } from "@/lib/keyword-sort";
 import { getKeywordRows, type KeywordRow } from "@/lib/queries";
 import { rankStatus } from "@/lib/ranking";
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string; s?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string; s?: string; d?: string }> };
 
 const SOURCE_LABEL = { manual: "Manual", ai: "Sugerida por IA", autocomplete: "Autocompletado" } as const;
 
@@ -28,12 +29,6 @@ const FILTERS = [
   { id: "down", label: "Bajando", test: (r: KeywordRow) => (r.changeWeek ?? 0) < 0 },
 ] as const;
 
-const SORTS = {
-  term: (a: KeywordRow, b: KeywordRow) => a.term.localeCompare(b.term, "es"),
-  position: (a: KeywordRow, b: KeywordRow) => (a.position ?? Infinity) - (b.position ?? Infinity),
-  opportunity: (a: KeywordRow, b: KeywordRow) => (b.opportunity ?? -1) - (a.opportunity ?? -1),
-};
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const app = await loadApp((await params).id);
   return { title: app.title };
@@ -41,16 +36,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function AppPage({ params, searchParams }: Props) {
   const app = await loadApp((await params).id);
-  const { f, s } = await searchParams;
+  const { f, s, d } = await searchParams;
   const filter = FILTERS.find((x) => x.id === f) ?? FILTERS[0];
-  const sort = s && s in SORTS ? (s as keyof typeof SORTS) : "opportunity";
+  const sort: KeywordSort = isKeywordSort(s) ? s : "opportunity";
+  const dir: SortDir = d === "asc" || d === "desc" ? d : KEYWORD_SORTS[sort].dir;
   const rows = await getKeywordRows(app);
-  const visible = rows.filter(filter.test).sort(SORTS[sort]);
-  const href = (params: { f?: string; s?: string }) => {
-    const q = new URLSearchParams({ f: filter.id, s: sort, ...params });
+  const visible = sortKeywordRows(rows.filter(filter.test), sort, dir);
+  const href = (params: { f?: string; s?: string; d?: string }) => {
+    const q = new URLSearchParams({ f: filter.id, s: sort, d: dir, ...params });
     if (q.get("f") === "all") q.delete("f");
+    if (q.get("d") === KEYWORD_SORTS[q.get("s") as KeywordSort].dir) q.delete("d");
     if (q.get("s") === "opportunity") q.delete("s");
     return `/apps/${app.id}${q.size ? `?${q}` : ""}`;
+  };
+  // Clicking the active column flips its direction; another column starts in its natural one.
+  const sortHeader = (id: KeywordSort, label: string, className?: string) => {
+    const active = sort === id;
+    const next = active ? (dir === "asc" ? "desc" : "asc") : KEYWORD_SORTS[id].dir;
+    return <SortHeader label={label} active={active} dir={dir} href={href({ s: id, d: next })} className={className} />;
   };
   const lastCheck = rows.map((r) => r.checkedOn).filter(Boolean).sort().at(-1);
 
@@ -130,15 +133,15 @@ export default async function AppPage({ params, searchParams }: Props) {
             <table className="w-full min-w-[1180px] border-collapse text-sm">
               <thead>
                 <tr className="text-left text-xs tracking-wider text-muted uppercase">
-                  <SortHeader label="Keyword" active={sort === "term"} href={href({ s: "term" })} className="px-5" />
-                  <SortHeader label="Posición" active={sort === "position"} href={href({ s: "position" })} />
-                  <th scope="col" className="px-3 py-3 font-semibold">vs ayer</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">7 días</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Evolución 30 d</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Popularidad</th>
-                  <th scope="col" className="px-3 py-3 font-semibold">Dificultad</th>
-                  <SortHeader label="Oportunidad" active={sort === "opportunity"} href={href({ s: "opportunity" })} descending />
-                  <th scope="col" className="px-3 py-3 font-semibold">Líder del TOP 5</th>
+                  {sortHeader("term", "Keyword", "px-5")}
+                  {sortHeader("position", "Posición")}
+                  {sortHeader("day", "vs ayer")}
+                  {sortHeader("week", "7 días")}
+                  {sortHeader("trend", "Evolución 30 d")}
+                  {sortHeader("popularity", "Popularidad")}
+                  {sortHeader("difficulty", "Dificultad")}
+                  {sortHeader("opportunity", "Oportunidad")}
+                  <th scope="col" className="px-3 py-3 font-semibold">TOP 5</th>
                   <th scope="col" className="px-5 py-3"><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
@@ -164,11 +167,18 @@ export default async function AppPage({ params, searchParams }: Props) {
                     <td className="px-3 py-3"><Difficulty value={k.difficulty} /></td>
                     <td className="px-3 py-3"><OpportunityBadge value={k.opportunity} /></td>
                     <td className="px-3 py-3">
-                      {k.leader ? (
-                        <div className="flex items-center gap-2">
-                          <AppIcon src={k.leader.icon} size={22} />
-                          <span className="max-w-44 truncate">{k.leader.title}</span>
-                        </div>
+                      {k.top5.length > 0 ? (
+                        <ol className="flex items-center gap-1" aria-label={`TOP 5 de ${k.term}`}>
+                          {k.top5.map((t, i) => (
+                            <li
+                              key={t.id}
+                              title={`${i + 1}. ${t.title}${t.id === app.storeId ? " (tu app)" : ""}`}
+                              className={t.id === app.storeId ? "rounded-[7px] ring-2 ring-brand" : undefined}
+                            >
+                              <AppIcon src={t.icon} size={26} alt={`${i + 1}. ${t.title}`} />
+                            </li>
+                          ))}
+                        </ol>
                       ) : (
                         <span className="text-muted">–</span>
                       )}
@@ -213,21 +223,21 @@ export default async function AppPage({ params, searchParams }: Props) {
 function SortHeader({
   label,
   active,
+  dir,
   href,
-  descending = false,
   className = "px-3",
 }: {
   label: string;
   active: boolean;
+  dir: SortDir;
   href: string;
-  descending?: boolean;
   className?: string;
 }) {
   return (
-    <th scope="col" aria-sort={active ? (descending ? "descending" : "ascending") : undefined} className={`${className} py-3 font-semibold`}>
-      <Link href={href} scroll={false} className={`inline-flex min-h-8 items-center gap-1 hover:text-ink ${active ? "text-ink" : ""}`}>
+    <th scope="col" aria-sort={active ? (dir === "desc" ? "descending" : "ascending") : undefined} className={`${className} py-3 font-semibold`}>
+      <Link href={href} scroll={false} className={`inline-flex min-h-8 items-center gap-1 whitespace-nowrap hover:text-ink ${active ? "text-ink" : ""}`}>
         {label}
-        {active && <span aria-hidden="true">{descending ? "↓" : "↑"}</span>}
+        <span aria-hidden="true" className={active ? "" : "opacity-30"}>{active ? (dir === "desc" ? "↓" : "↑") : "↕"}</span>
       </Link>
     </th>
   );

@@ -19,7 +19,8 @@ export type KeywordRow = {
   changeDay: number | null;
   changeWeek: number | null;
   history: HistoryPoint[];
-  leader: AppSummary | null;
+  /** First five apps of the latest search results. */
+  top5: AppSummary[];
   popularity: number | null;
   difficulty: number | null;
   opportunity: number | null;
@@ -120,7 +121,7 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
       changeDay: latest ? positionChange(latest.position, on(shiftDate(latest.date, -1))) : null,
       changeWeek: latest ? positionChange(latest.position, on(shiftDate(latest.date, -7))) : null,
       history: history.map(({ date, position }) => ({ date, position })),
-      leader: latest?.top5[0] ?? null,
+      top5: latest?.top5.slice(0, 5) ?? [],
       ...withOpportunity(metrics.get(k.id), k.relevance),
     };
   });
