@@ -29,7 +29,7 @@ export function AppTabs({ appId }: { appId: string }) {
               <Link
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className={`inline-flex min-h-11 items-center border-b-2 px-3 text-sm font-medium ${
+                className={`inline-flex min-h-11 items-center border-b-2 px-3 text-[13px] font-medium md:min-h-10 ${
                   active ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink"
                 }`}
               >

@@ -1,6 +1,6 @@
 ---
 name: Rankeo
-description: "Dashboard ASO denso y sobrio, inspirado en el sistema de Linear (vía awesome-claude-design / getdesign.md). Un solo acento lavanda (#5e6ad2), superficies escalonadas con bordes finos en vez de sombras, Inter con tracking negativo en títulos. Modo claro y oscuro según el sistema."
+description: "Dashboard ASO denso y sobrio, inspirado en el sistema de Linear (vía awesome-claude-design / getdesign.md). Un solo acento lavanda (#5e6ad2), superficies escalonadas con bordes finos en vez de sombras, Inter con tracking negativo en títulos. Oscuro por defecto, como Linear; modo claro opcional desde la barra lateral."
 source: https://github.com/VoltAgent/awesome-design-md/blob/main/design-md/linear.app/DESIGN.md
 ---
 
@@ -10,7 +10,11 @@ Este archivo describe cómo debe verse la app. Lo leen los agentes de diseño (C
 
 ## 1. Tono
 
-Herramienta de trabajo, no página de marketing. Densa, precisa y tranquila: las tablas de keywords y los gráficos de posición son el protagonista, el marco desaparece. Inspiración: Linear.
+Herramienta de trabajo, no página de marketing. Densa, precisa y tranquila: las tablas de keywords y los gráficos de posición son el protagonista, el marco desaparece. Inspiración: la app de Linear.
+
+- **Oscuro por defecto.** El modo claro se activa con el botón de la barra lateral (`data-theme="light"` en `<html>`, guardado en `localStorage`). En Tailwind usa la variante `light:` para retoques solo de claro.
+- **Ventana y panel.** La barra lateral va sobre el fondo de ventana (`bg`) sin borde; el contenido vive en un panel redondeado (`panel`) separado 8px del borde, como en Linear.
+- **Compacto.** Texto base de 14px, navegación y botones de 13px y 32px de alto en escritorio (44px en móvil).
 
 ## 2. Color
 
@@ -18,15 +22,16 @@ Usa siempre los tokens de Tailwind (`bg-surface`, `text-muted`…), nunca colore
 
 | Token | Claro | Oscuro | Uso |
 |---|---|---|---|
-| `bg` | #f7f8f8 | #08090a | Fondo de página |
-| `surface` | #ffffff | #0f1011 | Tarjetas, barra lateral, tablas |
-| `surface-muted` | #f0f1f2 | #18191a | Elemento elevado: hover, nav activa, tooltip |
+| `bg` | #f1f2f4 | #08090a | Fondo de ventana y barra lateral |
+| `panel` | #fcfcfd | #0f1011 | Panel de contenido |
+| `surface` | #ffffff | #141516 | Tarjetas y tablas |
+| `surface-muted` | #f1f2f4 | #1c1d1f | Elemento elevado: hover, nav activa, tooltip |
 | `line` / `line-strong` | #e4e5e8 / #d3d5da | #23252a / #34343a | Bordes de 1px |
 | `ink` / `ink-soft` / `muted` | #0f1011 / #3c3f45 / #62666d | #f7f8f8 / #d0d6e0 / #8a8f98 | Texto principal, secundario, terciario |
 | `brand` | #5e6ad2 | #5e6ad2 | Botón primario, foco, línea de la app en gráficos |
-| `brand-hover` | #4f5bc4 | #828fff | Hover del botón primario |
+| `brand-hover` | #4f5bc4 | #6d78e0 | Hover del botón primario |
 | `link` | #4f5bc4 | #828fff | Texto de enlace (contraste AA sobre las superficies) |
-| `brand-soft` | #eceefb | #1c1f3a | Fila de "tu app" resaltada |
+| `brand-soft` | #eceefb | #1e2140 | Fila de "tu app" resaltada |
 
 - La lavanda es escasa: botón primario, foco, enlaces, la serie de tu app. Nunca como fondo de sección.
 - Para texto lavanda usa `text-link`, no `text-brand` (en oscuro `brand` no llega a 4.5:1).
@@ -44,23 +49,23 @@ Usa siempre los tokens de Tailwind (`bg-surface`, `text-muted`…), nunca colore
 
 Están en `components/ui.tsx`; reutilízalos.
 
-- **Botón primario**: `bg-brand`, texto blanco, `rounded-lg` (8px), 500, hover a `brand-hover`.
-- **Botón secundario**: `bg-surface`, borde `line`, hover a `surface-muted`.
-- **Input**: `rounded-lg`, borde `line-strong`; al enfocar, borde `brand` y anillo de 2px `brand/50`.
-- **Card**: `bg-surface`, borde `line`, `rounded-xl`. Sin sombra.
-- **Navegación activa**: elevación (`surface-muted` + `text-ink`), no lavanda.
+- **Botón primario**: `bg-brand`, texto blanco, `rounded-md` (6px), 13px a 500, hover a `brand-hover`.
+- **Botón secundario**: `bg-surface-muted`, borde `line-strong`.
+- **Input**: `rounded-md`, borde `line-strong`; al enfocar, borde `brand` y anillo de 2px `brand/50`.
+- **Card**: `bg-surface`, borde `line`, `rounded-xl` y un filo de luz arriba (`shadow-[inset_0_1px_0_0_var(--edge)]`). Sin sombra proyectada.
+- **Navegación**: icono de 16px + texto de 13px; la activa se marca por elevación (`surface-muted` + `text-ink`), no con lavanda.
 - **Badges/píldoras**: `rounded-md` o `rounded-full`, 12px.
 - **Tooltip de gráfico**: `surface-muted` + borde `line-strong`, sin sombra.
 
 ## 5. Layout
 
 - Base de 4px. Padding de tarjeta 20–24px; separación entre bloques 24px.
-- Barra lateral fija de 240px en escritorio; arriba en móvil.
+- Barra lateral de 224px en escritorio; arriba en móvil.
 - Ancho de contenido fluido; las tablas pueden hacer scroll horizontal dentro de su tarjeta, nunca la página.
 
 ## 6. Profundidad
 
-La jerarquía se marca con la escalera de superficies (`bg` → `surface` → `surface-muted`) y bordes finos. Evita `shadow-*` salvo en menús flotantes.
+La jerarquía se marca con la escalera de superficies (`bg` → `panel` → `surface` → `surface-muted`) y bordes finos. Evita `shadow-*` salvo en menús flotantes.
 
 ## 7. Sí y no
 

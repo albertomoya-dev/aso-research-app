@@ -1,12 +1,54 @@
 @import "tailwindcss";
 
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
 :root {
-  /* Linear-inspired palette, see DESIGN.md. Light mode uses Linear's inverse surfaces. */
-  --bg: #f7f8f8;
+  /* Linear-inspired palette, see DESIGN.md. Dark is the default, as in Linear;
+     light is opt-in through the theme toggle (data-theme="light" on <html>). */
+  color-scheme: dark;
+  --bg: #08090a;
+  --panel: #0f1011;
+  --surface: #141516;
+  --surface-muted: #1c1d1f;
+  --line: #23252a;
+  --line-strong: #34343a;
+  --edge: rgb(255 255 255 / 0.05);
+  --ink: #f7f8f8;
+  --ink-soft: #d0d6e0;
+  --muted: #8a8f98;
+  --brand: #5e6ad2;
+  --brand-hover: #6d78e0;
+  --brand-strong: #c7cbf5;
+  --brand-soft: #1e2140;
+  --on-brand: #ffffff;
+  --link: #828fff;
+  --ios-bg: #1e2140;
+  --ios-fg: #c7cbf5;
+  --android-bg: #11291a;
+  --android-fg: #8fdba5;
+  --danger: #ff7b72;
+  --danger-soft: #2d1414;
+  --warn-bg: #2e2210;
+  --warn-fg: #ffcc80;
+  --up: #4cc26b;
+  --down: #ff7b72;
+  /* Chart series, fixed order (validated for colour-blind separation). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f1f2f4;
+  --panel: #fcfcfd;
   --surface: #ffffff;
-  --surface-muted: #f0f1f2;
+  --surface-muted: #f1f2f4;
   --line: #e4e5e8;
   --line-strong: #d3d5da;
+  --edge: rgb(255 255 255 / 0);
   --ink: #0f1011;
   --ink-soft: #3c3f45;
   --muted: #62666d;
@@ -26,7 +68,6 @@
   --warn-fg: #8a4b00;
   --up: #1f8a3b;
   --down: #c52828;
-  /* Chart series, fixed order (validated for colour-blind separation). */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -34,42 +75,9 @@
   --series-5: #e87ba4;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #08090a;
-    --surface: #0f1011;
-    --surface-muted: #18191a;
-    --line: #23252a;
-    --line-strong: #34343a;
-    --ink: #f7f8f8;
-    --ink-soft: #d0d6e0;
-    --muted: #8a8f98;
-    --brand: #5e6ad2;
-    --brand-hover: #828fff;
-    --brand-strong: #c7cbf5;
-    --brand-soft: #1c1f3a;
-    --on-brand: #ffffff;
-    --link: #828fff;
-    --ios-bg: #1c1f3a;
-    --ios-fg: #c7cbf5;
-    --android-bg: #11291a;
-    --android-fg: #8fdba5;
-    --danger: #ff7b72;
-    --danger-soft: #2d1414;
-    --warn-bg: #2e2210;
-    --warn-fg: #ffcc80;
-    --up: #4cc26b;
-    --down: #ff7b72;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-  }
-}
-
 @theme inline {
   --color-bg: var(--bg);
+  --color-panel: var(--panel);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-line: var(--line);
@@ -100,6 +108,7 @@
 body {
   background: var(--bg);
   color: var(--ink);
+  font-size: 14px;
   font-feature-settings: "cv01", "ss03";
 }
 
