@@ -204,7 +204,9 @@ export default async function AppPage({ params, searchParams }: Props) {
         )}
         <p className="border-t border-line px-5 py-3.5 text-[13px] text-muted">
           Posición en los resultados de búsqueda de la tienda para {getCountry(app.country).name}, consultada cada día.
-          {app.store === "ios" && " En App Store es aproximada: la API pública no siempre ordena igual que la app de la tienda."} Popularidad
+          {app.store === "ios" && " En App Store es aproximada: la API pública no siempre ordena igual que la app de la tienda."} «&gt; N»
+          significa que la app no aparece entre los N resultados que devuelve la tienda para esa búsqueda (cada búsqueda
+          devuelve un número distinto, hasta 200). Popularidad
           (0–100): estimada con el autocompletado de la tienda, se actualiza cada semana. Dificultad (0–100): fuerza del TOP 10.
           Oportunidad: popularidad descontada por la dificultad.
         </p>
