@@ -37,11 +37,12 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
     let cancelled = false;
     (async () => {
       await ensureFonts(font, [500, spec.theme.weight]);
+      const sources = [...spec.slides.map((s) => s.image), spec.backgroundImage];
       await Promise.all(
-        spec.slides.map(async (s) => {
-          if (!s.image || images.current.has(s.image)) return;
+        sources.map(async (src) => {
+          if (!src || images.current.has(src)) return;
           try {
-            images.current.set(s.image, await loadImage(s.image));
+            images.current.set(src, await loadImage(src));
           } catch {}
         }),
       );

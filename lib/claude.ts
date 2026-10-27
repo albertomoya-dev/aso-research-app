@@ -8,6 +8,8 @@ import {
   type CreativeInput,
   buildLogoPromptsPrompt,
   ICON_CONCEPTS_SYSTEM_PROMPT,
+  BACKGROUND_PROMPTS_SYSTEM_PROMPT,
+  buildBackgroundPromptsPrompt,
   LOGO_PROMPTS_SYSTEM_PROMPT,
   type LogoPrompts,
   logoPromptsSchema,
@@ -100,4 +102,8 @@ export function designIconConcepts(input: CreativeInput): Promise<{ output: Icon
 /** Asks Claude to write prompts for the image generator (logos). */
 export function writeLogoPrompts(input: CreativeInput): Promise<{ output: LogoPrompts; model: string }> {
   return askClaude(logoPromptsSchema, LOGO_PROMPTS_SYSTEM_PROMPT, buildLogoPromptsPrompt(input));
+}
+
+export function writeBackgroundPrompts(input: CreativeInput, theme?: { dark: boolean; background: string; accent: string }): Promise<{ output: LogoPrompts; model: string }> {
+  return askClaude(logoPromptsSchema, BACKGROUND_PROMPTS_SYSTEM_PROMPT, buildBackgroundPromptsPrompt(input, theme));
 }

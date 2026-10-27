@@ -7,8 +7,8 @@ import { getDb, schema } from "@/db";
 import { cleanLogoPrompts, cleanScreenshotCopy, type CreativeInput, toIconSpec } from "@/lib/assets/creative-ai";
 import { generateImages, ImageGenError } from "@/lib/assets/image-provider";
 import { type IconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
-import { MAX_SPEC_BYTES, type ScreenshotSpec, screenshotSpecSchema, specBytes } from "@/lib/assets/screenshots";
-import { AiError, designIconConcepts, writeLogoPrompts, writeScreenshotCopy } from "@/lib/claude";
+import { MAX_SPEC_BYTES, type ScreenshotSpec, screenshotSpecSchema, specBytes, generatedImageUrl } from "@/lib/assets/screenshots";
+import { AiError, designIconConcepts, writeBackgroundPrompts, writeLogoPrompts, writeScreenshotCopy } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { getKeywordRows } from "@/lib/queries";
 
@@ -139,7 +139,7 @@ export async function generateLogoImages(appId: number, prompt: string, count: n
     for (const img of images) {
       const [row] = await getDb()
         .insert(schema.generatedImages)
-        .values({ appId: id, prompt: text.data, provider, model, mime: img.mime, data: img.base64 })
+        .values({ appId: id, kind: "logo", prompt: text.data, provider, model, mime: img.mime, data: img.base64 })
         .returning({ id: schema.generatedImages.id });
       ids.push(row.id);
     }
@@ -158,4 +158,43 @@ export async function deleteGeneratedImage(appId: number, imageId: number): Prom
     .delete(schema.generatedImages)
     .where(and(eq(schema.generatedImages.id, idSchema.parse(imageId)), eq(schema.generatedImages.appId, id)));
   revalidatePath(`/apps/${id}/creativos/logo`);
+  revalidatePath(`/apps/${id}/creativos`);
+}
+
+const themeHintSchema = z.object({ dark: z.boolean(), background: z.string().max(20), accent: z.string().max(20) }).optional();
+
+/** Three backdrop prompts for the screenshots, written by Claude from the listing, the keywords and the current theme. */
+export async function generateBackgroundPrompts(appId: number, focus: string, theme?: { dark: boolean; background: string; accent: string }): Promise<LogoPromptResult> {
+  try {
+    const input = await creativeInput(idSchema.parse(appId), z.string().trim().max(200).catch("").parse(focus));
+    const { output, model } = await writeBackgroundPrompts(input, themeHintSchema.parse(theme));
+    const prompts = cleanLogoPrompts(output);
+    if (prompts.length === 0) return { error: "Claude no devolvió ningún prompt utilizable. Inténtalo de nuevo." };
+    return { prompts, model };
+  } catch (err) {
+    return { error: aiMessage(err) };
+  }
+}
+
+export type BackgroundImageResult = { id: number; url: string; provider: string; model: string } | { error: string };
+
+/** Generates one portrait backdrop and stores it; the screenshot spec references it by URL. */
+export async function generateBackgroundImage(appId: number, prompt: string): Promise<BackgroundImageResult> {
+  const id = idSchema.parse(appId);
+  const text = z.string().trim().min(10).max(2000).safeParse(prompt);
+  if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
+  await loadAppOrThrow(id);
+  try {
+    const { images, provider, model } = await generateImages({ prompt: text.data, count: 1, aspect: "9:16" });
+    const [row] = await getDb()
+      .insert(schema.generatedImages)
+      .values({ appId: id, kind: "background", prompt: text.data, provider, model, mime: images[0].mime, data: images[0].base64 })
+      .returning({ id: schema.generatedImages.id });
+    revalidatePath(`/apps/${id}/creativos`);
+    return { id: row.id, url: generatedImageUrl(row.id), provider, model };
+  } catch (err) {
+    if (err instanceof ImageGenError) return { error: err.message };
+    console.error(err);
+    return { error: "No se pudo generar el fondo. Inténtalo de nuevo." };
+  }
 }

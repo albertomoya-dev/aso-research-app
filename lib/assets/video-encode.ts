@@ -51,7 +51,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, t: number, input: Encod
     ctx.clip();
     const next = spec.slides[(layer.slide + 1) % spec.slides.length];
     const img = (src: string | null) => (src && input.images.get(src)) || null;
-    drawSlide(ctx, spec, slide, img(slide.image), input.opts, layer.anim, undefined, { index: layer.slide, count: spec.slides.length }, img(next.image));
+    const opts = spec.backgroundImage ? { ...input.opts, background: img(spec.backgroundImage) } : input.opts;
+    drawSlide(ctx, spec, slide, img(slide.image), opts, layer.anim, undefined, { index: layer.slide, count: spec.slides.length }, img(next.image));
     ctx.restore();
   }
   ctx.restore();

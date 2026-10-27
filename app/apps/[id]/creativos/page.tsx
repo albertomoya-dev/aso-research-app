@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CreativeNav } from "@/components/creative-nav";
@@ -7,13 +7,14 @@ import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { defaultScreenshotSpec, proxied, type ScreenshotSpec, screenshotSpecSchema } from "@/lib/assets/screenshots";
+import { IMAGE_PROVIDER_LABEL, imageProvider } from "@/lib/assets/image-provider";
 import { hasAnthropicKey } from "@/lib/claude";
 
 type Props = { params: Promise<{ id: string }> };
 
 export const metadata: Metadata = { title: "Screenshots" };
-// Claude writes the captions in this request.
-export const maxDuration = 120;
+// Claude writes the captions and the image provider draws backdrops in this request.
+export const maxDuration = 300;
 
 export default async function ScreenshotsPage({ params }: Props) {
   const app = await loadApp((await params).id);
@@ -21,6 +22,13 @@ export default async function ScreenshotsPage({ params }: Props) {
     where: and(eq(schema.assetDesigns.appId, app.id), eq(schema.assetDesigns.kind, "screenshots")),
   });
   const storeImages = app.meta.screenshots.slice(0, 10).map(proxied);
+  const backgrounds = await getDb()
+    .select({ id: schema.generatedImages.id, prompt: schema.generatedImages.prompt })
+    .from(schema.generatedImages)
+    .where(and(eq(schema.generatedImages.appId, app.id), eq(schema.generatedImages.kind, "background")))
+    .orderBy(desc(schema.generatedImages.createdAt))
+    .limit(24);
+  const provider = imageProvider();
   const parsed = saved ? screenshotSpecSchema.safeParse(saved.spec) : null;
   const initial: ScreenshotSpec = parsed?.success ? parsed.data : defaultScreenshotSpec(app.store, app.title, storeImages);
 
@@ -46,6 +54,8 @@ export default async function ScreenshotsPage({ params }: Props) {
         initial={initial}
         storeImages={storeImages}
         aiEnabled={hasAnthropicKey()}
+        providerLabel={provider ? IMAGE_PROVIDER_LABEL[provider] : null}
+        backgrounds={backgrounds}
         savedAt={saved?.updatedAt.toISOString() ?? null}
       />
     </div>

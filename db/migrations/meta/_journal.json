@@ -64,6 +64,13 @@
       "when": 1793111375043,
       "tag": "0008_generated_images",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793116351080,
+      "tag": "0009_generated_image_kind",
+      "breakpoints": true
     }
   ]
 }

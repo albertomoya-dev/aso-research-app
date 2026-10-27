@@ -50,6 +50,20 @@ describe("generateImages", () => {
     expect(spy.mock.calls[0][1]?.headers).toMatchObject({ authorization: "Bearer sk-test" });
   });
 
+  it("asks for a portrait size when the aspect is 9:16", async () => {
+    process.env.IMAGE_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "sk-test";
+    const spy = mockFetch(() => ({ status: 200, body: { data: [{ b64_json: "AAA" }] } }));
+    await generateImages({ prompt: "a backdrop", count: 1, aspect: "9:16" });
+    expect(JSON.parse(String(spy.mock.calls[0][1]?.body))).toMatchObject({ n: 1, size: "1024x1536" });
+
+    process.env.IMAGE_PROVIDER = "gemini";
+    process.env.GEMINI_API_KEY = "g";
+    const gem = mockFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ inlineData: { mimeType: "image/png", data: "P" } }] } }] } }));
+    await generateImages({ prompt: "a backdrop", count: 1, aspect: "9:16" });
+    expect(JSON.parse(String(gem.mock.calls.at(-1)?.[1]?.body)).generationConfig.imageConfig).toEqual({ aspectRatio: "9:16" });
+  });
+
   it("calls Gemini once per image and reads inlineData", async () => {
     process.env.IMAGE_PROVIDER = "gemini";
     process.env.GEMINI_API_KEY = "g";

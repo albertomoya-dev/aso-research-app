@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CreativeNav } from "@/components/creative-nav";
@@ -26,7 +26,7 @@ export default async function LogoPage({ params }: Props) {
       createdAt: schema.generatedImages.createdAt,
     })
     .from(schema.generatedImages)
-    .where(eq(schema.generatedImages.appId, app.id))
+    .where(and(eq(schema.generatedImages.appId, app.id), eq(schema.generatedImages.kind, "logo")))
     .orderBy(desc(schema.generatedImages.createdAt))
     .limit(60);
   const provider = imageProvider();

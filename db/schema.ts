@@ -265,6 +265,8 @@ export const generatedImages = pgTable("generated_images", {
   appId: integer("app_id")
     .notNull()
     .references(() => apps.id, { onDelete: "cascade" }),
+  /** "logo" (square icon) or "background" (portrait backdrop for the screenshots). */
+  kind: text("kind").notNull().default("logo"),
   prompt: text("prompt").notNull(),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
