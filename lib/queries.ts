@@ -64,7 +64,8 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
   const appId = app.id;
   const db = getDb();
   const since = shiftDate(today(), -SPARK_DAYS);
-  const [keywords, snapshots] = await Promise.all([
+  // One round of parallel queries: each one is a trip to the database.
+  const [keywords, snapshots, metricRows] = await Promise.all([
     db
       .select({
         id: schema.keywords.id,
@@ -87,14 +88,26 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
       .from(schema.rankSnapshots)
       .where(and(eq(schema.rankSnapshots.appId, appId), gte(schema.rankSnapshots.date, since)))
       .orderBy(asc(schema.rankSnapshots.date)),
+    db
+      .select({
+        keywordId: schema.keywordMetrics.keywordId,
+        popularity: schema.keywordMetrics.popularity,
+        difficulty: schema.keywordMetrics.difficulty,
+        prefixLength: schema.keywordMetrics.prefixLength,
+      })
+      .from(schema.keywordMetrics)
+      .innerJoin(schema.appKeywords, eq(schema.appKeywords.keywordId, schema.keywordMetrics.keywordId))
+      .where(
+        and(
+          eq(schema.appKeywords.appId, appId),
+          eq(schema.keywordMetrics.store, app.store),
+          eq(schema.keywordMetrics.country, app.country),
+        ),
+      ),
   ]);
 
   const byKeyword = Map.groupBy(snapshots, (s) => s.keywordId);
-  const metrics = await metricsFor(
-    keywords.map((k) => k.id),
-    app.store,
-    app.country,
-  );
+  const metrics = new Map(metricRows.map(({ keywordId, ...m }) => [keywordId, m]));
   return keywords.map((k) => {
     const history = byKeyword.get(k.id) ?? [];
     const latest = history.at(-1);
