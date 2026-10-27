@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { cleanLogoPrompts, cleanScreenshotCopy, type CreativeInput, toIconSpec } from "@/lib/assets/creative-ai";
+import { type BackgroundThemeHint, cleanLogoPrompts, cleanScreenshotCopy, type CreativeInput, toIconSpec, withAppPalette } from "@/lib/assets/creative-ai";
 import { generateImages, ImageGenError } from "@/lib/assets/image-provider";
 import { type IconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
 import { MAX_SPEC_BYTES, type ScreenshotSpec, screenshotSpecSchema, specBytes, generatedImageUrl } from "@/lib/assets/screenshots";
@@ -161,10 +161,12 @@ export async function deleteGeneratedImage(appId: number, imageId: number): Prom
   revalidatePath(`/apps/${id}/creativos`);
 }
 
-const themeHintSchema = z.object({ dark: z.boolean(), background: z.string().max(20), accent: z.string().max(20) }).optional();
+const hexColour = z.string().regex(/^#[0-9a-f]{6}$/i);
+const paletteSchema = z.array(hexColour).max(6).optional().catch(undefined);
+const themeHintSchema = z.object({ dark: z.boolean(), background: z.string().max(20), accent: z.string().max(20), palette: paletteSchema }).optional();
 
 /** Three backdrop prompts for the screenshots, written by Claude from the listing, the keywords and the current theme. */
-export async function generateBackgroundPrompts(appId: number, focus: string, theme?: { dark: boolean; background: string; accent: string }): Promise<LogoPromptResult> {
+export async function generateBackgroundPrompts(appId: number, focus: string, theme?: BackgroundThemeHint): Promise<LogoPromptResult> {
   try {
     const input = await creativeInput(idSchema.parse(appId), z.string().trim().max(200).catch("").parse(focus));
     const { output, model } = await writeBackgroundPrompts(input, themeHintSchema.parse(theme));
@@ -179,16 +181,17 @@ export async function generateBackgroundPrompts(appId: number, focus: string, th
 export type BackgroundImageResult = { id: number; url: string; provider: string; model: string } | { error: string };
 
 /** Generates one portrait backdrop and stores it; the screenshot spec references it by URL. */
-export async function generateBackgroundImage(appId: number, prompt: string): Promise<BackgroundImageResult> {
+export async function generateBackgroundImage(appId: number, prompt: string, palette?: string[]): Promise<BackgroundImageResult> {
   const id = idSchema.parse(appId);
   const text = z.string().trim().min(10).max(2000).safeParse(prompt);
   if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
   await loadAppOrThrow(id);
   try {
-    const { images, provider, model } = await generateImages({ prompt: text.data, count: 1, aspect: "9:16" });
+    const finalPrompt = withAppPalette(text.data, paletteSchema.parse(palette));
+    const { images, provider, model } = await generateImages({ prompt: finalPrompt, count: 1, aspect: "9:16" });
     const [row] = await getDb()
       .insert(schema.generatedImages)
-      .values({ appId: id, kind: "background", prompt: text.data, provider, model, mime: images[0].mime, data: images[0].base64 })
+      .values({ appId: id, kind: "background", prompt: finalPrompt, provider, model, mime: images[0].mime, data: images[0].base64 })
       .returning({ id: schema.generatedImages.id });
     revalidatePath(`/apps/${id}/creativos`);
     return { id: row.id, url: generatedImageUrl(row.id), provider, model };

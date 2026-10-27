@@ -47,6 +47,7 @@ import {
   THEME_PRESETS,
 } from "@/lib/assets/screenshots";
 import { detectScreen } from "@/lib/assets/screen-detect";
+import { paletteFromImages } from "@/lib/assets/palette";
 import { buildZip } from "@/lib/assets/zip";
 import { CropEditor } from "./crop-editor";
 import type { Store } from "@/lib/stores/types";
@@ -66,6 +67,8 @@ type Props = {
   backgrounds: { id: number; prompt: string }[];
   /** Slides whose store screenshot should be scanned once for the app screen (the page could not do it). */
   detectSlides: string[];
+  /** The app's icon (proxied URL), used with the screenshots to read the brand colours. */
+  appIcon: string | null;
   savedAt: string | null;
 };
 
@@ -82,6 +85,7 @@ export function ScreenshotStudio({
   providerLabel,
   backgrounds: initialBackgrounds,
   detectSlides,
+  appIcon,
   savedAt,
 }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
@@ -97,6 +101,8 @@ export function ScreenshotStudio({
   const [exporting, setExporting] = useState(false);
   const [backgrounds, setBackgrounds] = useState(initialBackgrounds);
   const [bgFocus, setBgFocus] = useState("");
+  const [appPalette, setAppPalette] = useState<string[]>([]);
+  const [usePalette, setUsePalette] = useState(true);
   const [bgPrompts, setBgPrompts] = useState<
     { name: string; prompt: string; rationale: string }[]
   >([]);
@@ -137,6 +143,43 @@ export function ScreenshotStudio({
         : null,
     [spec.backgroundImage, imageFor],
   );
+
+  // The app's brand colours, read from its icon (weighted most) and the app screens in the captures.
+  const paletteKey = JSON.stringify([
+    appIcon,
+    spec.slides.map((sl) => [sl.image, sl.crop]),
+  ]);
+  useEffect(() => {
+    let cancelled = false;
+    const sources = JSON.parse(paletteKey) as [
+      string | null,
+      [string | null, Crop | null][],
+    ];
+    (async () => {
+      const [icon, slides] = sources;
+      const loaded = await Promise.all([
+        icon
+          ? imageFor(icon)
+              .then((image) => ({ image, crop: null, weight: 4 }))
+              .catch(() => null)
+          : null,
+        ...slides.map(([src, crop]) =>
+          src
+            ? imageFor(src)
+                .then((image) => ({ image, crop, weight: 1 }))
+                .catch(() => null)
+            : null,
+        ),
+      ]);
+      const usable = loaded.flatMap((x) =>
+        x && x.image ? [{ ...x, image: x.image }] : [],
+      );
+      if (!cancelled) setAppPalette(paletteFromImages(usable, 4));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [paletteKey, imageFor]);
 
   // Redraw every preview a moment after the spec changes.
   useEffect(() => {
@@ -368,7 +411,12 @@ export function ScreenshotStudio({
       const result: LogoPromptResult = await generateBackgroundPrompts(
         appId,
         bgFocus,
-        { dark, background: t.background, accent: t.accent },
+        {
+          dark,
+          background: t.background,
+          accent: t.accent,
+          palette: usePalette && appPalette.length ? appPalette : undefined,
+        },
       );
       if ("error" in result) {
         setStatus({ kind: "error", text: result.error });
@@ -385,6 +433,7 @@ export function ScreenshotStudio({
       const result: BackgroundImageResult = await generateBackgroundImage(
         appId,
         bgPrompt,
+        usePalette && appPalette.length ? appPalette : undefined,
       );
       if ("error" in result) {
         setStatus({ kind: "error", text: result.error });
@@ -1258,6 +1307,26 @@ export function ScreenshotStudio({
                 keywords. El fondo se aplica a todas las pantallas, debajo del
                 adorno y del móvil.
               </p>
+              {appPalette.length > 0 && (
+                <label className="mt-3 flex items-center gap-2 text-xs text-ink-soft">
+                  <input
+                    type="checkbox"
+                    checked={usePalette}
+                    onChange={(e) => setUsePalette(e.target.checked)}
+                  />
+                  Usar los colores de la app
+                  <span className="flex gap-1" aria-hidden>
+                    {appPalette.map((c) => (
+                      <span
+                        key={c}
+                        title={c}
+                        className="h-4 w-4 rounded-full border border-line-strong"
+                        style={{ background: c }}
+                      />
+                    ))}
+                  </span>
+                </label>
+              )}
               {aiEnabled && (
                 <>
                   <input
