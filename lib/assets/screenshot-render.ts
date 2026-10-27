@@ -237,6 +237,50 @@ function drawTextBlock(
   }
 }
 
+/**
+ * A 1×1 canvas holding the average colour of a region of the image. It is built by drawing,
+ * never by reading pixels, so it also works with images the page cannot read.
+ */
+function averageSwatch(
+  image: CanvasImageSource,
+  sx: number,
+  sy: number,
+  sw: number,
+  sh: number,
+): CanvasImageSource | null {
+  const make = (w: number, h: number) => {
+    if (typeof OffscreenCanvas !== "undefined")
+      return new OffscreenCanvas(w, h);
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    return c;
+  };
+  // Halve step by step so every source pixel is blended in, not just a few samples.
+  let src: CanvasImageSource = image;
+  let rect = { x: sx, y: sy, w: sw, h: sh };
+  let w = Math.max(1, Math.ceil(sw));
+  let h = Math.max(1, Math.ceil(sh));
+  do {
+    w = Math.max(1, Math.ceil(w / 2));
+    h = Math.max(1, Math.ceil(h / 2));
+    const c = make(w, h);
+    const g = c?.getContext("2d") as
+      | CanvasRenderingContext2D
+      | OffscreenCanvasRenderingContext2D
+      | null
+      | undefined;
+    if (!c || !g) return null;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(src, rect.x, rect.y, rect.w, rect.h, 0, 0, w, h);
+    src = c;
+    rect = { x: 0, y: 0, w, h };
+  } while (w > 1 || h > 1);
+  return src;
+}
+
 function drawScreen(
   ctx: CanvasRenderingContext2D,
   screen: Rect,
@@ -263,24 +307,48 @@ function drawScreen(
       if (cropped) {
         // A screen cut out of a store composition: match the width so nothing is lost at the sides.
         // Phones in those compositions often run off the bottom of the image, so the cut is shorter
-        // than a real screen; the gap below is filled by stretching the last row of the cut, which
-        // continues the app's own background or tab bar.
+        // than a real screen; the gap below is filled with the average colour of the bottom of the
+        // cut (the app's own background), with a short fade so a half-cut row does not end abruptly.
         const scale = screen.w / iw;
         const dh = ih * scale;
         ctx.drawImage(image, sx, sy, iw, ih, screen.x, screen.y, screen.w, dh);
-        if (dh < screen.h) {
-          const row = Math.max(1, Math.min(ih, 2));
-          ctx.drawImage(
-            image,
-            sx,
-            sy + ih - row,
-            iw,
-            row,
-            screen.x,
-            screen.y + dh - 1,
-            screen.w,
-            screen.h - dh + 1,
-          );
+        if (dh < screen.h - 0.5) {
+          const strip = Math.max(1, Math.round(ih * 0.03));
+          const swatch = averageSwatch(image, sx, sy + ih - strip, iw, strip);
+          if (swatch) {
+            ctx.save();
+            ctx.imageSmoothingEnabled = false;
+            const fade = Math.min(dh * 0.25, screen.w * 0.08);
+            const steps = 12;
+            for (let i = 0; i < steps; i++) {
+              ctx.globalAlpha = (i + 1) / steps;
+              const y = screen.y + dh - fade + (fade * i) / steps;
+              ctx.drawImage(
+                swatch,
+                0,
+                0,
+                1,
+                1,
+                screen.x,
+                y,
+                screen.w,
+                fade / steps + 1,
+              );
+            }
+            ctx.globalAlpha = 1;
+            ctx.drawImage(
+              swatch,
+              0,
+              0,
+              1,
+              1,
+              screen.x,
+              screen.y + dh - 1,
+              screen.w,
+              screen.h - dh + 1,
+            );
+            ctx.restore();
+          }
         }
       } else {
         // Cover the screen, keeping the top edge (status bar) visible.
