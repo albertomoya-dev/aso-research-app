@@ -44,7 +44,7 @@ describe("generateImages", () => {
       { mime: "image/webp", base64: "AAA" },
       { mime: "image/webp", base64: "BBB" },
     ]);
-    expect(result.model).toBe("gpt-image-1");
+    expect(result.model).toBe("gpt-image-2.5-flare");
     const body = JSON.parse(String(spy.mock.calls[0][1]?.body));
     expect(body).toMatchObject({ n: 2, size: "1024x1024", output_format: "webp" });
     expect(spy.mock.calls[0][1]?.headers).toMatchObject({ authorization: "Bearer sk-test" });
