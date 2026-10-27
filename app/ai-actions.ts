@@ -4,10 +4,12 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { AiError, suggestKeywords } from "@/lib/claude";
+import { AiError, rewriteListing, suggestKeywords } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { followKeywords } from "@/lib/follow";
+import { brandOf, cleanProposal, type ListingProposal, proposalFeedback } from "@/lib/listing-optimizer";
 import type { MetadataDraft } from "@/lib/metadata-check";
+import { getKeywordRows } from "@/lib/queries";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
 import type { AppSummary } from "@/lib/stores/types";
@@ -168,4 +170,51 @@ export async function discardDraft(formData: FormData) {
   const appId = idSchema.parse(formData.get("appId"));
   await getDb().update(schema.apps).set({ draft: null }).where(eq(schema.apps.id, appId));
   revalidatePath(`/apps/${appId}/metadata`);
+}
+
+export type OptimizeState = { proposal?: ListingProposal; model?: string; error?: string } | null;
+
+/** Rewrites the editor's current text around the tracked keywords. Nothing is saved: the user reviews and applies it. */
+export async function optimizeListing(_prev: OptimizeState, formData: FormData): Promise<OptimizeState> {
+  const appId = idSchema.parse(formData.get("appId"));
+  const focus = z.string().trim().max(200).catch("").parse(formData.get("focus") ?? "");
+  const fields = Object.fromEntries(Object.keys(draftSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
+  const parsed = draftSchema.safeParse(fields);
+  if (!parsed.success) return { error: "Algún campo es demasiado largo para enviarlo a la IA." };
+  const current: MetadataDraft = parsed.data;
+
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return { error: "App no encontrada." };
+  const rows = await getKeywordRows(app);
+  const competitors = new Map<string, AppSummary>();
+  for (const r of rows) for (const a of r.top5) if (a.id !== app.storeId) competitors.set(a.id, a);
+  const country = getCountry(app.country);
+  const brand = brandOf(current.title || app.meta.title);
+  const input = {
+    store: app.store,
+    countryName: country.name,
+    lang: country.lang,
+    developer: app.meta.developer,
+    category: app.meta.category,
+    current,
+    keywords: rows,
+    avoidBrands: competitorBrands([...competitors.values()], app.meta.developer),
+    focus: focus || undefined,
+  };
+  const tracked = rows.map((r) => r.term);
+
+  try {
+    let result = await rewriteListing(input);
+    let proposal = cleanProposal(app.store, result.output, tracked);
+    // One more try when a field is over its limit or the brand was dropped.
+    const feedback = proposalFeedback(app.store, proposal, brand);
+    if (feedback.length > 0) {
+      result = await rewriteListing(input, feedback);
+      proposal = cleanProposal(app.store, result.output, tracked);
+    }
+    return { proposal, model: result.model };
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
 }
