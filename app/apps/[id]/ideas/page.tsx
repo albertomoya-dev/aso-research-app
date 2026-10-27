@@ -28,7 +28,7 @@ export default async function IdeasPage({ params }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+        <Link href={`/apps/${app.id}`} className="text-link hover:underline">
           {app.title}
         </Link>{" "}
         / Ideas con IA
@@ -51,7 +51,7 @@ export default async function IdeasPage({ params }: Props) {
           <p className="mt-1.5 text-ink-soft">
             Añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno (en Vercel: Settings → Environment Variables) y
             vuelve a desplegar. Mientras tanto puedes añadir keywords a mano o desde{" "}
-            <Link href={`/apps/${app.id}/descubrir`} className="text-brand hover:underline">
+            <Link href={`/apps/${app.id}/descubrir`} className="text-link hover:underline">
               Descubrir keywords
             </Link>
             .

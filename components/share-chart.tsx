@@ -51,7 +51,7 @@ export function ShareChart({ series, points }: { series: Series[]; points: Point
                 const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined;
                 if (!p) return null;
                 return (
-                  <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-md">
+                  <div className="rounded-lg border border-line-strong bg-surface-muted px-3 py-2 text-sm">
                     <div className="mb-1 text-xs text-muted">{day.format(date(String(p.date)))}</div>
                     {series
                       .map((s, i) => ({ s, i, v: Number(p[s.id]) || 0 }))

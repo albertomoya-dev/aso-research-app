@@ -99,7 +99,7 @@ function RankTooltip({ active, label, data }: TooltipProps) {
   const change = point.position != null && previous?.position != null ? previous.position - point.position : null;
 
   return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-md">
+    <div className="rounded-lg border border-line-strong bg-surface-muted px-3 py-2 text-sm">
       <div className="text-xs text-muted">{fmt(point.date, fullDay)}</div>
       <div className="mt-0.5 font-mono text-base font-semibold">
         {point.position != null ? `#${point.position}` : "Fuera de los resultados"}

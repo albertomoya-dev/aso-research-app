@@ -87,7 +87,7 @@ export default async function CompetitorsPage({ params }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+        <Link href={`/apps/${app.id}`} className="text-link hover:underline">
           {app.title}
         </Link>{" "}
         / Competidores
@@ -142,7 +142,7 @@ export default async function CompetitorsPage({ params }: Props) {
                                 <a href={row.app.url} target="_blank" rel="noreferrer" className="truncate hover:underline">
                                   {row.app.title}
                                 </a>
-                                {own && <span className="text-xs font-semibold text-brand">Tu app</span>}
+                                {own && <span className="text-xs font-semibold text-link">Tu app</span>}
                               </span>
                               <span className="block truncate text-xs text-muted">{row.app.developer}</span>
                             </span>

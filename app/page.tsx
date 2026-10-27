@@ -75,13 +75,13 @@ export default async function Home() {
 function SetupNeeded() {
   return (
     <Card className="max-w-xl p-6">
-      <h1 className="text-xl font-bold">Falta conectar la base de datos</h1>
+      <h1 className="text-xl font-semibold">Falta conectar la base de datos</h1>
       <p className="mt-2 text-sm text-ink-soft">
         Define <code className="font-mono">DATABASE_URL</code> (Neon o Supabase) y ejecuta{" "}
         <code className="font-mono">npm run db:migrate</code>. Los pasos están en el README.
       </p>
       <p className="mt-2 text-sm text-ink-soft">
-        Mientras tanto ya puedes <Link href="/buscar" className="text-brand underline">buscar apps</Link>.
+        Mientras tanto ya puedes <Link href="/buscar" className="text-link underline">buscar apps</Link>.
       </p>
     </Card>
   );

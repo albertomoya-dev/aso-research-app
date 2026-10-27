@@ -60,7 +60,7 @@ export default async function KeywordPage(props: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+        <Link href={`/apps/${app.id}`} className="text-link hover:underline">
           {app.title}
         </Link>{" "}
         / Keyword
@@ -68,7 +68,7 @@ export default async function KeywordPage(props: Props) {
 
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{keyword.term}</h1>
+          <h1 className="text-2xl font-semibold">{keyword.term}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted">
             <StoreBadge store={app.store} country={app.country} />
             <span>{getCountry(app.country).name}</span>
@@ -101,7 +101,7 @@ export default async function KeywordPage(props: Props) {
             <h2 className="text-[17px] font-semibold">Posición de {app.title}</h2>
             <p className="text-[13px] text-muted">Arriba es mejor. Los huecos son días fuera de los {depth} primeros resultados o sin consulta.</p>
           </div>
-          <nav aria-label="Periodo" className="flex rounded-[10px] bg-surface-muted p-0.5">
+          <nav aria-label="Periodo" className="flex rounded-lg bg-surface-muted p-0.5">
             {RANGES.map((r) => (
               <Link
                 key={r}

@@ -128,7 +128,7 @@ export default async function TopKeywordsPage({ params, searchParams }: Props) {
       {seeds.length === 0 && followedTerms.length === 0 && !typed && (
         <p className="text-sm text-muted">
           Aún no sigues keywords. Escribe una búsqueda arriba o añade keywords en{" "}
-          <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+          <Link href={`/apps/${app.id}`} className="text-link hover:underline">
             Keywords
           </Link>
           .

@@ -39,7 +39,7 @@ export default async function SeasonalityPage({ params }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={`/apps/${app.id}`} className="text-brand hover:underline">
+        <Link href={`/apps/${app.id}`} className="text-link hover:underline">
           {app.title}
         </Link>{" "}
         / Estacionalidad
@@ -106,7 +106,7 @@ export default async function SeasonalityPage({ params }: Props) {
                       <th
                         key={m}
                         scope="col"
-                        className={`w-[6.5%] py-1.5 text-center text-xs font-semibold ${i === month ? "text-brand" : "text-muted"}`}
+                        className={`w-[6.5%] py-1.5 text-center text-xs font-semibold ${i === month ? "text-link" : "text-muted"}`}
                       >
                         {m}
                         {i === month && <span className="sr-only"> (mes actual)</span>}
