@@ -118,6 +118,11 @@ describe("screenshot templates", () => {
     spec.slides[0].asIs = true;
     expect(screenshotSpecSchema.safeParse(spec).success).toBe(true);
     expect(screenshotSpecSchema.safeParse({ ...spec, backgroundDim: 2 }).success).toBe(false);
+    spec.slides[0].asIs = false;
+    spec.slides[0].crop = { x: 0.2, y: 0.1, w: 0.6, h: 0.8 };
+    expect(screenshotSpecSchema.safeParse(spec).success).toBe(true);
+    expect(screenshotSpecSchema.safeParse({ ...spec, slides: [{ ...spec.slides[0], crop: { x: 0, y: 0, w: 0.01, h: 1 } }] }).success).toBe(false);
+    expect(screenshotSpecSchema.parse({ ...spec, slides: [{ ...spec.slides[0], crop: undefined }] }).slides[0].crop).toBeNull();
   });
 });
 

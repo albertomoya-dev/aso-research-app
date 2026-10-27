@@ -55,6 +55,15 @@ export const themeSchema = z.object({
 });
 export type ScreenshotTheme = z.infer<typeof themeSchema>;
 
+/** A region of the slide image, as fractions of its width and height, that holds the app screen. */
+export const cropSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().min(0.05).max(1),
+  h: z.number().min(0.05).max(1),
+});
+export type Crop = z.infer<typeof cropSchema>;
+
 export const slideSchema = z.object({
   id: z.string().min(1).max(40),
   headline: z.string().max(120),
@@ -66,6 +75,8 @@ export const slideSchema = z.object({
   keyword: z.string().max(80).nullable(),
   /** The image is already a finished store composition (text, device…): draw it edge to edge, nothing on top. */
   asIs: z.boolean().default(false),
+  /** Only this part of the image is the app screen (cut out of a store composition); null uses the whole image. */
+  crop: cropSchema.nullable().default(null),
 });
 export type Slide = z.infer<typeof slideSchema>;
 
@@ -275,6 +286,7 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
       keyword: null,
       // Store screenshots are finished compositions (text, device…): show them as they are.
       asIs: image !== null,
+      crop: null,
     })),
   };
 }

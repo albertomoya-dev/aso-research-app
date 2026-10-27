@@ -1,5 +1,5 @@
 import { Muxer, ArrayBufferTarget } from "mp4-muxer";
-import { drawSlide, type DrawOptions } from "./screenshot-render";
+import { drawSlide, type DrawOptions, screenSource } from "./screenshot-render";
 import { getPreset, type ScreenshotSpec } from "./screenshots";
 import { getVideoPreset, layersAt, totalDuration, type VideoSettings } from "./video";
 
@@ -52,7 +52,17 @@ export function drawFrame(ctx: CanvasRenderingContext2D, t: number, input: Encod
     const next = spec.slides[(layer.slide + 1) % spec.slides.length];
     const img = (src: string | null) => (src && input.images.get(src)) || null;
     const opts = spec.backgroundImage ? { ...input.opts, background: img(spec.backgroundImage) } : input.opts;
-    drawSlide(ctx, spec, slide, img(slide.image), opts, layer.anim, undefined, { index: layer.slide, count: spec.slides.length }, img(next.image));
+    drawSlide(
+      ctx,
+      spec,
+      slide,
+      screenSource(img(slide.image), slide.crop),
+      opts,
+      layer.anim,
+      undefined,
+      { index: layer.slide, count: spec.slides.length },
+      screenSource(img(next.image), next.crop),
+    );
     ctx.restore();
   }
   ctx.restore();
