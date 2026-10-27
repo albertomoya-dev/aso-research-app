@@ -5,6 +5,7 @@ import { MetadataEditor } from "@/components/metadata-editor";
 import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
+import { hasAnthropicKey } from "@/lib/claude";
 import { draftFromMeta } from "@/lib/metadata-check";
 
 type Props = { params: Promise<{ id: string }> };
@@ -39,6 +40,7 @@ export default async function MetadataPage({ params }: Props) {
         published={draftFromMeta(app.meta)}
         hasDraft={app.draft != null}
         keywords={keywords.map((k) => k.term)}
+        aiEnabled={hasAnthropicKey()}
       />
     </div>
   );
