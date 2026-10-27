@@ -292,11 +292,14 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
   }
 
   const headLen = slide ? stripMarks(slide.headline).length : 0;
+  const previewHeight = Math.round((PREVIEW_WIDTH * preset.height) / preset.width);
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-      <div className="flex min-w-0 flex-col gap-4">
-        <Card className="px-5 py-5">
+    // On wide screens the studio fills the page height: the preview strip stays put while the slide
+    // editor and the settings column scroll on their own, so every change is visible as it happens.
+    <div className="grid items-start gap-6 lg:h-full lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
+      <div className="flex min-w-0 flex-col gap-4 lg:min-h-0">
+        <Card className="shrink-0 px-5 py-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-[15px] font-semibold">Vista previa</h2>
@@ -329,8 +332,8 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
                         if (el) canvases.current.set(sl.id, el);
                         else canvases.current.delete(sl.id);
                       }}
-                      style={{ width: PREVIEW_WIDTH, height: Math.round((PREVIEW_WIDTH * preset.height) / preset.width) }}
-                      className="block bg-surface-muted"
+                      style={{ height: `min(${previewHeight}px, 42vh)`, aspectRatio: `${preset.width} / ${preset.height}` }}
+                      className="block w-auto bg-surface-muted"
                     />
                   </button>
                   <p className="mt-1.5 text-center font-mono text-xs text-muted">
@@ -344,8 +347,8 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
                   type="button"
                   onClick={addSlide}
                   disabled={spec.slides.length >= 10}
-                  className="flex h-full min-h-[200px] items-center justify-center rounded-lg border border-dashed border-line-strong px-6 text-[13px] text-muted hover:border-muted hover:text-ink disabled:opacity-50"
-                  style={{ width: PREVIEW_WIDTH }}
+                  className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-line-strong px-6 text-[13px] text-muted hover:border-muted hover:text-ink disabled:opacity-50"
+                  style={{ height: `min(${previewHeight + 4}px, calc(42vh + 4px))`, width: PREVIEW_WIDTH * 0.8 }}
                 >
                   + Añadir pantalla
                 </button>
@@ -355,7 +358,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         </Card>
 
         {slide && (
-          <Card className="px-5 py-5">
+          <Card className="px-5 py-5 lg:min-h-0 lg:overflow-y-auto">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-[15px] font-semibold">Pantalla {selected + 1}</h2>
               <div className="flex gap-1.5">
@@ -472,7 +475,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         )}
       </div>
 
-      <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:pr-1 lg:pb-2">
+      <div className="flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1 lg:pb-2">
         {aiEnabled && (
           <Card className="px-5 py-4">
             <h2 className="text-[15px] font-semibold">Textos con IA</h2>
