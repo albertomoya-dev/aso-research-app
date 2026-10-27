@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { type CopyResult, generateScreenshotCopy, saveDesign } from "@/app/asset-actions";
+import { type BackgroundImageResult, type CopyResult, deleteGeneratedImage, generateBackgroundImage, generateBackgroundPrompts, generateScreenshotCopy, type LogoPromptResult, saveDesign } from "@/app/asset-actions";
 import { downloadBlob, slug } from "@/lib/assets/download";
 import { drawSlide, ensureFonts, loadImage, pageFontFamily, renderSlidePng, shrinkImage } from "@/lib/assets/screenshot-render";
 import {
@@ -33,13 +33,17 @@ type Props = {
   /** Screenshots published in the store, as proxied URLs. */
   storeImages: string[];
   aiEnabled: boolean;
+  /** Name of the configured image provider, or null when none is set up. */
+  providerLabel: string | null;
+  /** Backdrops already generated for this app. */
+  backgrounds: { id: number; prompt: string }[];
   savedAt: string | null;
 };
 
 const PREVIEW_WIDTH = 230;
 const THUMB_WIDTH = 96;
 
-export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages, aiEnabled, savedAt }: Props) {
+export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages, aiEnabled, providerLabel, backgrounds: initialBackgrounds, savedAt }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -48,6 +52,12 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
   const [saving, startSaving] = useTransition();
   const [writing, startWriting] = useTransition();
   const [exporting, setExporting] = useState(false);
+  const [backgrounds, setBackgrounds] = useState(initialBackgrounds);
+  const [bgFocus, setBgFocus] = useState("");
+  const [bgPrompts, setBgPrompts] = useState<{ name: string; prompt: string; rationale: string }[]>([]);
+  const [bgPrompt, setBgPrompt] = useState("");
+  const [bgWriting, startBgWriting] = useTransition();
+  const [bgGenerating, startBgGenerating] = useTransition();
   const images = useRef(new Map<string, HTMLImageElement>());
   const canvases = useRef(new Map<string, HTMLCanvasElement>());
   const thumbs = useRef(new Map<string, HTMLCanvasElement>());
@@ -70,12 +80,15 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     return img;
   }, []);
 
+  const backgroundFor = useCallback(async () => (spec.backgroundImage ? imageFor(spec.backgroundImage).catch(() => null) : null), [spec.backgroundImage, imageFor]);
+
   // Redraw every preview a moment after the spec changes.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(async () => {
       await ensureFonts(font, [500, spec.theme.weight]);
       const count = spec.slides.length;
+      const background = await backgroundFor();
       for (const [index, sl] of spec.slides.entries()) {
         const canvas = canvases.current.get(sl.id);
         if (!canvas) continue;
@@ -88,14 +101,14 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        drawSlide(ctx, spec, sl, img, { fontFamily: font }, undefined, undefined, { index, count }, pair);
+        drawSlide(ctx, spec, sl, img, { fontFamily: font, background }, undefined, undefined, { index, count }, pair);
       }
     }, 120);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [spec, preset, font, imageFor]);
+  }, [spec, preset, font, imageFor, backgroundFor]);
 
   // Thumbnails of the gallery: the first slide rendered with each template.
   const first = spec.slides[0];
@@ -109,13 +122,14 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
       await ensureFonts(font, [500, 600, 700, 800]);
       const img = await imageFor(firstImage).catch(() => null);
       const pair = await imageFor(secondImage ?? firstImage).catch(() => null);
+      const background = await backgroundFor();
       if (cancelled) return;
       for (const t of TEMPLATES) {
         const canvas = thumbs.current.get(t.id);
         if (!canvas) continue;
         const base: ScreenshotSpec = {
           ...spec,
-          slides: [{ id: "thumb", headline: firstHeadline || "Tu *titular* aquí", subheadline: firstSub, image: firstImage, layout: "text-top", keyword: null }],
+          slides: [{ id: "thumb", headline: firstHeadline || "Tu *titular* aquí", subheadline: firstSub, image: firstImage, layout: "text-top", keyword: null, asIs: false }],
         };
         const tspec = applyTemplate(base, t);
         const scale = THUMB_WIDTH / preset.width;
@@ -124,7 +138,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         const ctx = canvas.getContext("2d");
         if (!ctx) continue;
         ctx.setTransform(scale, 0, 0, scale, 0, 0);
-        drawSlide(ctx, tspec, tspec.slides[0], img, { fontFamily: font }, undefined, undefined, { index: 0, count: 2 }, tspec.pair ? pair : null);
+        drawSlide(ctx, tspec, tspec.slides[0], img, { fontFamily: font, background }, undefined, undefined, { index: 0, count: 2 }, tspec.pair ? pair : null);
       }
     }, 150);
     return () => {
@@ -133,7 +147,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     };
     // Only the inputs that change the thumbnails, not every keystroke on other slides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, font, imageFor, firstImage, secondImage, firstHeadline, firstSub, spec.device]);
+  }, [preset, font, imageFor, backgroundFor, firstImage, secondImage, firstHeadline, firstSub, spec.device]);
 
   function pickTemplate(id: string) {
     const t = TEMPLATES.find((x) => x.id === id);
@@ -142,7 +156,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
   }
 
   function addSlide() {
-    const next: Slide = { id: slideId(), headline: "", subheadline: "", image: null, layout: slide?.layout ?? "text-top", keyword: null };
+    const next: Slide = { id: slideId(), headline: "", subheadline: "", image: null, layout: slide?.layout ?? "text-top", keyword: null, asIs: false };
     setSpec((s) => ({ ...s, slides: [...s.slides, next] }));
     setSelected(spec.slides.length);
   }
@@ -205,6 +219,42 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     });
   }
 
+  function proposeBackgrounds() {
+    setStatus(null);
+    startBgWriting(async () => {
+      const t = spec.theme;
+      const dark = parseInt(t.background.slice(1, 3), 16) * 0.299 + parseInt(t.background.slice(3, 5), 16) * 0.587 + parseInt(t.background.slice(5, 7), 16) * 0.114 < 128;
+      const result: LogoPromptResult = await generateBackgroundPrompts(appId, bgFocus, { dark, background: t.background, accent: t.accent });
+      if ("error" in result) {
+        setStatus({ kind: "error", text: result.error });
+        return;
+      }
+      setBgPrompts(result.prompts);
+      setBgPrompt(result.prompts[0]?.prompt ?? "");
+    });
+  }
+
+  function generateBackground() {
+    setStatus(null);
+    startBgGenerating(async () => {
+      const result: BackgroundImageResult = await generateBackgroundImage(appId, bgPrompt);
+      if ("error" in result) {
+        setStatus({ kind: "error", text: result.error });
+        return;
+      }
+      setBackgrounds((b) => [{ id: result.id, prompt: bgPrompt }, ...b]);
+      update({ backgroundImage: result.url });
+      setStatus({ kind: "ok", text: `Fondo generado con ${result.provider} (${result.model}).` });
+    });
+  }
+
+  async function removeBackground(id: number) {
+    const url = `/api/assets/generated/${id}`;
+    setBackgrounds((b) => b.filter((x) => x.id !== id));
+    if (spec.backgroundImage === url) update({ backgroundImage: null });
+    await deleteGeneratedImage(appId, id);
+  }
+
   async function exportOne() {
     if (!slide) return;
     setExporting(true);
@@ -212,7 +262,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
       const img = await imageFor(slide.image).catch(() => null);
       const count = spec.slides.length;
       const pair = spec.pair ? await imageFor(spec.slides[(selected + 1) % count]?.image ?? null).catch(() => null) : null;
-      const blob = await renderSlidePng(spec, slide, img, { fontFamily: font }, { index: selected, count }, pair);
+      const blob = await renderSlidePng(spec, slide, img, { fontFamily: font, background: await backgroundFor() }, { index: selected, count }, pair);
       downloadBlob(`${slug(appTitle)}-${preset.id}-${selected + 1}.png`, blob);
     } catch (err) {
       setStatus({ kind: "error", text: err instanceof Error ? err.message : "No se pudo exportar." });
@@ -226,10 +276,11 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
     try {
       const entries = [];
       const count = spec.slides.length;
+      const background = await backgroundFor();
       for (const [i, sl] of spec.slides.entries()) {
         const img = await imageFor(sl.image).catch(() => null);
         const pair = spec.pair ? await imageFor(spec.slides[(i + 1) % count]?.image ?? null).catch(() => null) : null;
-        const blob = await renderSlidePng(spec, sl, img, { fontFamily: font }, { index: i, count }, pair);
+        const blob = await renderSlidePng(spec, sl, img, { fontFamily: font, background }, { index: i, count }, pair);
         entries.push({ name: `${String(i + 1).padStart(2, "0")}-${preset.id}.png`, data: new Uint8Array(await blob.arrayBuffer()) });
       }
       downloadBlob(`${slug(appTitle)}-${preset.id}.zip`, new Blob([buildZip(entries)], { type: "application/zip" }));
@@ -385,9 +436,19 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
                     </button>
                   )}
                 </div>
+                <label className="flex items-center gap-2 text-[13px] font-normal text-ink-soft">
+                  <input type="checkbox" checked={slide.asIs} onChange={(e) => updateSlide(slide.id, { asIs: e.target.checked })} />
+                  La imagen ya es un montaje terminado: usarla tal cual, sin marco, texto ni fondo
+                </label>
+                {slide.image && storeImages.includes(slide.image) && !slide.asIs && (
+                  <p className="text-xs text-warn-fg">
+                    Esta captura viene de la tienda y suele llevar ya su propio texto y su propio móvil, así que dentro del marco se verá un móvil sobre otro. Para
+                    las plantillas, sube una captura en bruto de la app, o marca la casilla de arriba para usarla tal cual.
+                  </p>
+                )}
                 {storeImages.length > 0 && (
                   <div>
-                    <p className="mb-1.5 text-xs text-muted">O usa una de las capturas publicadas en la tienda:</p>
+                    <p className="mb-1.5 text-xs text-muted">O usa una de las capturas publicadas en la tienda (montajes ya terminados, mejor tal cual):</p>
                     <ul className="flex flex-wrap gap-2">
                       {storeImages.map((src, i) => (
                         <li key={src}>
@@ -411,7 +472,7 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
         )}
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 lg:sticky lg:top-0 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto lg:pr-1 lg:pb-2">
         {aiEnabled && (
           <Card className="px-5 py-4">
             <h2 className="text-[15px] font-semibold">Textos con IA</h2>
@@ -587,6 +648,108 @@ export function ScreenshotStudio({ appId, appTitle, store, initial, storeImages,
               <input type="range" min={70} max={150} value={Math.round(spec.textScale * 100)} onChange={(e) => update({ textScale: Number(e.target.value) / 100 })} />
             </label>
           </div>
+        </Card>
+
+        <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Fondo con IA</h2>
+          {providerLabel ? (
+            <>
+              <p className="mt-1 text-xs text-muted">
+                {providerLabel} dibuja un fondo vertical según la temática de la app; Claude puede proponer el prompt a partir de la ficha y las keywords. El fondo
+                se aplica a todas las pantallas, debajo del adorno y del móvil.
+              </p>
+              {aiEnabled && (
+                <>
+                  <input
+                    value={bgFocus}
+                    onChange={(e) => setBgFocus(e.target.value)}
+                    maxLength={200}
+                    placeholder="Enfoque (opcional): motivos, ambiente, colores…"
+                    className={`${inputClass} mt-3 w-full`}
+                  />
+                  <button type="button" onClick={proposeBackgrounds} disabled={bgWriting} aria-busy={bgWriting} className={`${buttonSecondary} mt-2 w-full`}>
+                    {bgWriting ? "Proponiendo…" : "Proponer fondos con Claude"}
+                  </button>
+                  {bgPrompts.length > 0 && (
+                    <ul className="mt-2 flex flex-wrap gap-1.5">
+                      {bgPrompts.map((p) => (
+                        <li key={p.name}>
+                          <button
+                            type="button"
+                            onClick={() => setBgPrompt(p.prompt)}
+                            title={p.rationale}
+                            aria-pressed={bgPrompt === p.prompt}
+                            className={`rounded-md border px-2 py-1 text-xs ${bgPrompt === p.prompt ? "border-brand text-ink" : "border-line-strong text-ink-soft hover:border-muted"}`}
+                          >
+                            {p.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+              <textarea
+                value={bgPrompt}
+                onChange={(e) => setBgPrompt(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="Prompt en inglés para el modelo de imágenes: colores, motivos, estilo… Sin texto ni móviles."
+                className={`${inputClass} mt-3 w-full py-2 text-xs`}
+              />
+              <button type="button" onClick={generateBackground} disabled={bgGenerating || bgPrompt.trim().length < 10} aria-busy={bgGenerating} className={`${buttonPrimary} mt-2 w-full`}>
+                {bgGenerating ? "Generando fondo…" : "Generar fondo"}
+              </button>
+            </>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              Para generar fondos hace falta un proveedor de imágenes: añade <code className="font-mono">OPENAI_API_KEY</code> o{" "}
+              <code className="font-mono">GEMINI_API_KEY</code> en Vercel.
+            </p>
+          )}
+          {backgrounds.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {backgrounds.map((b) => {
+                const url = `/api/assets/generated/${b.id}`;
+                const active = spec.backgroundImage === url;
+                return (
+                  <li key={b.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => update({ backgroundImage: active ? null : url })}
+                      aria-pressed={active}
+                      title={b.prompt}
+                      className={`block overflow-hidden rounded-md border-2 ${active ? "border-brand" : "border-line hover:border-line-strong"}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" className="h-24 w-auto bg-surface-muted object-cover" loading="lazy" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeBackground(b.id)}
+                      aria-label="Borrar este fondo"
+                      className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border border-line-strong bg-surface text-xs text-muted hover:text-danger"
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {spec.backgroundImage && (
+            <div className="mt-3 flex flex-col gap-2">
+              <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
+                <span className="flex justify-between">
+                  Velo del color de fondo <span className="font-mono text-xs text-muted">{Math.round(spec.backgroundDim * 100)}%</span>
+                </span>
+                <input type="range" min={0} max={90} value={Math.round(spec.backgroundDim * 100)} onChange={(e) => update({ backgroundDim: Number(e.target.value) / 100 })} />
+              </label>
+              <button type="button" onClick={() => update({ backgroundImage: null })} className={buttonSecondary}>
+                Quitar el fondo
+              </button>
+            </div>
+          )}
         </Card>
 
         <Card className="px-5 py-4">

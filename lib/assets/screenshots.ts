@@ -64,6 +64,8 @@ export const slideSchema = z.object({
   layout: z.enum(["text-top", "text-bottom"]),
   /** The keyword this slide is written for, for the user's reference. */
   keyword: z.string().max(80).nullable(),
+  /** The image is already a finished store composition (text, device…): draw it edge to edge, nothing on top. */
+  asIs: z.boolean().default(false),
 });
 export type Slide = z.infer<typeof slideSchema>;
 
@@ -102,6 +104,10 @@ export const screenshotSpecSchema = z.object({
   decor: z.enum(DECORS).default("none"),
   /** Multiplier on the headline and subheadline sizes. */
   textScale: z.number().min(0.7).max(1.5).default(1),
+  /** URL of a generated backdrop (/api/assets/generated/{id}); drawn under the decor, covering the canvas. */
+  backgroundImage: z.string().max(200).nullable().default(null),
+  /** How much of the theme background colour is laid over the backdrop so the text stays readable (0–0.9). */
+  backgroundDim: z.number().min(0).max(0.9).default(0.3),
   slides: z.array(slideSchema).min(1).max(10),
 });
 export type ScreenshotSpec = z.infer<typeof screenshotSpecSchema>;
@@ -258,6 +264,8 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
     device: preset.id,
     ...style,
     template: TEMPLATES[0].id,
+    backgroundImage: null,
+    backgroundDim: 0.3,
     slides: sources.map((image, i) => ({
       id: slideId(),
       headline: i === 0 ? `*${title}*` : "",
@@ -265,6 +273,7 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
       image,
       layout,
       keyword: null,
+      asIs: false,
     })),
   };
 }
@@ -337,6 +346,11 @@ export function specBytes(spec: ScreenshotSpec): number {
 export const MAX_SPEC_BYTES = 3_500_000;
 
 /** Same-origin URL for a store screenshot (see app/api/assets/image/route.ts). */
+/** Where a generated image (logo or backdrop) is served from. */
+export function generatedImageUrl(id: number): string {
+  return `/api/assets/generated/${id}`;
+}
+
 export function proxied(url: string): string {
   return `/api/assets/image?url=${encodeURIComponent(url)}`;
 }

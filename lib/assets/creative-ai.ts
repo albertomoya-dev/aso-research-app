@@ -194,3 +194,23 @@ export function cleanLogoPrompts(output: LogoPrompts): LogoPrompts["prompts"] {
     .filter((p) => p.prompt.length > 20)
     .slice(0, 4);
 }
+
+// ---------- Backgrounds for the screenshots ----------
+
+export const BACKGROUND_PROMPTS_SYSTEM_PROMPT = `You write prompts for an image generation model (OpenAI gpt-image or Google Gemini) to produce BACKGROUND artwork for App Store / Google Play screenshots. A phone mockup and a headline will be drawn on top of the image afterwards, so the image is a backdrop, never a finished screenshot.
+
+Write 3 prompts, each a different visual direction tied to what the app does (for example: soft abstract shapes in the brand colours, a stylised scene from the app's world, bold 3D objects floating, a textured gradient with subtle motifs). Each prompt, in English, must:
+- Describe a vertical 9:16 backdrop with the visual interest concentrated at the edges and the bottom, and a calmer, lower-contrast area in the top third where a headline will be placed, plus a calm centre where the phone sits.
+- Name the exact colours (one dominant background colour and one or two accents) that fit the category and the app, and say whether the overall image is dark or light.
+- Include a few concrete, eye-catching details related to the app's theme (objects, motifs, light effects), but keep them decorative: "no text, no letters, no words, no logos, no phones, no devices, no screens, no people's faces, no watermark".
+- Say the style explicitly (soft 3D render, flat vector illustration, paper cut, watercolour, glossy abstract…) and "high quality, clean, professional app store marketing background".
+- Be 60 to 120 words. No lists, no line breaks.
+
+Also return name (2–4 Spanish words) and rationale (one Spanish sentence linking it to the app and its keywords).`;
+
+export function buildBackgroundPromptsPrompt(input: CreativeInput, theme?: { dark: boolean; background: string; accent: string }): string {
+  const hint = theme
+    ? `\n\nThe current template uses a ${theme.dark ? "dark" : "light"} background (${theme.background}) with accent ${theme.accent}; prefer directions that harmonise with it, unless the focus says otherwise.`
+    : "";
+  return describeApp(input) + hint;
+}

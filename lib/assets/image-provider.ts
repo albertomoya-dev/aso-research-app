@@ -26,15 +26,17 @@ export function imageModel(provider: ImageProvider): string {
 
 export const IMAGE_PROVIDER_LABEL: Record<ImageProvider, string> = { openai: "OpenAI", gemini: "Google Gemini" };
 
-export type GenerateInput = { prompt: string; count: number; signal?: AbortSignal };
+export type ImageAspect = "1:1" | "9:16";
+export type GenerateInput = { prompt: string; count: number; aspect?: ImageAspect; signal?: AbortSignal };
 
-/** Square images, 1024×1024, as base64. Throws ImageGenError with a message for the user. */
+/** Square (1024×1024) or portrait (1024×1536 / 9:16) images as base64. Throws ImageGenError with a message for the user. */
 export async function generateImages(input: GenerateInput): Promise<{ images: GeneratedImage[]; provider: ImageProvider; model: string }> {
   const provider = imageProvider();
   if (!provider) throw new ImageGenError("No hay proveedor de imágenes: añade OPENAI_API_KEY o GEMINI_API_KEY.");
   const model = imageModel(provider);
   const count = Math.max(1, Math.min(4, input.count));
-  const images = provider === "openai" ? await openai(model, input.prompt, count, input.signal) : await gemini(model, input.prompt, count, input.signal);
+  const aspect = input.aspect ?? "1:1";
+  const images = provider === "openai" ? await openai(model, input.prompt, count, aspect, input.signal) : await gemini(model, input.prompt, count, aspect, input.signal);
   if (images.length === 0) throw new ImageGenError("El proveedor no devolvió ninguna imagen.");
   return { images, provider, model };
 }
@@ -57,7 +59,7 @@ function failure(provider: ImageProvider, status: number, detail: string): Image
   return new ImageGenError(`${name} respondió ${status}: ${detail}`);
 }
 
-async function openai(model: string, prompt: string, n: number, signal?: AbortSignal): Promise<GeneratedImage[]> {
+async function openai(model: string, prompt: string, n: number, aspect: ImageAspect, signal?: AbortSignal): Promise<GeneratedImage[]> {
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     signal,
@@ -66,7 +68,7 @@ async function openai(model: string, prompt: string, n: number, signal?: AbortSi
       model,
       prompt,
       n,
-      size: "1024x1024",
+      size: aspect === "9:16" ? "1024x1536" : "1024x1024",
       quality: process.env.OPENAI_IMAGE_QUALITY?.trim() || "medium",
       // WebP keeps the saved rows small; the browser converts to PNG when downloading.
       output_format: "webp",
@@ -78,7 +80,7 @@ async function openai(model: string, prompt: string, n: number, signal?: AbortSi
   return (json.data ?? []).flatMap((d) => (d.b64_json ? [{ mime: "image/webp", base64: d.b64_json }] : []));
 }
 
-async function gemini(model: string, prompt: string, n: number, signal?: AbortSignal): Promise<GeneratedImage[]> {
+async function gemini(model: string, prompt: string, n: number, aspect: ImageAspect, signal?: AbortSignal): Promise<GeneratedImage[]> {
   const key = process.env.GEMINI_API_KEY ?? "";
   const base = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;
   const headers = { "content-type": "application/json", "x-goog-api-key": key };
@@ -88,7 +90,7 @@ async function gemini(model: string, prompt: string, n: number, signal?: AbortSi
       method: "POST",
       signal,
       headers,
-      body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: n, aspectRatio: "1:1" } }),
+      body: JSON.stringify({ instances: [{ prompt }], parameters: { sampleCount: n, aspectRatio: aspect } }),
     });
     if (!res.ok) throw failure("gemini", res.status, await readError(res));
     const json = (await res.json()) as { predictions?: { bytesBase64Encoded?: string; mimeType?: string }[] };
@@ -103,7 +105,7 @@ async function gemini(model: string, prompt: string, n: number, signal?: AbortSi
       headers,
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1" } },
+        generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: aspect } },
       }),
     }),
   );

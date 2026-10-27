@@ -101,6 +101,17 @@ describe("screenshot templates", () => {
     expect(parsed.deviceRotate).toBe(0);
     expect(parsed.textScale).toBe(1);
     expect(parsed.pair).toBe(false);
+    expect(parsed.backgroundImage).toBeNull();
+    expect(parsed.backgroundDim).toBe(0.3);
+    expect(parsed.slides[0].asIs).toBe(false);
+  });
+
+  it("accepts a generated backdrop URL and an as-is slide", () => {
+    const spec = defaultScreenshotSpec("ios", "App", ["x"]);
+    spec.backgroundImage = "/api/assets/generated/12";
+    spec.slides[0].asIs = true;
+    expect(screenshotSpecSchema.safeParse(spec).success).toBe(true);
+    expect(screenshotSpecSchema.safeParse({ ...spec, backgroundDim: 2 }).success).toBe(false);
   });
 });
 

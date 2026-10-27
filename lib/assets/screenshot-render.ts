@@ -8,7 +8,20 @@ import { getPreset, type FrameKind, type Line, type ScreenshotSpec, type Slide, 
 export type DrawOptions = {
   /** CSS font family stack; the app passes the one from `body` so Inter is used. */
   fontFamily: string;
+  /** The generated backdrop named by spec.backgroundImage, already loaded; drawn under everything. */
+  background?: CanvasImageSource | null;
 };
+
+/** Draws an image so it covers the whole rectangle, cropping the overflow (like CSS object-fit: cover). */
+export function drawCover(ctx: CanvasRenderingContext2D, image: CanvasImageSource, x: number, y: number, w: number, h: number) {
+  const iw = "naturalWidth" in image ? image.naturalWidth : "videoWidth" in image ? image.videoWidth : (image as { width: number }).width;
+  const ih = "naturalHeight" in image ? image.naturalHeight : "videoHeight" in image ? image.videoHeight : (image as { height: number }).height;
+  if (!iw || !ih) return;
+  const k = Math.max(w / iw, h / ih);
+  const dw = iw * k;
+  const dh = ih * k;
+  ctx.drawImage(image, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+}
 
 /** Per-frame tweaks for the promo video: text fades and slides in, the device zooms gently. */
 export type SlideAnimation = {
@@ -357,6 +370,22 @@ export function drawSlide(
   const h = size?.height ?? preset.height;
   const theme = spec.theme;
   paintBackground(ctx, theme, w, h);
+
+  // A finished composition from the store: show it edge to edge and draw nothing on top.
+  if (slide.asIs) {
+    if (image) drawCover(ctx, image, 0, 0, w, h);
+    return;
+  }
+
+  if (spec.backgroundImage && opts.background) {
+    drawCover(ctx, opts.background, 0, 0, w, h);
+    if (spec.backgroundDim > 0) {
+      ctx.save();
+      ctx.globalAlpha = spec.backgroundDim;
+      paintBackground(ctx, theme, w, h);
+      ctx.restore();
+    }
+  }
 
   // Odd slides mirror the tilt and the shift so a set alternates left and right.
   const mirror = spec.alternate && pos.index % 2 === 1 ? -1 : 1;
