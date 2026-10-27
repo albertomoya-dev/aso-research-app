@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { getDb, hasDatabase, schema } from "@/db";
 import { unreadAlertCount } from "@/lib/alert-jobs";
 import { AppIcon } from "./app-icon";
@@ -25,8 +26,8 @@ async function followedApps() {
   }
 }
 
-export async function Sidebar() {
-  const [apps, unread] = await Promise.all([followedApps(), unreadAlerts()]);
+// The sidebar's data streams in behind Suspense so it never holds back the page itself.
+export function Sidebar() {
   return (
     <nav
       aria-label="Principal"
@@ -44,26 +45,42 @@ export async function Sidebar() {
         <NavLink href="/buscar">Buscar app</NavLink>
         <NavLink href="/novedades">
           Novedades
-          {unread > 0 && (
-            <span className="ml-auto rounded-full bg-brand px-2 py-0.5 font-mono text-xs font-semibold text-on-brand">
-              <span className="sr-only">sin leer: </span>
-              {unread > 99 ? "99+" : unread}
-            </span>
-          )}
+          <Suspense>
+            <UnreadBadge />
+          </Suspense>
         </NavLink>
         <NavLink href="/resumen">Resumen semanal</NavLink>
       </div>
-      {apps.length > 0 && (
-        <div className="mt-6 hidden md:block">
-          <div className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted uppercase">Mis apps</div>
-          {apps.map((app) => (
-            <NavLink key={app.id} href={`/apps/${app.id}`}>
-              <AppIcon src={app.icon} size={24} />
-              <span className="truncate">{app.title}</span>
-            </NavLink>
-          ))}
-        </div>
-      )}
+      <Suspense>
+        <FollowedApps />
+      </Suspense>
     </nav>
+  );
+}
+
+async function UnreadBadge() {
+  const unread = await unreadAlerts();
+  if (unread === 0) return null;
+  return (
+    <span className="ml-auto rounded-full bg-brand px-2 py-0.5 font-mono text-xs font-semibold text-on-brand">
+      <span className="sr-only">sin leer: </span>
+      {unread > 99 ? "99+" : unread}
+    </span>
+  );
+}
+
+async function FollowedApps() {
+  const apps = await followedApps();
+  if (apps.length === 0) return null;
+  return (
+    <div className="mt-6 hidden md:block">
+      <div className="px-3 pb-1 text-xs font-semibold tracking-wider text-muted uppercase">Mis apps</div>
+      {apps.map((app) => (
+        <NavLink key={app.id} href={`/apps/${app.id}`}>
+          <AppIcon src={app.icon} size={24} />
+          <span className="truncate">{app.title}</span>
+        </NavLink>
+      ))}
+    </div>
   );
 }
