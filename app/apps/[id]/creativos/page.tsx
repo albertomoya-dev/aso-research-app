@@ -115,6 +115,7 @@ export default async function ScreenshotsPage({ params }: Props) {
         providerLabel={provider ? IMAGE_PROVIDER_LABEL[provider] : null}
         backgrounds={backgrounds}
         detectSlides={detectSlides}
+        appIcon={app.icon ? proxied(app.icon) : null}
         savedAt={saved?.updatedAt.toISOString() ?? null}
       />
     </div>

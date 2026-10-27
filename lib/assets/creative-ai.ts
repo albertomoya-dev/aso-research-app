@@ -201,16 +201,29 @@ export const BACKGROUND_PROMPTS_SYSTEM_PROMPT = `You write prompts for an image 
 
 Write 3 prompts, each a different visual direction tied to what the app does (for example: soft abstract shapes in the brand colours, a stylised scene from the app's world, bold 3D objects floating, a textured gradient with subtle motifs). Each prompt, in English, must:
 - Describe a vertical 9:16 backdrop with the visual interest concentrated at the edges and the bottom, and a calmer, lower-contrast area in the top third where a headline will be placed, plus a calm centre where the phone sits.
-- Name the exact colours (one dominant background colour and one or two accents) that fit the category and the app, and say whether the overall image is dark or light.
+- Name the exact colours as hex values (one dominant background colour and one or two accents). When the app's brand colours are given, take them from that palette; otherwise choose colours that fit the category and the app. Say whether the overall image is dark or light.
 - Include a few concrete, eye-catching details related to the app's theme (objects, motifs, light effects), but keep them decorative: "no text, no letters, no words, no logos, no phones, no devices, no screens, no people's faces, no watermark".
 - Say the style explicitly (soft 3D render, flat vector illustration, paper cut, watercolour, glossy abstract…) and "high quality, clean, professional app store marketing background".
 - Be 60 to 120 words. No lists, no line breaks.
 
 Also return name (2–4 Spanish words) and rationale (one Spanish sentence linking it to the app and its keywords).`;
 
-export function buildBackgroundPromptsPrompt(input: CreativeInput, theme?: { dark: boolean; background: string; accent: string }): string {
-  const hint = theme
-    ? `\n\nThe current template uses a ${theme.dark ? "dark" : "light"} background (${theme.background}) with accent ${theme.accent}; prefer directions that harmonise with it, unless the focus says otherwise.`
+/** What the studio knows about the look: the template colours and the app's own palette. */
+export type BackgroundThemeHint = { dark: boolean; background: string; accent: string; palette?: string[] };
+
+export function buildBackgroundPromptsPrompt(input: CreativeInput, theme?: BackgroundThemeHint): string {
+  if (!theme) return describeApp(input);
+  const palette = theme.palette?.length
+    ? `\n\nThe app's own brand colours, read from its icon and screenshots, are ${theme.palette.join(", ")}. Build every direction on this palette: the dominant background colour and the accents must come from it (lighter or darker tints of these colours are fine), and name the hex values in each prompt, so the backdrop looks like it belongs to the app.`
     : "";
-  return describeApp(input) + hint;
+  const template = `\n\nThe current template uses a ${theme.dark ? "dark" : "light"} background (${theme.background}) with accent ${theme.accent}; ${palette ? "use it only to decide whether the image is dark or light" : "prefer directions that harmonise with it"}, unless the focus says otherwise.`;
+  return describeApp(input) + palette + template;
+}
+
+/** Appends the app's palette to a prompt written by hand, when the prompt does not already name it. */
+export function withAppPalette(prompt: string, palette: string[] | undefined): string {
+  if (!palette?.length) return prompt;
+  const lower = prompt.toLowerCase();
+  if (palette.every((c) => lower.includes(c.toLowerCase()))) return prompt;
+  return `${prompt.trim()} Use the app's brand colour palette: ${palette.join(", ")}.`;
 }
