@@ -50,6 +50,13 @@
       "when": 1793043193840,
       "tag": "0006_review_analyses",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793110705206,
+      "tag": "0007_asset_designs",
+      "breakpoints": true
     }
   ]
 }

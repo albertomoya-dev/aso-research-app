@@ -14,6 +14,8 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
 import type { AlertKind, AlertTone } from "@/lib/alerts";
+import type { IconSpec } from "@/lib/assets/icon";
+import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 import type { RatingStats, ReviewAnalysis } from "@/lib/review-analysis";
@@ -238,6 +240,24 @@ export const reviewAnalyses = pgTable("review_analyses", {
   promptVersion: text("prompt_version").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const assetKindEnum = pgEnum("asset_kind", ["screenshots", "icon"]);
+
+/** The saved screenshot set or icon design of an app (one per kind), built in the browser from its spec. */
+export const assetDesigns = pgTable(
+  "asset_designs",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    kind: assetKindEnum("kind").notNull(),
+    spec: jsonb("spec").$type<ScreenshotSpec | IconSpec>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("asset_designs_app_kind_idx").on(t.appId, t.kind)],
+);
 
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;

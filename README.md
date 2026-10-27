@@ -15,6 +15,9 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 7 | Análisis de reseñas con IA (tu app y competidores) | Hecho |
 | 8 | Estacionalidad de keywords y la misma app en varios países | Hecho |
 | 9 | Keywords del TOP 10: extraer las palabras clave de las fichas de las 10 primeras apps | Hecho |
+| 10 | Creativos: screenshots con marco de dispositivo e icono vectorial, con textos y conceptos de Claude | Hecho |
+| 11 | Logos con un proveedor de imágenes generativas (OpenAI o Gemini) | Pendiente |
+| 12 | Vídeo promocional a partir de las pantallas | Pendiente |
 
 ## Stack
 
@@ -106,6 +109,16 @@ La distribución de estrellas y la media se calculan con las reseñas leídas, n
 La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen.
 
 En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país se sigue por separado, con sus posiciones y su histórico.
+
+## Creativos: screenshots e icono
+
+La pestaña **Creativos** monta los recursos gráficos de la ficha en el navegador (canvas), sin servicios externos:
+
+- **Screenshots**: una pantalla por captura con marco de iPhone, iPad o Android (o sin marco), fondo liso o degradado, titular y subtítulo. Puedes subir tus capturas (se reducen a 1800 px de alto para que el conjunto quepa en un guardado) o usar las que ya tienes publicadas en la tienda, que pasan por `/api/assets/image` para que el canvas pueda exportarlas. Los tamaños son los que aceptan las tiendas: iPhone 6,9" (1320×2868), 6,7" (1290×2796), 6,5" (1284×2778), iPad 13" (2064×2752) y Android 1080×1920, 1440×2560 y tablet 1440×2560. En el titular, las palabras entre `*asteriscos*` se pintan con el color de acento. Se descargan como PNG o todas en un ZIP.
+- **Textos con IA**: Claude escribe un titular (2–5 palabras) y un subtítulo por pantalla a partir de la ficha y de las keywords seguidas, ordenadas por oportunidad, y anota a qué keyword apunta cada pantalla.
+- **Icono**: un diseño vectorial (fondo liso o degradado, letra o símbolo, placa opcional, brillo y sombra) que se previsualiza con la máscara de App Store y la circular de Google Play y a 64, 40 y 29 px, junto al icono actual. Avisa si el símbolo contrasta poco o casi toca el borde. Se exporta a 1024×1024 (App Store) y 512×512 (Google Play). Claude propone cuatro conceptos en ese mismo sistema.
+
+El diseño de cada tipo se guarda en la tabla `asset_designs` (uno por app y tipo); las capturas subidas viajan en base64, por lo que el límite del cuerpo de las server actions está en 4 MB (`next.config.ts`).
 
 ## Novedades y resumen semanal
 
