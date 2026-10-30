@@ -1,0 +1,16 @@
+{
+  "store": "android",
+  "storeId": "com.moyalogames.recordatorio",
+  "country": "es",
+  "developer": "Moyalo Games",
+  "category": "Medicina",
+  "version": "2.4.0",
+  "releaseNotes": "Mejoras de estabilidad en las alarmas y corrección de errores.",
+  "draft": {
+    "title": "Recordatorio pastillas y toma",
+    "subtitle": "",
+    "keywordField": "",
+    "shortDescription": "Pastillero digital fácil: alarmas de medicamentos y control de tu tratamiento",
+    "description": "¿Se te olvida tomar la medicación? Recordatorio pastillas y toma es el pastillero digital que te avisa a la hora exacta de cada dosis.\n\nAñade tus medicamentos buscándolos en el catálogo oficial CIMA de la AEMPS: verás el nombre, la foto de la caja y el principio activo, sin tener que escribir nada a mano.\n\nALARMAS EXACTAS\n• Las alarmas suenan aunque la app esté cerrada o el móvil bloqueado.\n• Atajos rápidos de horario: 08:00, 14:00 y 21:00.\n\nCONFIRMA LA TOMA DESDE LA NOTIFICACIÓN\n• Botones Tomada, Pospuesta u Omitida sin abrir la app.\n• Protección contra doble toma: te avisa si ya registraste esa dosis en las últimas 4 horas.\n\nCONTROL DE TU TRATAMIENTO\n• Adherencia: consulta qué porcentaje de tomas has cumplido.\n• Stock bajo: te avisamos cuando quedan pocas pastillas para que no te quedes sin ellas.\n• Historial de tomas por días.\n\nPRIVACIDAD\n• Sin registro y sin anuncios.\n• Tus datos se quedan en tu dispositivo.\n• Copia de seguridad cuando tú quieras.\n• Tema claro y oscuro.\n\nRecordatorio pastillas y toma no sustituye el consejo de tu médico o farmacéutico. Consulta siempre con un profesional sanitario."
+  }
+}

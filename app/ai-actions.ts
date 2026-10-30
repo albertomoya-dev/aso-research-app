@@ -9,6 +9,8 @@ import { getCountry } from "@/lib/countries";
 import { followKeywords } from "@/lib/follow";
 import { brandOf, cleanProposal, type ListingProposal, proposalFeedback } from "@/lib/listing-optimizer";
 import type { MetadataDraft } from "@/lib/metadata-check";
+import { FACTS_MODES } from "@/lib/product-facts";
+import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
@@ -20,7 +22,8 @@ const idSchema = z.coerce.number().int().positive();
 /** Real signals for the prompt: tracked and rejected keywords, store autocomplete and the apps ranking for our keywords. */
 async function gatherContext(app: typeof schema.apps.$inferSelect) {
   const db = getDb();
-  const [tracked, previous, snapshots] = await Promise.all([
+  // Keyword research looks ahead, so features of the next version count too.
+  const [tracked, previous, snapshots, facts] = await Promise.all([
     db
       .select({ term: schema.keywords.term })
       .from(schema.appKeywords)
@@ -36,6 +39,7 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
       .where(and(eq(schema.rankSnapshots.appId, app.id), gte(schema.rankSnapshots.date, shiftDate(today(), -7))))
       .orderBy(desc(schema.rankSnapshots.date))
       .limit(200),
+    productFactsPrompt(app.id, "next"),
   ]);
 
   const competitors = new Map<string, AppSummary>();
@@ -53,6 +57,7 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
     rejected: previous.filter((p) => p.status === "dismissed").map((p) => p.term),
     autocomplete,
     competitors: [...competitors.values()].slice(0, 25).map((c) => ({ title: c.title, developer: c.developer })),
+    facts,
   };
 }
 
@@ -178,6 +183,8 @@ export type OptimizeState = { proposal?: ListingProposal; model?: string; error?
 export async function optimizeListing(_prev: OptimizeState, formData: FormData): Promise<OptimizeState> {
   const appId = idSchema.parse(formData.get("appId"));
   const focus = z.string().trim().max(200).catch("").parse(formData.get("focus") ?? "");
+  // Which version the listing is for: only shipped features, or also those of the next release.
+  const mode = z.enum(FACTS_MODES).catch("next").parse(formData.get("factsMode"));
   const fields = Object.fromEntries(Object.keys(draftSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
   const parsed = draftSchema.safeParse(fields);
   if (!parsed.success) return { error: "Algún campo es demasiado largo para enviarlo a la IA." };
@@ -185,7 +192,7 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
 
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };
-  const rows = await getKeywordRows(app);
+  const [rows, facts] = await Promise.all([getKeywordRows(app), productFactsPrompt(app.id, mode)]);
   const competitors = new Map<string, AppSummary>();
   for (const r of rows) for (const a of r.top5) if (a.id !== app.storeId) competitors.set(a.id, a);
   const country = getCountry(app.country);
@@ -199,6 +206,9 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
     current,
     keywords: rows,
     avoidBrands: competitorBrands([...competitors.values()], app.meta.developer),
+    facts,
+    version: app.meta.version,
+    releaseNotes: app.meta.releaseNotes,
     focus: focus || undefined,
   };
   const tracked = rows.map((r) => r.term);

@@ -3,7 +3,7 @@ import { normalizeKeyword } from "./keywords";
 import type { AppMeta, Store } from "./stores/types";
 
 /** Bump when the instructions or the output shape change, so old suggestions can be told apart. */
-export const PROMPT_VERSION = "kw-1";
+export const PROMPT_VERSION = "kw-2";
 export const MAX_SUGGESTIONS = 40;
 
 export const INTENTS = ["category", "feature", "problem", "audience", "competitor-alternative", "long-tail"] as const;
@@ -52,6 +52,7 @@ export const SYSTEM_PROMPT = `You are an App Store Optimization (ASO) specialist
 Rules:
 - Write every keyword in the store's language, the way people type it in that country: lower case, no punctuation, no hashtags, one to four words.
 - Only propose keywords that describe what the app actually does or the problem it solves. Relevance means how well the app answers that search, from 1 (barely related) to 5 (exactly what the app is).
+- When the prompt includes PRODUCT FACTS, they are the source of truth about what the app does: use the features listed there (the listing is only a reference and may be outdated), never propose keywords for features it does not list, and follow its constraints. Without PRODUCT FACTS, rely on the listing and do not invent features.
 - Never propose brand names of other apps or companies, even when they are listed as competitors. You may propose generic alternatives ("strava alternative" is not allowed, "running tracker" is).
 - Do not repeat keywords the user already tracks or has rejected, and do not return two keywords that only differ in plural, accents or word order.
 - Mix short category terms with specific long-tail phrases. Long-tail phrases are usually easier to rank for.
@@ -65,7 +66,10 @@ export type PromptInput = {
   store: Store;
   countryName: string;
   lang: string;
-  meta: Pick<AppMeta, "title" | "developer" | "category" | "shortDescription" | "description">;
+  meta: Pick<AppMeta, "title" | "developer" | "category" | "shortDescription" | "description"> &
+    Partial<Pick<AppMeta, "version" | "releaseNotes">>;
+  /** PRODUCT FACTS block from `factsForPrompt`, or null when the owner has not filled in the product sheet. */
+  facts: string | null;
   existing: string[];
   rejected: string[];
   autocomplete: string[];
@@ -81,12 +85,15 @@ export function buildUserPrompt(input: PromptInput): string {
   return [
     `Store: ${input.store === "ios" ? "Apple App Store" : "Google Play"}, country: ${input.countryName}, language code: ${input.lang}.`,
     "",
-    "App listing:",
+    input.facts ? "App listing (may be outdated; PRODUCT FACTS below win):" : "App listing:",
     `Title: ${meta.title}`,
     `Developer: ${meta.developer}`,
     `Category: ${meta.category ?? "–"}`,
     input.store === "android" ? `Short description: ${clip(meta.shortDescription, 200)}` : null,
     `Description: ${clip(meta.description, 3000)}`,
+    meta.version ? `Published version: ${meta.version}${meta.releaseNotes ? `. Release notes: ${clip(meta.releaseNotes, 500)}` : ""}` : null,
+    input.facts ? "" : null,
+    input.facts,
     "",
     `Keywords already tracked: ${list(input.existing)}`,
     `Keywords the user rejected before: ${list(input.rejected)}`,

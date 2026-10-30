@@ -3,7 +3,7 @@ import { charCount, FIELDS, type FieldKey, type MetadataDraft, tokens } from "./
 import type { Store } from "./stores/types";
 
 /** Bump when the instructions or the output shape change. */
-export const LISTING_PROMPT_VERSION = "lst-1";
+export const LISTING_PROMPT_VERSION = "lst-2";
 /** The most useful keywords go in the prompt; the rest only add noise. */
 export const MAX_PROMPT_KEYWORDS = 60;
 
@@ -26,7 +26,8 @@ General rules:
 - Write the listing in the store's language, natural and correct, for people in that country. Never stuff keywords into unreadable lists.
 - Keep the app's brand name at the start of the title, exactly as it is now.
 - Never use brand names of other apps or companies.
-- Do not promise features the current description does not mention. You may reword and reorder, but do not invent.
+- When the prompt includes PRODUCT FACTS: only describe features listed in PRODUCT FACTS with status shipped (or next_release when the user says the listing is for the next version; the list you get is already filtered for that). The current listing is only a reference for tone and wording; it may be outdated, so drop any feature it mentions that PRODUCT FACTS does not list. Follow every constraint in PRODUCT FACTS.
+- Without PRODUCT FACTS: do not promise features the current description does not mention. You may reword and reorder, but do not invent.
 - Prioritise keywords by the data you get: high opportunity first, then high popularity and relevance. Keywords where the app already ranks in the top 3 are lower priority; keywords ranking 4 to 50 are the best targets.
 - Respect every character limit strictly. Count characters, including spaces. A field over its limit is rejected by the store.
 
@@ -66,10 +67,19 @@ export type ListingPromptInput = {
   current: MetadataDraft;
   keywords: PromptKeyword[];
   avoidBrands: string[];
+  /** PRODUCT FACTS block from `factsForPrompt`, or null when the owner has not filled in the product sheet. */
+  facts: string | null;
+  /** Version in the store and its release notes, so the model knows how old the current listing is. */
+  version?: string | null;
+  releaseNotes?: string | null;
   focus?: string;
 };
 
 const num = (n: number | null) => (n == null ? "–" : String(n));
+const clip = (s: string, max: number) => {
+  const flat = s.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+};
 
 /** Best targets first: opportunity, then popularity, then relevance. */
 export function rankKeywords(keywords: PromptKeyword[]): PromptKeyword[] {
@@ -93,7 +103,10 @@ export function buildListingPrompt(input: ListingPromptInput, feedback?: string[
     `Store: ${input.store === "ios" ? "Apple App Store" : "Google Play"}, country: ${input.countryName}, language code: ${input.lang}.`,
     `Developer: ${input.developer}. Category: ${input.category ?? "–"}.`,
     "",
-    "Current listing:",
+    input.facts,
+    input.facts ? "" : null,
+    input.version ? `Published version: ${input.version}.${input.releaseNotes ? ` Its release notes: ${clip(input.releaseNotes, 500)}` : ""}` : null,
+    input.facts ? "Current listing (reference for tone and wording only; it may be outdated):" : "Current listing:",
     ...fields.map((f) => `${f.key} (${charCount(current[f.key])}/${f.limit}): ${current[f.key] || "(empty)"}`),
     "",
     `Tracked keywords, best targets first (popularity, difficulty and opportunity are 0–100; position ">N" means outside the top N):`,

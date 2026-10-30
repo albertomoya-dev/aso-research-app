@@ -18,6 +18,9 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 10 | Creativos: screenshots con marco de dispositivo e icono vectorial, con textos y conceptos de Claude | Hecho |
 | 11 | Logos con un proveedor de imágenes generativas (OpenAI o Gemini) | Hecho |
 | 12 | Vídeo promocional a partir de las pantallas | Hecho |
+| – | Optimizar la ficha con IA alrededor de las keywords seguidas (PR #14) | Hecho |
+| – | Estilo inspirado en Linear, oscuro por defecto (PR #13 y #15) | Hecho |
+| 13 | Ficha de producto: lo que hace la app, fuente de verdad para toda la IA | Hecho |
 
 ## Stack
 
@@ -85,6 +88,17 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 ## Editor de ficha
 
 La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos; para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+
+## Ficha de producto
+
+La ficha publicada en la tienda siempre va por detrás del producto: si la IA solo la lee, describe funciones viejas y se olvida de las nuevas. La pestaña **Producto** guarda lo que hace la app contado por su dueño, y el optimizador de ficha, las ideas de keywords, los textos e iconos de Creativos y el análisis de reseñas la usan como **fuente de verdad** (bloque `PRODUCT FACTS` en el prompt).
+
+- Resumen: qué es, para quién, diferenciales, lo que la ficha nunca debe decir (por ejemplo, «no hacer afirmaciones médicas»), tono e idiomas.
+- Funciones con estado: **publicada**, **próxima versión**, **planeada** o **retirada**, la versión en que llegó y si se puede anunciar. Las planeadas y las retiradas nunca llegan a la IA.
+- En el editor de ficha eliges «Ficha para la versión publicada» (solo funciones publicadas) o «Ficha para la próxima versión» (también las de la próxima). Ideas y Creativos usan la próxima versión; las reseñas, la publicada.
+- **Importar desde CHANGELOG**: pegas el texto, Claude propone las funciones con su estado y las versiones, y tú marcas qué se guarda. Nada se guarda sin tu confirmación.
+- Sin ficha de producto todo funciona como antes (la IA solo usa la ficha publicada) y el editor lo avisa.
+- La lógica está en `lib/product-facts.ts` (`factsForPrompt`); al cambiar los prompts se subieron sus versiones (`lst-2`, `kw-2`, `crt-2`, `rv-2`).
 
 ## Competidores
 

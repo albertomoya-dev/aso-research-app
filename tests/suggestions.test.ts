@@ -109,12 +109,33 @@ describe("buildUserPrompt", () => {
       autocomplete: ["correr 5k"],
       competitors: [{ title: "Strava", developer: "Strava Inc." }],
       focus: "principiantes",
+      facts: null,
     });
+    expect(prompt).not.toContain("PRODUCT FACTS");
     expect(prompt).toContain("Google Play, country: España");
     expect(prompt).toContain("Short description: Corre más");
     expect(prompt).toContain("Keywords already tracked: correr");
     expect(prompt).toContain("rejected before: maratón");
     expect(prompt).toContain("Strava (Strava Inc.)");
     expect(prompt).toContain("focused on: principiantes");
+  });
+});
+
+describe("buildUserPrompt with PRODUCT FACTS", () => {
+  it("adds the facts and marks the listing as possibly outdated", () => {
+    const prompt = buildUserPrompt({
+      store: "android",
+      countryName: "España",
+      lang: "es",
+      meta: { title: "Runly", developer: "Yo", category: "Salud", shortDescription: "", description: "Larga", version: "2.0", releaseNotes: "Arreglos" },
+      existing: [],
+      rejected: [],
+      autocomplete: [],
+      competitors: [],
+      facts: "PRODUCT FACTS (test):\n- Planes de maratón",
+    });
+    expect(prompt).toContain("App listing (may be outdated");
+    expect(prompt).toContain("Published version: 2.0. Release notes: Arreglos");
+    expect(prompt).toContain("- Planes de maratón");
   });
 });

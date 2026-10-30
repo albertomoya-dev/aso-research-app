@@ -10,6 +10,7 @@ import { type IconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
 import { MAX_SPEC_BYTES, type ScreenshotSpec, screenshotSpecSchema, specBytes, generatedImageUrl } from "@/lib/assets/screenshots";
 import { AiError, designIconConcepts, writeBackgroundPrompts, writeLogoPrompts, writeScreenshotCopy } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
+import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 
 const idSchema = z.coerce.number().int().positive();
@@ -22,7 +23,8 @@ async function loadAppOrThrow(appId: number) {
 
 async function creativeInput(appId: number, focus?: string): Promise<CreativeInput & { app: typeof schema.apps.$inferSelect }> {
   const app = await loadAppOrThrow(appId);
-  const rows = await getKeywordRows(app);
+  // Screenshots and icons are made for the coming release, so its features count.
+  const [rows, facts] = await Promise.all([getKeywordRows(app), productFactsPrompt(app.id, "next")]);
   const country = getCountry(app.country);
   return {
     app,
@@ -31,6 +33,7 @@ async function creativeInput(appId: number, focus?: string): Promise<CreativeInp
     lang: country.lang,
     meta: app.meta,
     keywords: rows.map((r) => ({ term: r.term, position: r.position, popularity: r.popularity, opportunity: r.opportunity })),
+    facts,
     focus: focus || undefined,
   };
 }

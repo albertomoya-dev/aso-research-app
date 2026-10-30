@@ -4,7 +4,7 @@ import { type IconSpec, iconSpecSchema, SYMBOL_NAMES } from "./icon";
 import { HEADLINE_SOFT_LIMIT, SUBHEADLINE_SOFT_LIMIT, stripMarks } from "./screenshots";
 
 /** Bump when the instructions or the output shape change. */
-export const CREATIVE_PROMPT_VERSION = "crt-1";
+export const CREATIVE_PROMPT_VERSION = "crt-2";
 
 export type CreativeKeyword = { term: string; position: number | null; popularity: number | null; opportunity: number | null };
 
@@ -14,6 +14,8 @@ export type CreativeInput = {
   lang: string;
   meta: AppMeta;
   keywords: CreativeKeyword[];
+  /** PRODUCT FACTS block from `factsForPrompt`, or null when the owner has not filled in the product sheet. */
+  facts: string | null;
   focus?: string;
 };
 
@@ -32,7 +34,9 @@ function describeApp(input: CreativeInput): string {
     `Developer: ${m.developer}`,
     `Category: ${m.category ?? "unknown"}`,
     m.shortDescription ? `Short description: ${m.shortDescription}` : "",
-    `Description:\n${m.description.slice(0, 2500)}`,
+    m.version ? `Published version: ${m.version}${m.releaseNotes ? `. Release notes: ${m.releaseNotes.slice(0, 500)}` : ""}` : "",
+    `Description${input.facts ? " (may be outdated; PRODUCT FACTS win)" : ""}:\n${m.description.slice(0, 2500)}`,
+    input.facts ?? "",
     `Tracked keywords (best first):\n${keywords || "- none yet"}`,
     input.focus ? `Extra guidance from the user: ${input.focus}` : "",
   ]
@@ -62,7 +66,7 @@ Rules:
 - Write in the language of the listing, natural and idiomatic for that country.
 - headline: 2 to 5 words, at most ${HEADLINE_SOFT_LIMIT} characters. Benefit first, not feature names. No final period. Wrap the single most important phrase in *asterisks* so it can be highlighted, for example "Entrena *sin excusas*". Exactly one highlighted phrase per headline, or none.
 - subheadline: one short sentence, at most ${SUBHEADLINE_SOFT_LIMIT} characters, that makes the headline concrete. May be empty on the first slide.
-- Work the tracked keywords in naturally: the first slide carries the app's core promise with the best keyword; later slides each take one keyword or one key feature from the description. Never stuff several keywords in one caption, never invent features the description does not mention.
+- Work the tracked keywords in naturally: the first slide carries the app's core promise with the best keyword; later slides each take one keyword or one key feature (from PRODUCT FACTS when given, otherwise from the description). Never stuff several keywords in one caption, never invent features. When PRODUCT FACTS are given they are the source of truth: use only the features listed there (the description may be outdated) and follow their constraints; otherwise use only features the description mentions.
 - Do not use brand names of other apps. Do not use the word "app" unless unavoidable. Avoid "best", "#1" and other claims the stores reject.
 - Return exactly the number of slides requested, in the order they should appear: promise, then the strongest features, then social proof or a closing nudge if the description supports it.
 - keyword: the tracked keyword the slide is built around, exactly as given, or "" when the slide is about a feature with no tracked keyword.

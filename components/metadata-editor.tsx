@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { discardDraft, type DraftState, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { ListingProposal } from "@/lib/listing-optimizer";
@@ -15,9 +16,11 @@ type Props = {
   hasDraft: boolean;
   keywords: string[];
   aiEnabled: boolean;
+  /** State of the product sheet: whether it is empty and how many features are coming in the next version. */
+  product: { empty: boolean; nextCount: number };
 };
 
-export function MetadataEditor({ appId, store, initial, published, hasDraft, keywords, aiEnabled }: Props) {
+export function MetadataEditor({ appId, store, initial, published, hasDraft, keywords, aiEnabled, product }: Props) {
   const [draft, setDraft] = useState(initial);
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
   const [ai, optimizeAction, optimizing] = useActionState<OptimizeState, FormData>(optimizeListing, null);
@@ -59,6 +62,36 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                 Reescribe la ficha con tus keywords (prioriza las de más oportunidad y las que ya rozan el top) respetando los límites de la tienda.
                 Verás la propuesta campo a campo antes de aplicarla.
               </p>
+              {product.empty ? (
+                <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+                  Tu ficha de producto está vacía: la IA solo conoce la ficha publicada, que puede estar desfasada.{" "}
+                  <Link href={`/apps/${appId}/producto`} className="font-medium underline">
+                    Completar la ficha de producto
+                  </Link>
+                </p>
+              ) : (
+                <fieldset className="flex flex-col gap-1 text-[13px] text-ink-soft">
+                  <legend className="sr-only">Para qué versión es la ficha</legend>
+                  <div className="flex flex-wrap gap-x-5">
+                    <label className="flex min-h-11 items-center gap-2 md:min-h-8">
+                      <input type="radio" name="factsMode" value="published" defaultChecked={product.nextCount === 0} className="size-4 accent-[var(--brand)]" />
+                      Ficha para la versión publicada
+                    </label>
+                    <label className="flex min-h-11 items-center gap-2 md:min-h-8">
+                      <input type="radio" name="factsMode" value="next" defaultChecked={product.nextCount > 0} className="size-4 accent-[var(--brand)]" />
+                      Ficha para la próxima versión
+                    </label>
+                  </div>
+                  <span className="text-xs text-muted">
+                    La IA usa tu{" "}
+                    <Link href={`/apps/${appId}/producto`} className="text-link hover:underline">
+                      ficha de producto
+                    </Link>
+                    : solo funciones publicadas, o también las {product.nextCount > 0 ? `${product.nextCount} ` : ""}de la próxima versión. Nunca las
+                    planeadas ni las retiradas.
+                  </span>
+                </fieldset>
+              )}
               <div className="flex flex-wrap gap-2">
                 <input
                   id="ai-focus"

@@ -1,0 +1,37 @@
+{
+  "facts": {
+    "pitch": "Recordatorio de pastillas y pastillero digital para seguir tu tratamiento sin olvidar ninguna toma.",
+    "audience": "Personas que toman medicación a diario y quienes cuidan de ellas, en España.",
+    "differentiators": [
+      "Catálogo oficial CIMA de la AEMPS, con fotos y principio activo",
+      "Sin registro: los datos se quedan solo en el dispositivo",
+      "Sin anuncios"
+    ],
+    "constraints": [
+      "No hacer afirmaciones médicas",
+      "Incluir el aviso «no sustituye el consejo médico»",
+      "No prometer funciones planeadas"
+    ],
+    "tone": "Cercano, claro y tranquilo, sin alarmismo",
+    "languages": ["español", "inglés"]
+  },
+  "features": [
+    { "name": "Buscar en el catálogo CIMA", "summary": "Buscar el medicamento por nombre en el catálogo oficial CIMA de la AEMPS, con fotos y principio activo", "status": "shipped", "sinceVersion": "1.0", "advertise": true },
+    { "name": "Escanear el código de barras", "summary": "Escanear el código de barras de la caja para añadirlo", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Pautas flexibles", "summary": "Pautas por días de la semana, todos los días, cada X horas y «si lo necesito»", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Medias pastillas", "summary": "Dosis por medicamento, incluidas medias pastillas", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Alarmas exactas", "summary": "Alarmas exactas que suenan con la app cerrada y la pantalla bloqueada", "status": "shipped", "sinceVersion": "1.0", "advertise": true },
+    { "name": "Responder desde la notificación", "summary": "Tomar, posponer u omitir desde la notificación; deshacer", "status": "shipped", "sinceVersion": "2.0", "advertise": true },
+    { "name": "9 tonos de aviso", "summary": "9 tonos de aviso con nombre propio", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Control de stock", "summary": "Stock: días restantes y aviso de reposición", "status": "shipped", "sinceVersion": "2.0", "advertise": true },
+    { "name": "Avisos de la AEMPS", "summary": "Avisos de problemas de suministro y notas de seguridad de la AEMPS, con campana de avisos", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Cómo tomarlo y prospecto", "summary": "«Cómo tomarlo» y prospecto oficial", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Progreso y adherencia", "summary": "Adherencia a 7 y 30 días, racha e historial por días", "status": "shipped", "sinceVersion": "2.0", "advertise": true },
+    { "name": "Informe PDF para el médico", "summary": "Informe PDF para el médico", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Diagnóstico de fiabilidad", "summary": "Diagnóstico de fiabilidad de los avisos con guía por fabricante (Xiaomi, Samsung…)", "status": "next_release", "sinceVersion": "3.0", "advertise": true },
+    { "name": "Widget de inicio", "summary": "Widget de inicio con la próxima toma", "status": "shipped", "sinceVersion": "2.0", "advertise": true },
+    { "name": "Privacidad y ajustes", "summary": "Copia de seguridad, tema claro y oscuro, español e inglés, sin registro, datos solo en el dispositivo, sin anuncios", "status": "shipped", "sinceVersion": "1.0", "advertise": true },
+    { "name": "Protección contra doble toma", "summary": "Avisa si ya registraste esa dosis en las últimas 4 horas", "status": "retired", "sinceVersion": "2.0", "advertise": true },
+    { "name": "Modo cuidador", "summary": "Seguir la medicación de un familiar desde otro móvil", "status": "planned", "sinceVersion": null, "advertise": true }
+  ]
+}

@@ -71,6 +71,13 @@
       "when": 1793116351080,
       "tag": "0009_generated_image_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793366730614,
+      "tag": "0010_product_facts",
+      "breakpoints": true
     }
   ]
 }

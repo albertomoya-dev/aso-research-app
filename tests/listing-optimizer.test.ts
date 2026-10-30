@@ -6,8 +6,12 @@ import {
   cleanProposal,
   type ListingOutput,
   proposalFeedback,
+  type ListingPromptInput,
   rankKeywords,
 } from "@/lib/listing-optimizer";
+import { factsForPrompt, type ProductFeature } from "@/lib/product-facts";
+import listingV2 from "./fixtures/recordatorio/listing-v2.json";
+import product from "./fixtures/recordatorio/product.json";
 
 const output = (o: Partial<ListingOutput>): ListingOutput => ({
   title: "",
@@ -105,11 +109,55 @@ describe("buildListingPrompt", () => {
       current: { title: "Runly", subtitle: "", keywordField: "", shortDescription: "", description: "Corre." },
       keywords: [kw("gps"), kw("correr", { position: 12, popularity: 60, opportunity: 70 }), kw("maraton", { depth: 100 })],
       avoidBrands: ["strava"],
+      facts: null,
     });
     expect(prompt).toContain("title (5/30): Runly");
     expect(prompt).not.toContain("shortDescription");
     expect(prompt.indexOf("- correr | position 12")).toBeLessThan(prompt.indexOf("- gps"));
     expect(prompt).toContain("- maraton | position >100");
     expect(prompt).toContain("never use them: strava");
+  });
+});
+
+describe("buildListingPrompt with PRODUCT FACTS (real case)", () => {
+  const features = product.features as ProductFeature[];
+  const input = (facts: string | null): ListingPromptInput => ({
+    store: "android",
+    countryName: "España",
+    lang: "es",
+    developer: listingV2.developer,
+    category: listingV2.category,
+    current: listingV2.draft,
+    keywords: [kw("recordatorio pastillas", { position: 3, opportunity: 80 })],
+    avoidBrands: [],
+    facts,
+    version: listingV2.version,
+    releaseNotes: listingV2.releaseNotes,
+  });
+  const factsSection = (prompt: string) => prompt.slice(prompt.indexOf("PRODUCT FACTS"), prompt.indexOf("Current listing"));
+
+  it("for the next version, describes the barcode scan and not the retired double-dose guard", () => {
+    const prompt = buildListingPrompt(input(factsForPrompt(product.facts, features, "next")));
+    expect(prompt).toContain("Escanear el código de barras");
+    expect(prompt).toContain("reference for tone and wording only");
+    expect(prompt).toContain("Published version: 2.4.0");
+    // The outdated listing still mentions it; the facts the model must follow do not.
+    expect(factsSection(prompt)).not.toContain("doble toma");
+    expect(factsSection(prompt)).not.toContain("Modo cuidador");
+    expect(factsSection(prompt)).toContain("No hacer afirmaciones médicas");
+  });
+
+  it("for the published version, leaves out next_release features", () => {
+    const prompt = buildListingPrompt(input(factsForPrompt(product.facts, features, "published")));
+    expect(prompt).not.toContain("código de barras");
+    expect(prompt).not.toContain("Informe PDF");
+    expect(factsSection(prompt)).toContain("Alarmas exactas");
+  });
+
+  it("without a product sheet, keeps the prompt as before", () => {
+    const prompt = buildListingPrompt(input(null));
+    expect(prompt).not.toContain("PRODUCT FACTS");
+    expect(prompt).toContain("\nCurrent listing:\n");
+    expect(prompt).toContain("Protección contra doble toma");
   });
 });

@@ -65,9 +65,27 @@ describe("buildReviewPrompt", () => {
       countryName: "España",
       lang: "es",
       reviews: [{ ...review(2, "2026-10-01T00:00:00Z"), title: "Lenta", text: "x".repeat(900), version: "3.0" }],
+      facts: null,
     });
+    expect(prompt).not.toContain("PRODUCT FACTS");
     expect(prompt).toContain("App: Runly (App Store, España, language code es).");
     expect(prompt).toContain("[2★ 2026-10-01 v3.0] Lenta. xxx");
     expect(prompt.split("\n").at(-1)!.length).toBeLessThan(650);
+  });
+});
+
+describe("buildReviewPrompt with PRODUCT FACTS", () => {
+  it("adds the facts and the store version before the reviews", () => {
+    const prompt = buildReviewPrompt({
+      appTitle: "Runly",
+      storeName: "Google Play",
+      countryName: "España",
+      lang: "es",
+      reviews: [review(5, "2026-10-01T00:00:00Z")],
+      facts: "PRODUCT FACTS (test):\n- GPS",
+      version: "3.1",
+    });
+    expect(prompt).toContain("Version in the store now: 3.1.");
+    expect(prompt.indexOf("PRODUCT FACTS")).toBeLessThan(prompt.indexOf("most recent reviews"));
   });
 });

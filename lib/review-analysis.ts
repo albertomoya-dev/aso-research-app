@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Review } from "./stores/types";
 
-export const REVIEW_PROMPT_VERSION = "rv-1";
+export const REVIEW_PROMPT_VERSION = "rv-2";
 /** Enough to see patterns while keeping the prompt small. */
 export const MAX_REVIEWS = 300;
 const MAX_REVIEW_CHARS = 600;
@@ -33,19 +33,37 @@ From the reviews you get, produce:
 - keywordIdeas: up to 12 search phrases in the store's language that users use to describe the app or what they need it for. Lower case, one to four words, no brand names of other apps. reason is one short Spanish sentence.
 - listingTips: up to 5 concrete, short Spanish suggestions for the store listing (title, subtitle, screenshots, description) based on what users value or misunderstand.
 
-Base everything on the reviews. If there are few reviews, return fewer items rather than guessing.`;
+Base everything on the reviews. If there are few reviews, return fewer items rather than guessing.
+
+When the prompt includes PRODUCT FACTS (what the reviewed app really does, declared by its owner), use them to tell real gaps from misunderstandings: a request for a feature the app already has is not a missing feature. Leave it out of requests and turn it into a listingTip that makes the feature easier to find (say which feature). Never contradict PRODUCT FACTS.`;
 
 const clip = (s: string) => (s.length > MAX_REVIEW_CHARS ? `${s.slice(0, MAX_REVIEW_CHARS)}…` : s);
 
-export function buildReviewPrompt(input: { appTitle: string; storeName: string; countryName: string; lang: string; reviews: Review[] }): string {
+export type ReviewPromptInput = {
+  appTitle: string;
+  storeName: string;
+  countryName: string;
+  lang: string;
+  reviews: Review[];
+  /** PRODUCT FACTS block of the reviewed app (only for our own app), or null. */
+  facts: string | null;
+  /** Version in the store, to tell complaints about old versions apart. */
+  version?: string | null;
+};
+
+export function buildReviewPrompt(input: ReviewPromptInput): string {
   const lines = input.reviews
     .slice(0, MAX_REVIEWS)
     .map((r) => `[${r.rating}★ ${r.date.slice(0, 10)}${r.version ? ` v${r.version}` : ""}] ${clip([r.title, r.text].filter(Boolean).join(". ").replace(/\s+/g, " "))}`);
   return [
     `App: ${input.appTitle} (${input.storeName}, ${input.countryName}, language code ${input.lang}).`,
+    input.version ? `Version in the store now: ${input.version}.` : null,
+    input.facts ? `\n${input.facts}\n` : null,
     `${lines.length} most recent reviews:`,
     ...lines,
-  ].join("\n");
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 }
 
 export type RatingStats = { count: number; average: number | null; distribution: number[]; from: string | null; to: string | null };

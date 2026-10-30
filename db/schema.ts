@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   date,
   integer,
   jsonb,
@@ -18,6 +19,8 @@ import type { IconSpec } from "@/lib/assets/icon";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
+// Relative so drizzle-kit can load it without the "@/" alias.
+import { FEATURE_STATUSES } from "../lib/product-facts";
 import type { RatingStats, ReviewAnalysis } from "@/lib/review-analysis";
 import type { TrendPoint } from "@/lib/trends";
 
@@ -273,6 +276,49 @@ export const generatedImages = pgTable("generated_images", {
   mime: text("mime").notNull(),
   data: text("data").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** What the app does, declared by its owner. The source of truth for every AI feature; the store listing lags behind. */
+export const productFacts = pgTable("product_facts", {
+  appId: integer("app_id")
+    .primaryKey()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  /** One line: what it is and who it is for. */
+  pitch: text("pitch").notNull().default(""),
+  audience: text("audience").notNull().default(""),
+  differentiators: jsonb("differentiators").$type<string[]>().notNull().default([]),
+  /** Things the listing must never say (for example, medical claims). */
+  constraints: jsonb("constraints").$type<string[]>().notNull().default([]),
+  tone: text("tone").notNull().default(""),
+  languages: jsonb("languages").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const featureStatusEnum = pgEnum("feature_status", FEATURE_STATUSES);
+
+export const productFeatures = pgTable("product_features", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  summary: text("summary").notNull().default(""),
+  status: featureStatusEnum("status").notNull().default("shipped"),
+  sinceVersion: text("since_version"),
+  /** false for internal features the listing should not announce. */
+  advertise: boolean("advertise").notNull().default(true),
+  sort: integer("sort").notNull().default(0),
+});
+
+/** Version history declared by the owner (or imported from a CHANGELOG). */
+export const productReleases = pgTable("product_releases", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  version: text("version").notNull(),
+  date: date("date"),
+  notes: text("notes").notNull().default(""),
 });
 
 export type App = typeof apps.$inferSelect;

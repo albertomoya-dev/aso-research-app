@@ -20,8 +20,14 @@ import {
   type ScreenshotCopy,
   screenshotCopySchema,
 } from "./assets/creative-ai";
-import { buildReviewPrompt, REVIEW_SYSTEM_PROMPT, reviewAnalysisSchema, type ReviewAnalysis } from "./review-analysis";
-import type { Review } from "./stores/types";
+import {
+  buildChangelogPrompt,
+  CHANGELOG_SYSTEM_PROMPT,
+  type ChangelogContext,
+  type ChangelogOutput,
+  changelogOutputSchema,
+} from "./product-facts";
+import { buildReviewPrompt, REVIEW_SYSTEM_PROMPT, reviewAnalysisSchema, type ReviewAnalysis, type ReviewPromptInput } from "./review-analysis";
 import { buildUserPrompt, modelOutputSchema, type ModelOutput, type PromptInput, SYSTEM_PROMPT } from "./suggestions";
 
 export const AI_MODEL = "claude-opus-5-5";
@@ -73,13 +79,7 @@ export function suggestKeywords(input: PromptInput): Promise<{ output: ModelOutp
 }
 
 /** Asks Claude what the reviews say and what that means for the listing. */
-export function analyzeReviews(input: {
-  appTitle: string;
-  storeName: string;
-  countryName: string;
-  lang: string;
-  reviews: Review[];
-}): Promise<{ output: ReviewAnalysis; model: string }> {
+export function analyzeReviews(input: ReviewPromptInput): Promise<{ output: ReviewAnalysis; model: string }> {
   return askClaude(reviewAnalysisSchema, REVIEW_SYSTEM_PROMPT, buildReviewPrompt(input));
 }
 
@@ -107,4 +107,9 @@ export function writeLogoPrompts(input: CreativeInput): Promise<{ output: LogoPr
 
 export function writeBackgroundPrompts(input: CreativeInput, theme?: BackgroundThemeHint): Promise<{ output: LogoPrompts; model: string }> {
   return askClaude(logoPromptsSchema, BACKGROUND_PROMPTS_SYSTEM_PROMPT, buildBackgroundPromptsPrompt(input, theme));
+}
+
+/** Asks Claude to turn a CHANGELOG into features with their status. Only a proposal: the owner confirms what gets saved. */
+export function importChangelog(text: string, current: ChangelogContext): Promise<{ output: ChangelogOutput; model: string }> {
+  return askClaude(changelogOutputSchema, CHANGELOG_SYSTEM_PROMPT, buildChangelogPrompt(text, current));
 }

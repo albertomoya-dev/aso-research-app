@@ -7,6 +7,8 @@ import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { hasAnthropicKey } from "@/lib/claude";
 import { draftFromMeta } from "@/lib/metadata-check";
+import { hasProductFacts } from "@/lib/product-facts";
+import { getProductFacts } from "@/lib/product-queries";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -14,12 +16,15 @@ export const metadata: Metadata = { title: "Editor de ficha" };
 
 export default async function MetadataPage({ params }: Props) {
   const app = await loadApp((await params).id);
-  const keywords = await getDb()
-    .select({ term: schema.keywords.term })
-    .from(schema.appKeywords)
-    .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
-    .where(eq(schema.appKeywords.appId, app.id))
-    .orderBy(schema.keywords.term);
+  const [keywords, product] = await Promise.all([
+    getDb()
+      .select({ term: schema.keywords.term })
+      .from(schema.appKeywords)
+      .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
+      .where(eq(schema.appKeywords.appId, app.id))
+      .orderBy(schema.keywords.term),
+    getProductFacts(app.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,6 +46,10 @@ export default async function MetadataPage({ params }: Props) {
         hasDraft={app.draft != null}
         keywords={keywords.map((k) => k.term)}
         aiEnabled={hasAnthropicKey()}
+        product={{
+          empty: !hasProductFacts(product.facts, product.features),
+          nextCount: product.features.filter((f) => f.status === "next_release" && f.advertise).length,
+        }}
       />
     </div>
   );

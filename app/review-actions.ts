@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, analyzeReviews } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
+import { productFactsPrompt } from "@/lib/product-queries";
 import { MAX_REVIEWS, ratingStats, REVIEW_PROMPT_VERSION } from "@/lib/review-analysis";
 import { getAdapter } from "@/lib/stores";
 import { STORE_LABEL } from "@/lib/stores/types";
@@ -36,6 +37,9 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
   }
   if (reviews.length === 0) return { error: `${title} no tiene reseñas recientes en ${country.name}.` };
 
+  // The product sheet describes our app only; users review the published version.
+  const facts = competitor ? null : await productFactsPrompt(appId, "published");
+
   try {
     const { output, model } = await analyzeReviews({
       appTitle: title,
@@ -43,6 +47,8 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
       countryName: country.name,
       lang: country.lang,
       reviews,
+      facts,
+      version: competitor ? null : app.meta.version,
     });
     await db.insert(schema.reviewAnalyses).values({
       appId,
