@@ -2,16 +2,25 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AUDIO_ACCEPT, audioSummary, isAudioFile } from "@/lib/assets/audio";
+import { decodeAudioFile } from "@/lib/assets/audio-encode";
 import { downloadBlob, slug } from "@/lib/assets/download";
 import { ensureFonts, loadImage, pageFontFamily } from "@/lib/assets/screenshot-render";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import { DEFAULT_VIDEO_SETTINGS, durationWarning, getVideoPreset, totalDuration, VIDEO_PRESETS, type VideoSettings } from "@/lib/assets/video";
-import { canEncodeMp4, drawFrame, encodeVideo, type EncodeResult } from "@/lib/assets/video-encode";
+import { type AudioOutcome, canEncodeMp4, drawFrame, encodeVideo, type EncodeResult } from "@/lib/assets/video-encode";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
 type Props = { appId: number; appTitle: string; spec: ScreenshotSpec | null };
 
 const PREVIEW_HEIGHT = 420;
+
+const AUDIO_RESULT: Record<AudioOutcome, string> = {
+  aac: " · con sonido (AAC)",
+  opus: " · con sonido (Opus)",
+  none: " · sin sonido",
+  unsupported: " · sin sonido: tu navegador no puede codificar el audio",
+};
 
 export function VideoStudio({ appId, appTitle, spec }: Props) {
   const [settings, setSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS);
@@ -21,6 +30,9 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
   const [result, setResult] = useState<(EncodeResult & { url: string }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [audio, setAudio] = useState<{ name: string; buffer: AudioBuffer } | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [decoding, setDecoding] = useState(false);
   const images = useRef(new Map<string, CanvasImageSource>());
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -97,6 +109,23 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, playing, paint, seconds, playing ? 0 : time]);
 
+  async function pickAudio(file: File | undefined) {
+    if (!file) return;
+    setAudioError(null);
+    if (!isAudioFile(file)) {
+      setAudioError("Ese archivo no es de audio. Usa MP3, M4A, WAV u OGG.");
+      return;
+    }
+    setDecoding(true);
+    try {
+      setAudio({ name: file.name, buffer: await decodeAudioFile(file) });
+    } catch (err) {
+      setAudioError(err instanceof Error ? err.message : "No se pudo leer el audio.");
+    } finally {
+      setDecoding(false);
+    }
+  }
+
   async function render() {
     if (!spec) return;
     setError(null);
@@ -114,6 +143,7 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
         opts: { fontFamily: font },
         onProgress: setProgress,
         signal: abort.current.signal,
+        audio: audio?.buffer ?? null,
       });
       setResult({ ...out, url: URL.createObjectURL(out.blob) });
     } catch (err) {
@@ -178,7 +208,8 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
           <Card className="px-5 py-5">
             <h2 className="text-[15px] font-semibold">Vídeo generado</h2>
             <p className="mt-0.5 text-xs text-muted">
-              {result.extension.toUpperCase()} · {(result.blob.size / 1_000_000).toFixed(1)} MB · {result.seconds} s
+              {result.extension.toUpperCase()} · {(result.blob.size / 1_000_000).toFixed(1)} MB · {result.seconds} s{AUDIO_RESULT[result.audio]}
+              {result.audio === "opus" && result.extension === "mp4" && " (App Store Connect pide AAC: usa Chrome, Edge o Safari para el vídeo de App Store)"}
               {result.extension === "webm" && " · tu navegador no codifica H.264, así que es WebM; conviértelo a MP4 antes de subirlo a App Store Connect"}
             </p>
             <video src={result.url} controls playsInline className="mt-3 max-h-[420px] rounded-md bg-bg" />
@@ -239,6 +270,43 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
         </Card>
 
         <Card className="px-5 py-4">
+          <h2 className="text-[15px] font-semibold">Sonido</h2>
+          <p className="mt-1 text-xs text-muted">
+            Opcional: sube una pista (MP3, M4A, WAV u OGG) con derechos de uso. Rankeo no genera música. Se corta a la duración del vídeo con un
+            fundido de salida. Las app previews de App Store se reproducen sin sonido hasta que se toca el vídeo.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label className={`${buttonSecondary} cursor-pointer`} aria-busy={decoding}>
+              {decoding ? "Leyendo…" : audio ? "Cambiar audio" : "Añadir audio"}
+              <input
+                type="file"
+                accept={AUDIO_ACCEPT}
+                className="sr-only"
+                onChange={(e) => {
+                  void pickAudio(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {audio && (
+              <button type="button" onClick={() => setAudio(null)} className={buttonSecondary}>
+                Quitar
+              </button>
+            )}
+          </div>
+          {audio && (
+            <p className="mt-2 text-xs text-ink-soft">
+              <span className="font-medium break-all">{audio.name}</span>. {audioSummary(audio.buffer.duration, seconds)}
+            </p>
+          )}
+          {audioError && (
+            <p role="alert" className="mt-2 text-xs text-danger">
+              {audioError}
+            </p>
+          )}
+        </Card>
+
+        <Card className="px-5 py-4">
           {progress == null ? (
             <button type="button" onClick={render} disabled={!ready} className={`${buttonPrimary} w-full`}>
               Generar vídeo
@@ -258,8 +326,8 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
           )}
           <p className="mt-2 text-xs text-muted">
             {mp4
-              ? "Se codifica en tu navegador como MP4 H.264, el formato que piden App Store Connect y YouTube. Sin sonido."
-              : "Tu navegador no tiene WebCodecs: se grabará en WebM a tiempo real. Para MP4 usa Chrome, Edge o Safari 17 o superior."}
+              ? `Se codifica en tu navegador como MP4 H.264, el formato que piden App Store Connect y YouTube. ${audio ? "Con la pista de audio en AAC si tu navegador puede codificarlo." : "Sin sonido, salvo que añadas una pista."}`
+              : `Tu navegador no tiene WebCodecs: se grabará en WebM a tiempo real${audio ? ", con el audio sonando mientras se graba" : ""}. Para MP4 usa Chrome, Edge o Safari 17 o superior.`}
           </p>
           {error && (
             <p role="alert" className="mt-2 text-xs text-danger">

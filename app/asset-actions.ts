@@ -4,7 +4,16 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { type BackgroundThemeHint, cleanLogoPrompts, cleanScreenshotCopy, type CreativeInput, toIconSpec, withAppPalette } from "@/lib/assets/creative-ai";
+import {
+  type BackgroundThemeHint,
+  cleanLogoPrompts,
+  cleanScreenshotCopy,
+  type CreativeInput,
+  MAX_VISION_IMAGE_CHARS,
+  MAX_VISION_IMAGES,
+  toIconSpec,
+  withAppPalette,
+} from "@/lib/assets/creative-ai";
 import { generateImages, ImageGenError } from "@/lib/assets/image-provider";
 import { type IconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
 import { MAX_SPEC_BYTES, type ScreenshotSpec, screenshotSpecSchema, specBytes, generatedImageUrl } from "@/lib/assets/screenshots";
@@ -12,6 +21,7 @@ import { AiError, designIconConcepts, writeBackgroundPrompts, writeLogoPrompts, 
 import { getCountry } from "@/lib/countries";
 import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
+import { isRelevantKeyword } from "@/lib/relevance";
 
 const idSchema = z.coerce.number().int().positive();
 
@@ -32,7 +42,10 @@ async function creativeInput(appId: number, focus?: string): Promise<CreativeInp
     countryName: country.name,
     lang: country.lang,
     meta: app.meta,
-    keywords: rows.map((r) => ({ term: r.term, position: r.position, popularity: r.popularity, opportunity: r.opportunity })),
+    // Creatives only build on relevant keywords: noise or foreign-intent searches would end up on a screen.
+    keywords: rows
+      .filter((r) => isRelevantKeyword(r, country.lang))
+      .map((r) => ({ term: r.term, position: r.position, popularity: r.popularity, opportunity: r.opportunity })),
     facts,
     focus: focus || undefined,
   };
@@ -78,11 +91,14 @@ export async function generateScreenshotCopy(
   appId: number,
   current: { headline: string; subheadline: string }[],
   focus: string,
+  images: (string | null)[] = [],
 ): Promise<CopyResult> {
   const count = Math.max(1, Math.min(10, current.length));
+  // Small screens made in the browser; anything that is not a small image is dropped by parseVisionImage.
+  const screens = z.array(z.string().max(MAX_VISION_IMAGE_CHARS).nullable()).max(MAX_VISION_IMAGES).catch([]).parse(images);
   try {
     const input = await creativeInput(idSchema.parse(appId), z.string().trim().max(200).catch("").parse(focus));
-    const { output, model } = await writeScreenshotCopy({ ...input, count, current: current.slice(0, count) });
+    const { output, model } = await writeScreenshotCopy({ ...input, count, current: current.slice(0, count) }, screens);
     const clean = cleanScreenshotCopy(
       output,
       count,

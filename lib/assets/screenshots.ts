@@ -77,6 +77,10 @@ export const slideSchema = z.object({
   asIs: z.boolean().default(false),
   /** Only this part of the image is the app screen (cut out of a store composition); null uses the whole image. */
   crop: cropSchema.nullable().default(null),
+  /** When the uploaded screenshot was taken (the file's last-modified date, ISO). Null for store images and older designs. */
+  capturedAt: z.string().max(40).nullable().default(null),
+  /** Version of the app in the store when the screenshot was uploaded, to warn when a newer one comes out. */
+  appVersion: z.string().max(40).nullable().default(null),
 });
 export type Slide = z.infer<typeof slideSchema>;
 
@@ -267,6 +271,11 @@ export function slideId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/** An empty slide (no text, no image). */
+export function blankSlide(layout: Slide["layout"] = "text-top"): Slide {
+  return { id: slideId(), headline: "", subheadline: "", image: null, layout, keyword: null, asIs: false, crop: null, capturedAt: null, appVersion: null };
+}
+
 /** A starting point: the store's own screenshots on the first preset of the store. */
 export function defaultScreenshotSpec(store: Store, title: string, images: string[]): ScreenshotSpec {
   const preset = presetsFor(store)[0];
@@ -290,6 +299,8 @@ export function defaultScreenshotSpec(store: Store, title: string, images: strin
       // Store screenshots are finished compositions (text, device…): show them as they are.
       asIs: image !== null,
       crop: null,
+      capturedAt: null,
+      appVersion: null,
     })),
   };
 }

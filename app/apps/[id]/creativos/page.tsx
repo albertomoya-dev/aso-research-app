@@ -17,6 +17,9 @@ import {
   imageProvider,
 } from "@/lib/assets/image-provider";
 import { hasAnthropicKey } from "@/lib/claude";
+import { getCountry } from "@/lib/countries";
+import { getKeywordRows } from "@/lib/queries";
+import { isRelevantKeyword } from "@/lib/relevance";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -75,6 +78,13 @@ export default async function ScreenshotsPage({ params }: Props) {
     .orderBy(desc(schema.generatedImages.createdAt))
     .limit(24);
   const provider = imageProvider();
+  // Suggestions for the keyword of each screen: relevant ones only, best opportunity first.
+  const lang = getCountry(app.country).lang;
+  const keywordOptions = (await getKeywordRows(app))
+    .filter((r) => isRelevantKeyword(r, lang))
+    .sort((a, b) => (b.opportunity ?? -1) - (a.opportunity ?? -1))
+    .slice(0, 60)
+    .map((r) => r.term);
   const parsed = saved ? screenshotSpecSchema.safeParse(saved.spec) : null;
   const loaded = parsed?.success
     ? withStoreImagesAsIs(parsed.data, saved?.spec, storeImages)
@@ -117,6 +127,8 @@ export default async function ScreenshotsPage({ params }: Props) {
         detectSlides={detectSlides}
         appIcon={app.icon ? proxied(app.icon) : null}
         savedAt={saved?.updatedAt.toISOString() ?? null}
+        published={{ version: app.meta.version, updatedAt: app.meta.updatedAt }}
+        keywordOptions={keywordOptions}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { defaultIconSpec, type IconSpec, iconSpecSchema } from "@/lib/assets/icon";
+import { proxied } from "@/lib/assets/screenshots";
 import { hasAnthropicKey } from "@/lib/claude";
 
 type Props = { params: Promise<{ id: string }> };
@@ -37,7 +38,17 @@ export default async function IconPage({ params }: Props) {
         </PageHeader>
         <CreativeNav appId={app.id} />
       </div>
-      <IconStudio appId={app.id} appTitle={app.title} initial={initial} currentIcon={app.icon} aiEnabled={hasAnthropicKey()} savedAt={saved?.updatedAt.toISOString() ?? null} />
+      {/* Without a saved design, the studio replaces the default colours with those of the current icon once it loads. */}
+      <IconStudio
+        appId={app.id}
+        appTitle={app.title}
+        initial={initial}
+        currentIcon={app.icon}
+        currentIconProxied={app.icon ? proxied(app.icon) : null}
+        startFromIcon={!parsed?.success}
+        aiEnabled={hasAnthropicKey()}
+        savedAt={saved?.updatedAt.toISOString() ?? null}
+      />
     </div>
   );
 }

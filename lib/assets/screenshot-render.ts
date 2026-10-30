@@ -879,6 +879,25 @@ export async function shrinkImage(
   }
 }
 
+/**
+ * A small JPEG of what a slide shows (its crop when it has one), for Claude to look at. 768 px on the
+ * long side keeps the visible text readable and the request small.
+ */
+export function screenThumbnail(image: HTMLImageElement, crop: Crop | null | undefined, maxSide = 768): string {
+  const sx = crop ? crop.x * image.naturalWidth : 0;
+  const sy = crop ? crop.y * image.naturalHeight : 0;
+  const sw = crop ? crop.w * image.naturalWidth : image.naturalWidth;
+  const sh = crop ? crop.h * image.naturalHeight : image.naturalHeight;
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(sw * scale));
+  canvas.height = Math.max(1, Math.round(sh * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas no disponible");
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.7);
+}
+
 /** The real font stack of the page, so canvas text matches the UI (next/font renames Inter). */
 export function pageFontFamily(): string {
   if (typeof document === "undefined") return "Inter, system-ui, sans-serif";

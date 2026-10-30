@@ -1,10 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { BetaContentBlockParam } from "@anthropic-ai/sdk/resources/beta/messages";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
 import { buildListingPrompt, LISTING_SYSTEM_PROMPT, type ListingOutput, listingOutputSchema, type ListingPromptInput } from "./listing-optimizer";
 import {
   buildIconConceptsPrompt,
-  buildScreenshotCopyPrompt,
+  buildScreenshotCopyContent,
   type CreativeInput,
   buildLogoPromptsPrompt,
   ICON_CONCEPTS_SYSTEM_PROMPT,
@@ -68,8 +69,12 @@ function getClient() {
   return client;
 }
 
-/** One structured-output request. Returns the parsed output and the model that actually answered. */
-async function askClaude<T extends z.ZodType>(schema: T, system: string, prompt: string): Promise<{ output: z.infer<T>; model: string }> {
+/** One structured-output request; `prompt` is text, or text and images (vision). Returns the parsed output and the model that actually answered. */
+async function askClaude<T extends z.ZodType>(
+  schema: T,
+  system: string,
+  prompt: string | BetaContentBlockParam[],
+): Promise<{ output: z.infer<T>; model: string }> {
   if (!hasAnthropicKey()) throw new AiError("Falta ANTHROPIC_API_KEY en las variables de entorno.");
   try {
     const response = await getClient().beta.messages.parse({
@@ -111,11 +116,12 @@ export function rewriteListing(input: ListingPromptInput, feedback?: string[]): 
   return askClaude(listingOutputSchema, LISTING_SYSTEM_PROMPT, buildListingPrompt(input, feedback));
 }
 
-/** Asks Claude for screenshot captions built around the tracked keywords. */
+/** Asks Claude for screenshot captions built around the relevant keywords. `images` (data URLs, one per slide or null) lets it see each screen. */
 export function writeScreenshotCopy(
   input: CreativeInput & { count: number; current: { headline: string; subheadline: string }[] },
+  images: (string | null)[] = [],
 ): Promise<{ output: ScreenshotCopy; model: string }> {
-  return askClaude(screenshotCopySchema, SCREENSHOT_COPY_SYSTEM_PROMPT, buildScreenshotCopyPrompt(input));
+  return askClaude(screenshotCopySchema, SCREENSHOT_COPY_SYSTEM_PROMPT, buildScreenshotCopyContent(input, images));
 }
 
 /** Asks Claude for four icon concepts in the vector icon system. */

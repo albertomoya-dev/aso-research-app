@@ -74,12 +74,46 @@ export function initials(title: string): string {
   return (first[0] ?? "A").toUpperCase();
 }
 
-export function defaultIconSpec(title: string): IconSpec {
+/** Starting colours when the current icon cannot be read (Rankeo's lavender). */
+export const DEFAULT_ICON_COLORS = { from: "#5e6ad2", to: "#3b44a8", glyphColor: "#ffffff" };
+
+const isHexColor = (c: string | undefined): c is string => Boolean(c && /^#[0-9a-fA-F]{6}$/.test(c));
+
+/** Mixes a colour towards black (amount > 0) or white (amount < 0). */
+export function shade(color: string, amount: number): string {
+  const n = parseInt(color.slice(1), 16);
+  const target = amount > 0 ? 0 : 255;
+  const a = Math.min(1, Math.abs(amount));
+  return (
+    "#" +
+    [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+      .map((v) => Math.round(v + (target - v) * a).toString(16).padStart(2, "0"))
+      .join("")
+  );
+}
+
+/**
+ * Starting colours from the palette of the current icon (paletteFromImages, most representative first):
+ * the main colour, the second one or a darker shade of the first for the gradient, and a glyph colour
+ * that reads on it. Falls back to the defaults with an empty palette.
+ */
+export function iconColorsFromPalette(palette: string[]): { from: string; to: string; glyphColor: string } {
+  const colors = palette.filter(isHexColor);
+  if (colors.length === 0) return { ...DEFAULT_ICON_COLORS };
+  const from = colors[0].toLowerCase();
+  // A second colour that is too close in brightness makes a muddy gradient: shade the first instead.
+  const second = colors[1]?.toLowerCase();
+  const to = second && contrastRatio(from, second) >= 1.3 ? second : shade(from, 0.3);
+  const glyphColor = contrastRatio("#ffffff", from) >= 3 ? "#ffffff" : "#0f1115";
+  return { from, to, glyphColor };
+}
+
+export function defaultIconSpec(title: string, colors: { from: string; to: string; glyphColor: string } = DEFAULT_ICON_COLORS): IconSpec {
   return {
     version: 1,
-    background: { kind: "linear", from: "#5e6ad2", to: "#3b44a8", angle: 35 },
+    background: { kind: "linear", from: colors.from, to: colors.to, angle: 35 },
     glyph: { kind: "letter", text: initials(title), weight: 800 },
-    glyphColor: "#ffffff",
+    glyphColor: colors.glyphColor,
     glyphScale: 0.58,
     plate: { kind: "none", color: "#ffffff", scale: 0.7 },
     gloss: true,

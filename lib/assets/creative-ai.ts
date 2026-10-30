@@ -4,7 +4,7 @@ import { type IconSpec, iconSpecSchema, SYMBOL_NAMES } from "./icon";
 import { HEADLINE_SOFT_LIMIT, SUBHEADLINE_SOFT_LIMIT, stripMarks } from "./screenshots";
 
 /** Bump when the instructions or the output shape change. */
-export const CREATIVE_PROMPT_VERSION = "crt-2";
+export const CREATIVE_PROMPT_VERSION = "crt-3";
 
 export type CreativeKeyword = { term: string; position: number | null; popularity: number | null; opportunity: number | null };
 
@@ -37,7 +37,8 @@ function describeApp(input: CreativeInput): string {
     m.version ? `Published version: ${m.version}${m.releaseNotes ? `. Release notes: ${m.releaseNotes.slice(0, 500)}` : ""}` : "",
     `Description${input.facts ? " (may be outdated; PRODUCT FACTS win)" : ""}:\n${m.description.slice(0, 2500)}`,
     input.facts ?? "",
-    `Tracked keywords (best first):\n${keywords || "- none yet"}`,
+    // Only the relevant ones (isRelevantKeyword, filtered by the caller): noise never reaches the creatives.
+    `Relevant tracked keywords (best first):\n${keywords || "- none yet"}`,
     input.focus ? `Extra guidance from the user: ${input.focus}` : "",
   ]
     .filter(Boolean)
@@ -69,7 +70,8 @@ Rules:
 - Work the tracked keywords in naturally: the first slide carries the app's core promise with the best keyword; later slides each take one keyword or one key feature (from PRODUCT FACTS when given, otherwise from the description). Never stuff several keywords in one caption, never invent features. When PRODUCT FACTS are given they are the source of truth: use only the features listed there (the description may be outdated) and follow their constraints; otherwise use only features the description mentions.
 - Do not use brand names of other apps. Do not use the word "app" unless unavoidable. Avoid "best", "#1" and other claims the stores reject.
 - Return exactly the number of slides requested, in the order they should appear: promise, then the strongest features, then social proof or a closing nudge if the description supports it.
-- keyword: the tracked keyword the slide is built around, exactly as given, or "" when the slide is about a feature with no tracked keyword.
+- keyword: the tracked keyword the slide is built around, exactly as given in the list, or "" when no listed keyword describes the slide. Pick the keyword that best describes what that screen shows, not just the most popular one.
+- When the screenshot of a slide is attached, read it: the caption and the keyword must match what that screen actually shows (its visible text, the feature on display). Never caption a screen with a feature it does not show. When no screenshot is attached, rely on the current caption and the product facts.
 - notes: up to 3 short Spanish sentences on your choices (for example which keyword you left out and why).`;
 
 export function buildScreenshotCopyPrompt(input: CreativeInput & { count: number; current: { headline: string; subheadline: string }[] }): string {
@@ -77,6 +79,43 @@ export function buildScreenshotCopyPrompt(input: CreativeInput & { count: number
     .map((s, i) => `${i + 1}. ${stripMarks(s.headline) || "(empty)"} — ${s.subheadline || "(empty)"}`)
     .join("\n");
   return `${describeApp(input)}\n\nSlides requested: ${input.count}\n\nCurrent captions, for reference (rewrite them freely):\n${current}`;
+}
+
+/** Screens sent to Claude so it can see each slide: small JPEG/PNG/WebP data URLs made in the browser. */
+export const MAX_VISION_IMAGES = 10;
+/** Characters of one data URL (~150 KB of image); the browser sends 768 px JPEGs well under it. */
+export const MAX_VISION_IMAGE_CHARS = 200_000;
+
+export type VisionMediaType = "image/jpeg" | "image/png" | "image/webp";
+/** Same shape as the Anthropic SDK content blocks, without importing the SDK here. */
+export type CreativeContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: VisionMediaType; data: string } };
+
+/** Splits a data URL into what the API needs, or null when it is not a small base64 JPEG, PNG or WebP. */
+export function parseVisionImage(dataUrl: string | null | undefined): { media_type: VisionMediaType; data: string } | null {
+  if (!dataUrl || dataUrl.length > MAX_VISION_IMAGE_CHARS) return null;
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  return m ? { media_type: m[1] as VisionMediaType, data: m[2] } : null;
+}
+
+/**
+ * The caption request with the screen of each slide attached (vision), so Claude reads what every screen
+ * shows. Slides without a usable image go as text only; with no image at all, the plain text prompt.
+ */
+export function buildScreenshotCopyContent(
+  input: CreativeInput & { count: number; current: { headline: string; subheadline: string }[] },
+  images: (string | null)[] = [],
+): string | CreativeContentBlock[] {
+  const text = buildScreenshotCopyPrompt(input);
+  const blocks: CreativeContentBlock[] = [];
+  for (const [i, url] of images.slice(0, Math.min(input.count, MAX_VISION_IMAGES)).entries()) {
+    const image = parseVisionImage(url);
+    if (!image) continue;
+    blocks.push({ type: "text", text: `Screenshot of slide ${i + 1}:` }, { type: "image", source: { type: "base64", ...image } });
+  }
+  if (blocks.length === 0) return text;
+  return [{ type: "text", text: `${text}\n\nThe screenshots of the slides follow, in order. Slides without one have none yet.` }, ...blocks];
 }
 
 /** Trims and enforces the limits the prompt asks for, in case the model drifts. */

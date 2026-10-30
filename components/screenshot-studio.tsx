@@ -18,7 +18,9 @@ import {
   type LogoPromptResult,
   saveDesign,
 } from "@/app/asset-actions";
+import { assignImages, isImageFile, MAX_SLIDES, type PublishedRef, sortByName, staleSlides } from "@/lib/assets/bulk-upload";
 import { downloadBlob, slug } from "@/lib/assets/download";
+import { type DroppedFile, filesFromDrop } from "@/lib/assets/drop-files";
 import {
   drawSlide,
   ensureFonts,
@@ -26,10 +28,12 @@ import {
   pageFontFamily,
   renderSlidePng,
   screenSource,
+  screenThumbnail,
   shrinkImage,
 } from "@/lib/assets/screenshot-render";
 import {
   applyTemplate,
+  blankSlide,
   type Crop,
   DECOR_LABEL,
   DECORS,
@@ -39,7 +43,6 @@ import {
   presetsFor,
   type ScreenshotSpec,
   type Slide,
-  slideId,
   specBytes,
   stripMarks,
   SUBHEADLINE_SOFT_LIMIT,
@@ -70,6 +73,10 @@ type Props = {
   /** The app's icon (proxied URL), used with the screenshots to read the brand colours. */
   appIcon: string | null;
   savedAt: string | null;
+  /** Version and last update of the published listing: uploaded screenshots older than it get a warning. */
+  published: PublishedRef;
+  /** Relevant tracked keywords, best first, suggested for the keyword of each screen. */
+  keywordOptions: string[];
 };
 
 const PREVIEW_WIDTH = 230;
@@ -87,6 +94,8 @@ export function ScreenshotStudio({
   detectSlides,
   appIcon,
   savedAt,
+  published,
+  keywordOptions,
 }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
   const [selected, setSelected] = useState(0);
@@ -109,6 +118,9 @@ export function ScreenshotStudio({
   const [bgPrompt, setBgPrompt] = useState("");
   const [bgWriting, startBgWriting] = useTransition();
   const [bgGenerating, startBgGenerating] = useTransition();
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [sendScreens, setSendScreens] = useState(true);
   const images = useRef(new Map<string, HTMLImageElement>());
   const canvases = useRef(new Map<string, HTMLCanvasElement>());
   const thumbs = useRef(new Map<string, HTMLCanvasElement>());
@@ -116,6 +128,7 @@ export function ScreenshotStudio({
   const preset = getPreset(spec.device);
   const slide = spec.slides[Math.min(selected, spec.slides.length - 1)];
   const bytes = specBytes(spec);
+  const stale = staleSlides(spec.slides, published);
 
   const update = (patch: Partial<ScreenshotSpec>) =>
     setSpec((s) => ({ ...s, ...patch }));
@@ -262,6 +275,8 @@ export function ScreenshotStudio({
               keyword: null,
               asIs: false,
               crop: firstAsIs ? null : firstCrop,
+              capturedAt: null,
+              appVersion: null,
             },
           ],
         };
@@ -313,16 +328,7 @@ export function ScreenshotStudio({
   }
 
   function addSlide() {
-    const next: Slide = {
-      id: slideId(),
-      headline: "",
-      subheadline: "",
-      image: null,
-      layout: slide?.layout ?? "text-top",
-      keyword: null,
-      asIs: false,
-      crop: null,
-    };
+    const next = blankSlide(slide?.layout ?? "text-top");
     setSpec((s) => ({ ...s, slides: [...s.slides, next] }));
     setSelected(spec.slides.length);
   }
@@ -343,14 +349,80 @@ export function ScreenshotStudio({
     });
   }
 
-  async function upload(file: File | undefined) {
-    if (!file || !slide) return;
-    try {
-      const data = await shrinkImage(file);
-      updateSlide(slide.id, { image: data, asIs: false });
-    } catch {
-      setStatus({ kind: "error", text: "No se pudo leer la imagen." });
+  /**
+   * Several screenshots at once (file picker, drop of files or of a folder): sorted by name and placed
+   * on consecutive screens from the selected one, adding screens up to the maximum.
+   */
+  async function uploadMany(files: DroppedFile[]) {
+    const images = sortByName(files.filter((f) => isImageFile(f.file)));
+    if (images.length === 0) {
+      if (files.length > 0) setStatus({ kind: "error", text: "No hay imágenes entre los archivos." });
+      return;
     }
+    setStatus(null);
+    setUploading(true);
+    try {
+      const read = [];
+      let failed = 0;
+      for (const f of images.slice(0, MAX_SLIDES)) {
+        try {
+          read.push({
+            image: await shrinkImage(f.file),
+            capturedAt: f.file.lastModified ? new Date(f.file.lastModified).toISOString() : null,
+            appVersion: published.version,
+          });
+        } catch {
+          failed++;
+        }
+      }
+      const start = Math.min(selected, spec.slides.length - 1);
+      const layout = slide?.layout ?? "text-top";
+      const result = assignImages(spec.slides, start, read, () => blankSlide(layout));
+      setSpec((s) => ({ ...s, slides: result.slides }));
+      const dropped = result.dropped + Math.max(0, images.length - MAX_SLIDES);
+      const parts: string[] = [];
+      if (result.placed) {
+        const { from, to } = result.placed;
+        parts.push(from === to ? `Captura colocada en la pantalla ${from + 1}.` : `${to - from + 1} capturas colocadas en las pantallas ${from + 1} a ${to + 1}, por orden de nombre.`);
+      }
+      if (dropped > 0) parts.push(`${dropped} no ${dropped === 1 ? "cabe" : "caben"}: el máximo son ${MAX_SLIDES} pantallas.`);
+      if (failed > 0) parts.push(`${failed} no se ${failed === 1 ? "pudo" : "pudieron"} leer.`);
+      setStatus({ kind: result.placed ? "ok" : "error", text: parts.join(" ") });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function onDragOver(e: React.DragEvent) {
+    if (![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragging(true);
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setDragging(false);
+  }
+  async function onDrop(e: React.DragEvent) {
+    if (![...e.dataTransfer.types].includes("Files")) return;
+    e.preventDefault();
+    setDragging(false);
+    await uploadMany(await filesFromDrop(e.dataTransfer));
+  }
+
+  /** Small images of every screen, for Claude to see them (null where a slide has no image). */
+  async function screensForClaude(): Promise<(string | null)[]> {
+    return Promise.all(
+      spec.slides.map(async (sl) => {
+        const img = await imageFor(sl.image).catch(() => null);
+        if (!img) return null;
+        try {
+          return screenThumbnail(img, sl.asIs ? null : sl.crop);
+        } catch {
+          return null;
+        }
+      }),
+    );
   }
 
   function save() {
@@ -368,6 +440,7 @@ export function ScreenshotStudio({
   function writeCopy() {
     setStatus(null);
     startWriting(async () => {
+      const screens = sendScreens ? await screensForClaude() : [];
       const result: CopyResult = await generateScreenshotCopy(
         appId,
         spec.slides.map((s) => ({
@@ -375,6 +448,7 @@ export function ScreenshotStudio({
           subheadline: s.subheadline,
         })),
         focus,
+        screens,
       );
       if ("error" in result) {
         setStatus({ kind: "error", text: result.error });
@@ -494,7 +568,8 @@ export function ScreenshotStudio({
   async function pickStoreImage(sl: Slide, src: string) {
     const img = await imageFor(src).catch(() => null);
     const found = img ? detectScreen(img) : null;
-    updateSlide(sl.id, { image: src, asIs: !found, crop: found });
+    // A store image is the published one: no capture date to compare.
+    updateSlide(sl.id, { image: src, asIs: !found, crop: found, capturedAt: null, appVersion: null });
   }
 
   // Slides the page marked for detection (fresh designs, or saved before the crop existed) get it once.
@@ -616,8 +691,21 @@ export function ScreenshotStudio({
     // Two columns from the top: the preview strip and the slide editor on the left, the settings on the
     // right. On wide screens the strip sticks to the top of its column, so the editor and the settings
     // scroll underneath it and every change stays visible.
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+    <div
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`grid gap-6 rounded-xl lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)] ${dragging ? "outline-2 outline-offset-4 outline-brand outline-dashed" : ""}`}
+    >
       <div className="flex min-w-0 flex-col gap-4 lg:self-stretch">
+        {dragging && (
+          <p className="rounded-lg bg-brand-soft px-4 py-3 text-sm text-brand-strong">
+            Suelta las capturas (o una carpeta): se colocan por orden de nombre desde la pantalla {selected + 1}.
+          </p>
+        )}
+        {stale.length > 0 && (
+          <p className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn-fg">{staleMessage(stale, published)}</p>
+        )}
         <div className="lg:sticky lg:-top-7 lg:z-10 lg:-mt-7 lg:bg-panel lg:pt-7">
           <Card className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -834,29 +922,40 @@ export function ScreenshotStudio({
                   onChange={(e) =>
                     updateSlide(slide.id, { keyword: e.target.value || null })
                   }
+                  list="slide-keyword-options"
                   className={`${inputClass} font-normal`}
-                  placeholder="Solo como recordatorio"
+                  placeholder={keywordOptions.length ? "Elige entre tus keywords relevantes" : "Solo como recordatorio"}
                 />
+                <datalist id="slide-keyword-options">
+                  {keywordOptions.map((k) => (
+                    <option key={k} value={k} />
+                  ))}
+                </datalist>
               </label>
               <div className="flex flex-col gap-2 md:col-span-2">
                 <span className="text-[13px] font-medium text-ink-soft">
                   Captura de pantalla
                 </span>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className={`${buttonSecondary} cursor-pointer`}>
-                    Subir imagen
+                  <label className={`${buttonSecondary} cursor-pointer`} aria-busy={uploading}>
+                    {uploading ? "Leyendo…" : "Subir capturas"}
                     <input
                       type="file"
                       accept="image/*"
+                      multiple
                       className="sr-only"
-                      onChange={(e) => upload(e.target.files?.[0])}
+                      onChange={(e) => {
+                        const files = [...(e.target.files ?? [])].map((file) => ({ file, name: file.name, path: file.name }));
+                        e.target.value = "";
+                        void uploadMany(files);
+                      }}
                     />
                   </label>
                   {slide.image && (
                     <button
                       type="button"
                       onClick={() =>
-                        updateSlide(slide.id, { image: null, asIs: false })
+                        updateSlide(slide.id, { image: null, asIs: false, capturedAt: null, appVersion: null })
                       }
                       className={buttonSecondary}
                     >
@@ -982,9 +1081,22 @@ export function ScreenshotStudio({
             <h2 className="text-[15px] font-semibold">Textos con IA</h2>
             <p className="mt-1 text-xs text-muted">
               Claude redacta un titular y un subtítulo por pantalla a partir de
-              la ficha y de tus keywords con más oportunidad. Sustituye los
-              textos actuales.
+              la ficha de producto y de tus keywords relevantes con más
+              oportunidad, y elige para cada pantalla la keyword que mejor la
+              describe. Sustituye los textos actuales.
             </p>
+            <label className="mt-3 flex items-start gap-2 text-[13px] text-ink-soft">
+              <input
+                type="checkbox"
+                checked={sendScreens}
+                onChange={(e) => setSendScreens(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                Enviar las capturas para que Claude vea cada pantalla (una
+                imagen pequeña por pantalla; la petición cuesta algo más).
+              </span>
+            </label>
             <input
               value={focus}
               onChange={(e) => setFocus(e.target.value)}
@@ -1493,6 +1605,21 @@ export function ScreenshotStudio({
       </div>
     </div>
   );
+}
+
+/** «Las capturas de las pantallas 2, 3 son anteriores a la ficha publicada (versión 3.0, actualizada el 12/10/2026)…» */
+function staleMessage(stale: number[], published: PublishedRef): string {
+  const which =
+    stale.length === 1
+      ? `La captura de la pantalla ${stale[0] + 1} es anterior`
+      : `Las capturas de las pantallas ${stale.map((i) => i + 1).join(", ")} son anteriores`;
+  const ref = [
+    published.version ? `versión ${published.version}` : "",
+    published.updatedAt ? `actualizada el ${new Date(published.updatedAt).toLocaleDateString("es-ES")}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  return `${which} a la ficha publicada${ref ? ` (${ref})` : ""}. Si la interfaz ha cambiado, sube capturas nuevas; si no, puedes ignorar este aviso.`;
 }
 
 function ColorField({

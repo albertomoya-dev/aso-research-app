@@ -3,17 +3,30 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { generateIconConcepts, type IconConceptResult, saveDesign } from "@/app/asset-actions";
 import { downloadBlob, slug } from "@/lib/assets/download";
-import { checkIcon, ICON_EXPORTS, type IconSpec, type SymbolName, SYMBOL_NAMES, SYMBOLS } from "@/lib/assets/icon";
+import { checkIcon, ICON_EXPORTS, iconColorsFromPalette, type IconSpec, type SymbolName, SYMBOL_NAMES, SYMBOLS } from "@/lib/assets/icon";
 import { drawIcon, renderIconPng } from "@/lib/assets/icon-render";
-import { pageFontFamily, ensureFonts } from "@/lib/assets/screenshot-render";
+import { paletteFromImages } from "@/lib/assets/palette";
+import { pageFontFamily, ensureFonts, loadImage } from "@/lib/assets/screenshot-render";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
-type Props = { appId: number; appTitle: string; initial: IconSpec; currentIcon: string; aiEnabled: boolean; savedAt: string | null };
+type Props = {
+  appId: number;
+  appTitle: string;
+  initial: IconSpec;
+  currentIcon: string;
+  /** Same-origin URL of the current icon, so the canvas can read its colours. */
+  currentIconProxied: string | null;
+  /** True when there is no saved design: the studio starts from the colours of the current icon. */
+  startFromIcon: boolean;
+  aiEnabled: boolean;
+  savedAt: string | null;
+};
 
 type Concept = { name: string; rationale: string; spec: IconSpec };
 
-export function IconStudio({ appId, appTitle, initial, currentIcon, aiEnabled, savedAt }: Props) {
+export function IconStudio({ appId, appTitle, initial, currentIcon, currentIconProxied, startFromIcon, aiEnabled, savedAt }: Props) {
   const [spec, setSpec] = useState<IconSpec>(initial);
+  const [iconColors, setIconColors] = useState<{ from: string; to: string; glyphColor: string } | null>(null);
   const [status, setStatus] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [focus, setFocus] = useState("");
   const [concepts, setConcepts] = useState<Concept[]>([]);
@@ -21,6 +34,30 @@ export function IconStudio({ appId, appTitle, initial, currentIcon, aiEnabled, s
   const [thinking, startThinking] = useTransition();
   const font = useMemo(() => pageFontFamily(), []);
   const notes = checkIcon(spec);
+
+  // Reads the palette of the current icon once. Without a saved design, it becomes the starting colours.
+  const startRef = useRef(startFromIcon);
+  useEffect(() => {
+    if (!currentIconProxied) return;
+    let cancelled = false;
+    loadImage(currentIconProxied)
+      .then((img) => {
+        if (cancelled) return;
+        const palette = paletteFromImages([{ image: img }], 3);
+        if (palette.length === 0) return;
+        const colors = iconColorsFromPalette(palette);
+        setIconColors(colors);
+        if (startRef.current) {
+          startRef.current = false;
+          setSpec((s) => ({ ...s, background: { ...s.background, from: colors.from, to: colors.to }, glyphColor: colors.glyphColor }));
+          setStatus({ kind: "ok", text: "Colores iniciales tomados de tu icono actual." });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentIconProxied]);
 
   const update = (patch: Partial<IconSpec>) => setSpec((s) => ({ ...s, ...patch }));
   const updateBg = (patch: Partial<IconSpec["background"]>) => setSpec((s) => ({ ...s, background: { ...s.background, ...patch } }));
@@ -168,6 +205,16 @@ export function IconStudio({ appId, appTitle, initial, currentIcon, aiEnabled, s
               <input type="checkbox" checked={spec.gloss} onChange={(e) => update({ gloss: e.target.checked })} />
               Brillo suave arriba
             </label>
+            {iconColors && (
+              <button
+                type="button"
+                onClick={() => setSpec((s) => ({ ...s, background: { ...s.background, from: iconColors.from, to: iconColors.to }, glyphColor: iconColors.glyphColor }))}
+                className={`${buttonSecondary} col-span-2`}
+              >
+                <span aria-hidden className="inline-block size-3.5 rounded-sm" style={{ background: `linear-gradient(135deg, ${iconColors.from}, ${iconColors.to})` }} />
+                Usar los colores del icono actual
+              </button>
+            )}
           </div>
         </Card>
 
