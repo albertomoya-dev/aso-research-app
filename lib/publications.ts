@@ -61,6 +61,39 @@ export function ascFieldsFromDraft(draft: MetadataDraft, extras: { promotionalTe
   return fields;
 }
 
+/**
+ * The App Store Connect fields to send, against what the console has now. The App Store's public API
+ * never returns the subtitle or the keyword field, so a draft started from the published listing has
+ * them empty: an empty draft field (or extra) is never sent when the console has text, so it cannot wipe
+ * it. Name and subtitle are dropped when the app info cannot be edited. `kept` lists, in Spanish, what
+ * stays as it is and why.
+ */
+export function ascNextFields(
+  draft: MetadataDraft,
+  live: PublishFields,
+  extras: { promotionalText?: string; whatsNew?: string },
+  canEditAppInfo: boolean,
+): { fields: PublishFields; kept: string[] } {
+  const wanted = ascFieldsFromDraft(draft, extras);
+  const fields: PublishFields = {};
+  const kept: string[] = [];
+  const labels = Object.fromEntries(PUBLISH_FIELDS.ios.map((f) => [f.key, f.label])) as Record<PublishFieldKey, string>;
+  for (const spec of PUBLISH_FIELDS.ios) {
+    const value = wanted[spec.key];
+    if ((spec.key === "name" || spec.key === "subtitle") && !canEditAppInfo) {
+      if (value !== undefined && value !== (live[spec.key] ?? "")) kept.push(`${labels[spec.key]}: la información de la app no se puede editar ahora en App Store Connect.`);
+      continue;
+    }
+    if (value === undefined) continue;
+    if (!value && (live[spec.key] ?? "").trim() && spec.key !== "name") {
+      kept.push(`${labels[spec.key]}: vacío en tu borrador, se mantiene el de App Store Connect.`);
+      continue;
+    }
+    fields[spec.key] = value;
+  }
+  return { fields, kept };
+}
+
 /** One field that changes; stored as is in publications.fields. */
 export type PublishedField = { field: PublishFieldKey; label: string; before: string; after: string };
 export type PreviewField = PublishedField & { limit: number; length: number; over: boolean; multiline: boolean };

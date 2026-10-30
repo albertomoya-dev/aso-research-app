@@ -28,6 +28,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 18 | Reseñas de la competencia: cualquier app del TOP 5, selector de país, oportunidades para la ficha y lo que pide la categoría | Hecho |
 | 19 | Fichas por idioma y país (borradores por locale, fichas personalizadas de Play, adaptación con IA, matriz de cobertura) y notas de la versión | Hecho |
 | 20 | Google Play Console: publicar el borrador con vista previa y confirmación, responder reseñas con borradores de IA e importar los términos de búsqueda reales | Hecho (sin probar contra una cuenta real) |
+| 21 | App Store Connect: enviar el borrador a la versión en preparación con vista previa y confirmación, y ver los informes de analítica disponibles | Hecho (sin probar contra una cuenta real) |
 
 ## Stack
 
@@ -250,6 +251,39 @@ En la portada de la app (solo Google Play), **Términos de búsqueda reales** im
 ### Qué está verificado y qué no
 
 Endpoints, parámetros y límites comprobados el **30 oct 2026** en la [referencia REST de la Android Publisher API v3](https://developers.google.com/android-publisher/api-ref/rest/v3/edits) (edits, edits.listings, reviews) y en su documento de descubrimiento (revisión 20261029), en la guía [Reply to Reviews](https://developers.google.com/android-publisher/reply-to-reviews) y en [OAuth 2.0 para cuentas de servicio](https://developers.google.com/identity/protocols/oauth2/service-account). Los tests cubren la firma del JWT con una clave generada en el propio test, el intercambio del token, el orden de las llamadas, el borrado de la edición si algo falla, el mapeo de idiomas y el lector de CSV, siempre con un `fetch` simulado. **No se ha probado contra una cuenta real de Play Console**: la primera vez, revisa la vista previa con calma antes de confirmar.
+
+## App Store Connect
+
+Conexión opcional con la **App Store Connect API** mediante una clave de API de equipo. Sin configurarla, todo lo demás funciona igual.
+
+### Configurarla
+
+1. En **App Store Connect › Usuarios y acceso › Integraciones › App Store Connect API**, crea una clave de equipo con el rol **App Manager** (o **Admin** si también quieres pedir los informes de analítica) y descarga el archivo `.p8` (solo se puede descargar una vez).
+2. Añade en las variables de entorno del servidor `ASC_ISSUER_ID` (arriba en esa página), `ASC_KEY_ID` (columna «ID de clave») y `ASC_PRIVATE_KEY` (el contenido del `.p8`; si tu panel no admite varias líneas, escribe los saltos como `\n`).
+3. Por defecto es de **solo lectura**. Para guardar textos y pedir informes desde Rankeo, añade `ASC_ALLOW_WRITE=1`.
+
+Rankeo firma en el servidor un JWT ES256 (con `node:crypto`; cabecera `alg`, `kid`, `typ`; carga `iss`, `iat`, `exp` a 15 minutos y `aud: appstoreconnect-v1`, como pide Apple, que rechaza tokens de más de 20 minutos) y lo reutiliza hasta 2 minutos antes de caducar. La clave nunca llega al navegador ni a los logs.
+
+### Enviar el borrador
+
+En el editor de una app del App Store, **Enviar a App Store Connect** (secundario) abre la vista previa de la **versión en preparación**: nombre y subtítulo (`appInfoLocalizations`), campo de keywords y descripción (`appStoreVersionLocalizations`), con lo que hay ahora en App Store Connect frente al borrador guardado. Debajo puedes escribir el **texto promocional** (170 caracteres) y las **novedades de esta versión** (4000); empiezan con el texto actual y, si los dejas igual o vacíos, no cambian.
+
+- Solo se guarda en la versión en preparación (estados `PREPARE_FOR_SUBMISSION`, `READY_FOR_REVIEW`, `DEVELOPER_REJECTED`, `REJECTED`, `METADATA_REJECTED` o `INVALID_BINARY`, según la página [App and submission statuses](https://developer.apple.com/help/app-store-connect/reference/app-and-submission-statuses), que marca los editables con iconos: la lista sale de sus descripciones). Si no hay ninguna, Rankeo pide crearla en App Store Connect. **No envía la versión a revisión**: eso sigue haciéndose en App Store Connect.
+- La API pública del App Store no devuelve el subtítulo ni el campo de keywords, así que un borrador que parte de la ficha publicada los tiene vacíos: un campo vacío en el borrador **nunca borra** el de App Store Connect, se mantiene y se avisa. El nombre y el subtítulo solo se tocan si la información de la app está en un estado editable.
+- Se re-lee App Store Connect al confirmar y solo se envían los campos que cambian (un `PATCH` para nombre y subtítulo y otro para el resto). No se envía si el borrador cambió desde la vista previa o si un texto pasa del límite.
+- **Idiomas**: Apple usa sus códigos ([locale shortcodes](https://developer.apple.com/documentation/appstoreconnectapi/managing-metadata-in-your-app-by-using-locale-shortcodes), leídos el 30 oct 2026), unos con región (`es-MX`, `en-GB`) y otros sin ella (`it`, `ja`, `ko`): `it-IT` va a `it`, cualquier árabe a `ar-SA`, `zh-TW` a `zh-Hant`. Las variantes que Apple no tiene (`es-AR`, `en-NZ`, `de-AT`…) no se envían: esos países ven otra localización y se sugieren las del mismo idioma. Si la versión no tiene aún ese idioma, hay que añadirlo antes en App Store Connect.
+- La app se busca por su Apple ID (el `storeId` de Rankeo) y, si la clave no la ve, por el bundle id.
+- Cada intento queda en `publications` igual que en Google Play, con estado «Guardada en App Store Connect» o «Falló».
+
+### Informes de analítica
+
+En la misma página, **Informes de analítica** lista las peticiones de informes de la app y los informes que Apple ha generado (`GET /v1/apps/{id}/analyticsReportRequests?include=reports`), agrupados por categoría (interacción en el App Store, comercio, uso de la app, rendimiento…). Si no hay ninguna petición activa, con `ASC_ALLOW_WRITE=1` puedes pedirlos (`POST /v1/analyticsReportRequests`, acceso `ONGOING`, con confirmación); Apple tarda 1 o 2 días en generar los primeros y deja de hacerlo si nadie los descarga durante un tiempo (`stoppedDueToInactivity`).
+
+Qué ofrece la Analytics Reports API ([Downloading Analytics Reports](https://developer.apple.com/documentation/appstoreconnectapi/downloading-analytics-reports), leído el 30 oct 2026): una petición (`ONGOING` para datos diarios, semanales y mensuales desde ese día, o `ONE_TIME_SNAPSHOT` para el histórico) genera informes por categoría; cada informe tiene **instancias** por granularidad y fecha de proceso, y cada instancia uno o varios **segmentos** (los archivos del informe) con su URL de descarga, tamaño y checksum. Apple añade ruido o umbrales de privacidad a algunos informes. **Aún no se descargan ni se cruzan con las keywords**: requiere guardar y procesar archivos grandes, y queda para más adelante. Hasta entonces, las cifras de impresiones y visitas siguen viéndose en App Store Connect.
+
+### Qué está verificado y qué no
+
+Endpoints, atributos, estados y límites comprobados el **30 oct 2026** en la [referencia de la App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi) (apps, appStoreVersions, appStoreVersionLocalizations, appInfos, appInfoLocalizations, analyticsReportRequests) y en [Generating Tokens for API Requests](https://developer.apple.com/documentation/appstoreconnectapi/generating-tokens-for-api-requests), leyendo el JSON de cada página. Los tests firman y verifican el JWT ES256 con una clave P-256 generada en el propio test, y comprueban las URLs, los cuerpos JSON:API, la elección de la versión editable, el mapeo de idiomas y que un campo vacío no borra el de la consola, siempre con un `fetch` simulado. **No se ha probado contra una cuenta real de App Store Connect.**
 
 ## Competidores
 

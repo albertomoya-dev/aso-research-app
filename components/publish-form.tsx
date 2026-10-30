@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { ConfirmButton } from "./confirm-button";
-import { buttonPrimary } from "./ui";
+import { buttonPrimary, buttonSecondary } from "./ui";
 
 export type PublishState = { ok?: boolean; message?: string; error?: string } | null;
 
@@ -16,10 +16,12 @@ type Props = {
   confirmMessage: string;
   /** Extra inputs inside the form (App Store Connect: promotional text and release notes). */
   children?: React.ReactNode;
+  /** Primary by default; secondary when the page already has its primary action. */
+  secondary?: boolean;
 };
 
 /** The single confirmed write of the publish page. The server checks the confirmation and the write flag again. */
-export function PublishForm({ action, fields, label, pendingLabel, confirmMessage, children }: Props) {
+export function PublishForm({ action, fields, label, pendingLabel, confirmMessage, children, secondary }: Props) {
   const [state, formAction, pending] = useActionState<PublishState, FormData>(action, null);
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -29,7 +31,7 @@ export function PublishForm({ action, fields, label, pendingLabel, confirmMessag
       <input type="hidden" name="confirm" value="yes" />
       {children}
       <div className="flex flex-wrap items-center gap-3">
-        <ConfirmButton message={confirmMessage} disabled={pending || state?.ok} aria-busy={pending} className={buttonPrimary}>
+        <ConfirmButton message={confirmMessage} disabled={pending || state?.ok} aria-busy={pending} className={secondary ? buttonSecondary : buttonPrimary}>
           {pending ? pendingLabel : label}
         </ConfirmButton>
         <span aria-live="polite" className="text-[13px]">

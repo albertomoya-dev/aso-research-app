@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { publishToPlay } from "@/app/play-actions";
+import { AscAnalytics } from "@/components/asc-analytics";
+import { AscPublish } from "@/components/asc-publish";
 import { PublicationHistory } from "@/components/publication-history";
 import { PublishDiff } from "@/components/publish-diff";
 import { PublishForm } from "@/components/publish-form";
-import { buttonSecondary, Card, ErrorNote, PageHeader } from "@/components/ui";
+import { buttonSecondary, Card, ErrorNote, PageHeader, Skeleton } from "@/components/ui";
 import type { App } from "@/db/schema";
+import { ascConfig } from "@/lib/app-store-connect/auth";
 import { loadApp } from "@/lib/apps";
 import { formatDate } from "@/lib/format";
 import { type DraftTarget, resolveTarget, targetLabel, targetQuery } from "@/lib/listing-drafts";
@@ -20,7 +24,7 @@ type Props = {
 };
 
 export const metadata: Metadata = { title: "Publicar la ficha" };
-// Opening an edit, reading the listing and deleting the edit are three calls to Google.
+// Google: open an edit, read the listing, delete the edit. Apple: find the app, its versions and localizations.
 export const maxDuration = 60;
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : null);
@@ -31,6 +35,7 @@ export default async function PublishPage({ params, searchParams }: Props) {
   const target = resolveTarget(app.country, app.store, { locale: one(query.locale), country: one(query.country) });
   const editorHref = `/apps/${app.id}/metadata${targetQuery(app.country, target)}`;
   const storeName = app.store === "android" ? "Google Play" : "App Store Connect";
+  const verb = app.store === "android" ? "Publicar en" : "Enviar a";
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,14 +49,19 @@ export default async function PublishPage({ params, searchParams }: Props) {
         </Link>{" "}
         / Publicar
       </nav>
-      <PageHeader title={`Publicar en ${storeName}`}>
+      <PageHeader title={`${verb} ${storeName}`}>
         Envía el borrador guardado de {targetLabel(target)} a {storeName}. Antes de nada verás, campo a campo, lo que hay ahora en la consola y lo
         que se enviará; no se cambia nada hasta que lo confirmes.
       </PageHeader>
       {app.store === "android" ? (
         <PlayPublish app={app} target={target} editorHref={editorHref} />
       ) : (
-        <Card className="px-5 py-4 text-sm text-ink-soft">El envío a App Store Connect llega en la siguiente fase. Mientras, copia el borrador en la consola.</Card>
+        <AscPublish app={app} target={target} editorHref={editorHref} />
+      )}
+      {app.store === "ios" && ascConfig().configured && (
+        <Suspense fallback={<Skeleton className="h-28" />}>
+          <AscAnalytics appId={app.id} storeId={app.storeId} bundleId={app.meta.bundleId} />
+        </Suspense>
       )}
       <div>
         <Link href={editorHref} className={buttonSecondary}>
