@@ -6,6 +6,7 @@ import { AppMetadata } from "@/components/app-metadata";
 import { ConfirmButton } from "@/components/confirm-button";
 import { CountriesCard } from "@/components/countries-card";
 import { KeywordForm } from "@/components/keyword-form";
+import { OfficialBadge, officialPeriod, OfficialStatsCard } from "@/components/official-stats";
 import { BulkRemoveBar, KeywordSelection, RowCheckbox, SelectAllCheckbox } from "@/components/keyword-selection";
 import { Position, PositionChange, Sparkline } from "@/components/rank";
 import { RecalculateRelevance, RelevanceSelect } from "@/components/relevance-select";
@@ -22,6 +23,7 @@ import { getKeywordRows, type KeywordRow } from "@/lib/queries";
 import { rankStatus } from "@/lib/ranking";
 import { isLikelyIrrelevant, KEYWORD_BUDGET, noiseReason } from "@/lib/relevance";
 import { hasAnthropicKey } from "@/lib/claude";
+import { getOfficialStats } from "@/lib/search-term-queries";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string; s?: string; d?: string }> };
 
@@ -46,7 +48,7 @@ export default async function AppPage({ params, searchParams }: Props) {
   const sort: KeywordSort = isKeywordSort(s) ? s : "opportunity";
   const dir: SortDir = d === "asc" || d === "desc" ? d : KEYWORD_SORTS[sort].dir;
   const { lang } = getCountry(app.country);
-  const rows = await getKeywordRows(app);
+  const [rows, official] = await Promise.all([getKeywordRows(app), app.store === "android" ? getOfficialStats(app.id) : null]);
   const visible = sortKeywordRows(rows.filter((r) => filter.test(r, lang)), sort, dir);
   const unratedByUser = rows.filter((r) => r.relevanceSource !== "user").length;
   const unrated = rows.filter((r) => r.relevance == null).length;
@@ -193,6 +195,7 @@ export default async function AppPage({ params, searchParams }: Props) {
                           <span className="ml-2 rounded-md bg-warn-bg px-2 py-0.5 text-[11px] font-semibold text-warn-fg">Al alcance</span>
                         )}
                         <div className="mt-0.5 text-xs text-muted">{SOURCE_LABEL[k.source]}</div>
+                        {official?.byTerm.has(k.term) && <OfficialBadge stats={official.byTerm.get(k.term)!} period={officialPeriod(official)} />}
                       </td>
                       <td className="px-3 py-3 font-mono text-base font-medium">
                         <Position position={k.position} depth={k.depth} checked={k.checkedOn != null} />
@@ -258,9 +261,13 @@ export default async function AppPage({ params, searchParams }: Props) {
             Oportunidad: popularidad descontada por la dificultad y multiplicada por la relevancia (de 0,6 con relevancia 1 a 1 con
             relevancia 5; una keyword sin valorar cuenta como 0,7). Relevancia (1–5): la estima la IA con tu ficha de producto o la fijas tú;
             la IA nunca cambia la que has puesto tú.
+            {official &&
+              ` «Oficial»: visitantes e instalaciones reales de Google Play Console del ${officialPeriod(official)}, importados del CSV; no son estimaciones y no se mezclan con la popularidad.`}
           </p>
         </KeywordSelection>
       </Card>
+
+      {app.store === "android" && <OfficialStatsCard appId={app.id} stats={official} tracked={new Set(rows.map((r) => r.term))} />}
 
       <CountriesCard app={app} />
 

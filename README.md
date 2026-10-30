@@ -27,6 +27,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 17 | Estacionalidad fiable: señal mínima, picos sostenidos, popularidad mínima, calendario y aviso 3 semanas antes | Hecho |
 | 18 | Reseñas de la competencia: cualquier app del TOP 5, selector de país, oportunidades para la ficha y lo que pide la categoría | Hecho |
 | 19 | Fichas por idioma y país (borradores por locale, fichas personalizadas de Play, adaptación con IA, matriz de cobertura) y notas de la versión | Hecho |
+| 20 | Google Play Console: publicar el borrador con vista previa y confirmación, responder reseñas con borradores de IA e importar los términos de búsqueda reales | Hecho (sin probar contra una cuenta real) |
 
 ## Stack
 
@@ -122,7 +123,7 @@ Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (mi
 - Tus keywords son las del país de la app: en un borrador de otro idioma el editor no las mide y lo dice. Para medir otro idioma, sigue la app en ese país desde «Otros países».
 - **Cobertura por idioma**: cuando hay más de una ficha, una tabla con tus 25 keywords relevantes de más oportunidad × cada ficha guardada, con la cobertura ponderada de cada una y el campo que cubre cada keyword.
 - `apps.draft` se copió a `listing_drafts` en la migración (con el locale del país de la app) y ya no se escribe; se borrará en una versión posterior.
-- Para leer un borrador desde otro módulo (la publicación en Google Play de la fase 20): `getListingDraft(appId, locale, country = "")` en `lib/listing-draft-queries.ts`, o `getListingDrafts(appId)` para todos. El `locale` es BCP 47 con región; Play Console usa algunos códigos propios (`es-419` para Latinoamérica), así que hará falta un mapeo al publicar.
+- Para leer un borrador desde otro módulo (la publicación en Google Play de la fase 20): `getListingDraft(appId, locale, country = "")` en `lib/listing-draft-queries.ts`, o `getListingDrafts(appId)` para todos. El `locale` es BCP 47 con región; Play Console usa algunos códigos propios (`es-419` para Latinoamérica), el mapeo está en `lib/play-console/locales.ts` (ver «Google Play Console»).
 
 ### Notas de la versión
 
@@ -201,6 +202,54 @@ La ficha publicada en la tienda siempre va por detrás del producto: si la IA so
 - **Importar desde CHANGELOG**: pegas el texto, Claude propone las funciones con su estado y las versiones, y tú marcas qué se guarda. Nada se guarda sin tu confirmación.
 - Sin ficha de producto todo funciona como antes (la IA solo usa la ficha publicada) y el editor lo avisa.
 - La lógica está en `lib/product-facts.ts` (`factsForPrompt`); al cambiar los prompts se subieron sus versiones (`lst-2`, `kw-2`, `crt-2`, `rv-2`).
+
+## Google Play Console
+
+Conexión opcional con la **Google Play Developer API** (Android Publisher v3) mediante una cuenta de servicio. Sin configurarla, el resto de Rankeo funciona igual y la ficha se sigue copiando a mano.
+
+### Configurarla
+
+1. En [Google Cloud Console](https://console.cloud.google.com/), en un proyecto tuyo, activa la **Google Play Android Developer API**.
+2. Crea una **cuenta de servicio** y descarga una **clave JSON**.
+3. En **Play Console › Usuarios y permisos**, invita el correo de la cuenta de servicio (`…@….iam.gserviceaccount.com`) con acceso a la app y permisos para editar la ficha de Play Store y responder reseñas.
+4. Pega el JSON (tal cual o en base64) en la variable de entorno del servidor `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` (en Vercel › Settings › Environment Variables).
+5. Por defecto la conexión es de **solo lectura**: Rankeo lee la ficha y las reseñas pero no cambia nada. Para publicar y responder, añade `GOOGLE_PLAY_ALLOW_WRITE=1`.
+
+La clave solo se usa en el servidor: Rankeo firma con ella un JWT (RS256, con `node:crypto`, sin librerías nuevas), lo cambia por un token de acceso en `https://oauth2.googleapis.com/token` con el permiso `androidpublisher` y guarda el token en memoria hasta que caduca (1 hora). Nunca llega al navegador ni a los logs.
+
+### Publicar el borrador
+
+En el editor de ficha, **Publicar en Google Play** (botón secundario) abre una vista previa con lo que hay **ahora mismo** en la consola (leído en una edición temporal que se borra) frente al **borrador guardado**, campo a campo: título, descripción corta y descripción. Solo se publica lo guardado, no lo que estés escribiendo.
+
+- Al confirmar: `edits.insert` → `edits.listings.patch` → `edits.validate` → `edits.commit`. Si un paso falla, se borra la edición y no queda nada a medias. Se usa `patch` y no `update` para no borrar el vídeo promocional, que Rankeo no edita. Si la consola ya tiene ese texto, no se envía nada.
+- El envío usa `changesInReviewBehavior=ERROR_IF_IN_REVIEW`: si tienes cambios en revisión en Google, se rechaza en lugar de cancelarlos (la API, por defecto, los cancelaría).
+- Google revisa los cambios antes de mostrarlos en la tienda: puede tardar desde minutos hasta días.
+- No se publica si el borrador cambió desde que abriste la vista previa, si un texto pasa del límite o si el título queda vacío.
+- **Idiomas**: Play usa sus propios códigos (`lib/play-console/locales.ts`, de la [lista de idiomas de Play Console](https://support.google.com/googleplay/android-developer/answer/9844778), leída el 30 oct 2026). El español de cualquier país de Latinoamérica va a `es-419`, el hebreo a `iw-IL` y el chino simplificado a `zh-CN`. Las variantes que Play no tiene (`en-NZ`, `de-AT`, `fr-BE`…) no se publican, para no pisar la ficha que ven otros países; se sugieren las parecidas.
+- **Fichas personalizadas por país**: la API no las incluye (comprobado en su documento de descubrimiento), así que se copian a mano.
+- Cada intento, también los que fallan, queda en la tabla `publications` (app, tienda, locale de Rankeo y código de la consola, campos que cambian con su valor antes y después, estado y error) y se ve en el **Historial de publicaciones** de esa página. En los fallidos, «antes» queda vacío porque no se llegó a leer. La fase 22 la usará para las anotaciones automáticas: `getPublications(appId)` y `recordPublication` en `lib/publication-queries.ts`.
+
+### Responder reseñas
+
+En **Reseñas**, con tu app seleccionada, la tarjeta **Responder reseñas** (dato oficial) lista las reseñas escritas o editadas en los **últimos 7 días**, que es lo que permite `reviews.list`, con tu respuesta actual si la hay.
+
+- **Redactar respuesta con IA** (`draftReviewReply`, prompt `rr-1` en `lib/review-replies.ts`): relee la reseña desde Google (no se fía de lo que mande el navegador) y usa la ficha de producto en modo «versión publicada» y el tono de la marca. No promete funciones planificadas ni pide subir la nota. Máximo **350 caracteres** (límite de `reviews.reply`); si la IA se pasa, se recorta en la última frase completa y se avisa.
+- **Responder** solo aparece con `GOOGLE_PLAY_ALLOW_WRITE=1` y pide confirmación. En solo lectura puedes copiar la respuesta a Play Console.
+- Cuota de la API: 200 lecturas por hora y 2000 respuestas al día por app.
+
+### Términos de búsqueda reales (dato oficial)
+
+En la portada de la app (solo Google Play), **Términos de búsqueda reales** importa el CSV de Play Console con los visitantes de la ficha y las adquisiciones (visitantes que instalaron) por término de búsqueda. Es la única cifra oficial de Rankeo; la popularidad sigue siendo una estimación del autocompletado y nunca se mezclan.
+
+- Formatos: el informe mensual de Cloud Storage `store_performance_[paquete]_[aaaaMM]_traffic_source.csv` (UTF-16, una fila por día; [formato documentado](https://support.google.com/googleplay/android-developer/answer/6135870), leído el 30 oct 2026) o la descarga de la pantalla de términos de búsqueda, en UTF-8 o UTF-16, con comas, punto y coma o tabuladores y cabeceras en español o inglés. Si el CSV no tiene fecha, indica el periodo que elegiste al descargarlo. El formato exacto de la descarga desde las pantallas no está documentado: el lector reconoce las columnas por palabras («término», «visitantes», «adquisiciones»…), y si no las encuentra lo dice.
+- Se ignoran las filas sin término y el cajón «Other», donde Google agrupa los términos con pocas visitas.
+- Se guarda en `search_term_stats` (una fila por término y día, o por término y periodo). Reimportar el mismo periodo sustituye sus datos.
+- En la tabla de keywords, las que coinciden llevan la etiqueta **Oficial** con visitantes e instalaciones de los últimos 30 días importados (o del periodo de la última exportación, si es más largo); en el detalle de la keyword salen como dos cifras aparte de la popularidad estimada. Debajo del formulario, las búsquedas que te traen visitas y aún no sigues.
+- La API de Google Play no da estos datos: solo están en la consola y en los informes de Cloud Storage.
+
+### Qué está verificado y qué no
+
+Endpoints, parámetros y límites comprobados el **30 oct 2026** en la [referencia REST de la Android Publisher API v3](https://developers.google.com/android-publisher/api-ref/rest/v3/edits) (edits, edits.listings, reviews) y en su documento de descubrimiento (revisión 20261029), en la guía [Reply to Reviews](https://developers.google.com/android-publisher/reply-to-reviews) y en [OAuth 2.0 para cuentas de servicio](https://developers.google.com/identity/protocols/oauth2/service-account). Los tests cubren la firma del JWT con una clave generada en el propio test, el intercambio del token, el orden de las llamadas, el borrado de la edición si algo falla, el mapeo de idiomas y el lector de CSV, siempre con un `fetch` simulado. **No se ha probado contra una cuenta real de Play Console**: la primera vez, revisa la vista previa con calma antes de confirmar.
 
 ## Competidores
 

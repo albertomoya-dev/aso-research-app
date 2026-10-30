@@ -4,6 +4,7 @@ import { CoverageMatrix } from "@/components/coverage-matrix";
 import { LocalePicker } from "@/components/locale-picker";
 import { MetadataEditor } from "@/components/metadata-editor";
 import { ReleaseNotesCard } from "@/components/release-notes-card";
+import { PublishBar } from "@/components/publish-bar";
 import { PageHeader } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
 import { detectBrands } from "@/lib/brand-queries";
@@ -84,7 +85,8 @@ export default async function MetadataPage({ params, searchParams }: Props) {
       </nav>
       <PageHeader title="Editor de ficha">
         Prepara el texto de tu próxima versión, en cada idioma, y comprueba los límites de la tienda y qué keywords cubre. Los cambios se guardan aquí
-        como borrador; para publicarlos tienes que copiarlos a {app.store === "ios" ? "App Store Connect" : "Google Play Console"}.
+        como borrador; para publicarlos, cópialos a {app.store === "ios" ? "App Store Connect" : "Google Play Console"} o, si conectas la consola, envíalos
+        desde aquí con una vista previa de lo que cambia.
       </PageHeader>
       <LocalePicker
         appId={app.id}
@@ -92,6 +94,12 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         mainLocale={main}
         options={localeOptions(app.country, app.store, drafts, target)}
         current={target}
+      />
+      <PublishBar
+        store={app.store}
+        target={target}
+        hasDraft={row != null}
+        href={`/apps/${app.id}/metadata/publicar${targetQuery(app.country, target)}`}
       />
       <MetadataEditor
         key={`${target.locale}|${target.country}`}

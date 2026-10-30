@@ -17,6 +17,8 @@ import type { AppMeta, AppSummary } from "@/lib/stores/types";
 import type { AlertKind, AlertTone } from "@/lib/alerts";
 import type { IconSpec } from "@/lib/assets/icon";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
+import type { PublicationStatus, PublishedField } from "@/lib/publications";
+import type { SearchTermSource } from "@/lib/search-terms";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 // Relative so drizzle-kit can load it without the "@/" alias.
@@ -375,6 +377,56 @@ export const listingDrafts = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("listing_drafts_app_locale_country_idx").on(t.appId, t.locale, t.country)],
+);
+
+/**
+ * Every attempt to publish a draft to a store console (F2), successful or not. `fields` holds only the
+ * fields that changed, with the value before (read from the console in the same edit) and after. Feeds the
+ * automatic annotations of phase 22.
+ */
+export const publications = pgTable("publications", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  store: storeEnum("store").notNull(),
+  /** Rankeo locale of the draft (BCP 47, "es-MX"). */
+  locale: text("locale").notNull(),
+  /** Code used by the console ("es-419" in Google Play, "es-MX" in App Store Connect). */
+  storeLocale: text("store_locale").notNull(),
+  /** "" for the main listing of the locale, as in listing_drafts. */
+  country: text("country").notNull().default(""),
+  fields: jsonb("fields").$type<PublishedField[]>().notNull(),
+  status: text("status").$type<PublicationStatus>().notNull(),
+  error: text("error"),
+  /** Google Play edit id or App Store version id, to find it in the console. */
+  externalRef: text("external_ref"),
+  publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Official search term figures imported from Google Play Console (F2): real store listing visitors and
+ * acquisitions per term and period. One row per term and day for the Cloud Storage report, or per term
+ * for the period of an export from the console screens. Re-importing the same file replaces its rows.
+ */
+export const searchTermStats = pgTable(
+  "search_term_stats",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    source: text("source").$type<SearchTermSource>().notNull().default("play_csv"),
+    /** Normalized like keywords.term, so it joins with the tracked keywords. */
+    term: text("term").notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    visitors: integer("visitors").notNull().default(0),
+    /** Store listing acquisitions: visitors who installed the app (Play's "Store listing acquisitions"). */
+    acquisitions: integer("acquisitions").notNull().default(0),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("search_term_stats_unique_idx").on(t.appId, t.source, t.term, t.periodStart, t.periodEnd)],
 );
 
 export type App = typeof apps.$inferSelect;

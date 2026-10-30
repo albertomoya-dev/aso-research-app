@@ -13,8 +13,10 @@ import { Card } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
 import { dailySeries } from "@/lib/chart-data";
 import { getCountry } from "@/lib/countries";
-import { formatDate, formatRating } from "@/lib/format";
+import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { ANNOTATION_WINDOW, getKeywordDetail } from "@/lib/queries";
+import { officialPeriod } from "@/components/official-stats";
+import { getOfficialStats } from "@/lib/search-term-queries";
 import { averagePosition, positionChange, RANK_DEPTH, shiftDate, today } from "@/lib/ranking";
 import { completePoints, MIN_POPULARITY, peakMonth, signalQuality } from "@/lib/seasonality";
 
@@ -44,6 +46,8 @@ const fmtAvg = (n: number | null) => (n == null ? "–" : `#${n.toFixed(1).repla
 
 export default async function KeywordPage(props: Props) {
   const { app, days, keyword, since, history, latest, annotations, metrics, trend } = await load(props);
+  const official = app.store === "android" ? await getOfficialStats(app.id) : null;
+  const officialTerm = official?.byTerm.get(keyword.term) ?? null;
   const peak = trend?.points ? peakMonth(trend.points, metrics.popularity) : null;
   const weakSignal = trend?.points ? !signalQuality(completePoints(trend.points)) : false;
   const end = today();
@@ -85,9 +89,15 @@ export default async function KeywordPage(props: Props) {
           <Stat label="Cambio 7 días">
             <PositionChange change={positionChange(latest?.position, weekAgo?.position)} />
           </Stat>
-          <Stat label="Popularidad">
+          <Stat label="Popularidad (estimada)">
             {metrics.popularity ?? "–"}
           </Stat>
+          {official && officialTerm && (
+            <>
+              <Stat label={`Visitantes · oficial, ${officialPeriod(official)}`}>{formatNumber(officialTerm.visitors)}</Stat>
+              <Stat label={`Instalaciones · oficial, ${officialPeriod(official)}`}>{formatNumber(officialTerm.acquisitions)}</Stat>
+            </>
+          )}
           <Stat label="Dificultad">{metrics.difficulty != null ? `${difficultyLabel(metrics.difficulty)} · ${metrics.difficulty}` : "–"}</Stat>
           <Stat label="Oportunidad">{metrics.opportunity ?? "–"}</Stat>
           <Stat label="Mejor posición del periodo">

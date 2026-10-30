@@ -43,6 +43,13 @@ import {
   relevanceOutputSchema,
   RELEVANCE_SYSTEM_PROMPT,
 } from "./relevance";
+import {
+  buildReviewReplyPrompt,
+  REVIEW_REPLY_SYSTEM_PROMPT,
+  type ReviewReplyInput,
+  type ReviewReplyOutput,
+  reviewReplyOutputSchema,
+} from "./review-replies";
 import { buildReviewPrompt, REVIEW_SYSTEM_PROMPT, reviewAnalysisSchema, type ReviewAnalysis, type ReviewPromptInput } from "./review-analysis";
 import { buildUserPrompt, modelOutputSchema, type ModelOutput, type PromptInput, SYSTEM_PROMPT } from "./suggestions";
 
@@ -143,4 +150,9 @@ export function localizeListing(input: LocalizePromptInput, feedback?: string[])
 /** Asks Claude for the release notes of the next version in one locale. */
 export function writeReleaseNotes(input: ReleaseNotesInput, feedback?: string[]): Promise<{ output: ReleaseNotesOutput; model: string }> {
   return askClaude(releaseNotesOutputSchema, RELEASE_NOTES_SYSTEM_PROMPT, buildReleaseNotesPrompt(input, feedback));
+}
+
+/** Asks Claude for a public reply to one of the app's own Google Play reviews. Only a draft: the owner edits and confirms it. */
+export function draftReviewReply(input: ReviewReplyInput): Promise<{ output: ReviewReplyOutput; model: string }> {
+  return askClaude(reviewReplyOutputSchema, REVIEW_REPLY_SYSTEM_PROMPT, buildReviewReplyPrompt(input));
 }

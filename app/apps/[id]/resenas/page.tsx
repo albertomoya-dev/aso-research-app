@@ -1,16 +1,19 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { AnalyzeReviewsForm } from "@/components/analyze-reviews-form";
 import { CountrySelect } from "@/components/country-select";
 import { DiscoverList } from "@/components/discover-list";
-import { buttonSecondary, Card, PageHeader } from "@/components/ui";
+import { PlayReviews } from "@/components/play-reviews";
+import { buttonSecondary, Card, PageHeader, Skeleton } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry, isCountry } from "@/lib/countries";
 import { formatDate, formatRating } from "@/lib/format";
 import { normalizeKeyword } from "@/lib/keywords";
+import { playConfig } from "@/lib/play-console/auth";
 import { featuresFor } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
 import { aggregateCategoryAsks } from "@/lib/review-analysis";
@@ -199,6 +202,17 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
           Para analizar reseñas añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno.
         </Card>
       )}
+
+      {own && app.store === "android" &&
+        (playConfig().configured ? (
+          <Suspense fallback={<Skeleton className="h-40" />}>
+            <PlayReviews appId={app.id} packageName={app.storeId} aiEnabled={enabled} />
+          </Suspense>
+        ) : (
+          <p className="text-[13px] text-muted">
+            Para leer y responder las reseñas de tu app desde aquí, conecta Google Play Console (README, sección «Google Play Console»).
+          </p>
+        ))}
 
       {shown && (
         <>
