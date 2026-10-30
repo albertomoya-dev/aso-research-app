@@ -29,6 +29,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 19 | Fichas por idioma y país (borradores por locale, fichas personalizadas de Play, adaptación con IA, matriz de cobertura) y notas de la versión | Hecho |
 | 20 | Google Play Console: publicar el borrador con vista previa y confirmación, responder reseñas con borradores de IA e importar los términos de búsqueda reales | Hecho (sin probar contra una cuenta real) |
 | 21 | App Store Connect: enviar el borrador a la versión en preparación con vista previa y confirmación, y ver los informes de analítica disponibles | Hecho (sin probar contra una cuenta real) |
+| 22 | Anotaciones automáticas (la consulta diaria guarda la ficha propia y anota cada cambio; también cada publicación desde Rankeo), impacto por keyword ±14 días y registro de experimentos de ficha | Hecho |
 
 ## Stack
 
@@ -291,6 +292,17 @@ La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 
 - **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. Se muestra la cuota actual (última posición de cada keyword) y su evolución en 30 días para tu app y las cuatro apps más visibles.
 - **Fichas vigiladas**: al pulsar «Vigilar ficha» en una app, la consulta diaria lee su ficha y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. La lista de cambios muestra qué palabras añadió o quitó.
+
+## Cambios y experimentos
+
+La pestaña **Cambios** junta todo lo que ha cambiado en la ficha y lo que provocó en las posiciones:
+
+- **Anotaciones automáticas.** La consulta diaria lee también la ficha de cada app seguida (lo mismo hace «Actualizar ficha») y la guarda en `app_snapshots` solo cuando cambia algo: título, descripción corta, descripción, versión, precio, categoría, icono o capturas (igual que con los competidores, `lib/listing-diff.ts`). Cada cambio crea una anotación de origen «Automática» con un texto corto («Ficha: título y descripción cambiaron (v3.0)») y el detalle de las palabras añadidas y quitadas. La primera lectura solo guarda la ficha de partida, sin anotación. Si la consulta diaria se acerca a su límite de 300 s, deja las fichas que falten para el día siguiente.
+- **Publicaciones.** Al enviar un borrador a Google Play o guardarlo en App Store Connect desde Rankeo, se crea una anotación de origen «Publicación» ese mismo día. Cuando la tienda lo muestre (Google revisa antes de publicar), la consulta diaria añadirá la automática.
+- **Impacto por keyword.** Para cada anotación se compara la posición media de los 14 días anteriores con la de los 14 posteriores (el día del cambio no cuenta) en las keywords afectadas: las que contienen una palabra añadida o quitada, sin distinguir acentos. Los días en que la app no salía entre los resultados no entran en la media, porque no sabemos en qué puesto estaba; se cuentan aparte, igual que los días sin consulta, para que se vea en cuántos datos se apoya cada media. Si antes no salía nunca y después sí, se marca «Entra en resultados» (y al revés, «Sale»). Para las anotaciones sin palabras (manuales, icono, versión) se muestran las 10 keywords que más se movieron. Es una correlación: la competencia y la tienda también mueven las posiciones.
+- **Experimentos de ficha.** Una plantilla para planificar una prueba A/B (nombre, hipótesis, variante, métrica, fechas y estado) y apuntar después el resultado y lo aprendido (tabla `experiments`). La prueba se crea y se sigue en Play Console (Experimentos de ficha de Play Store) o en App Store Connect (Prueba de la página de producto); Rankeo no lee esos resultados.
+
+La anotación sigue apareciendo en el gráfico de cada keyword, ahora con su origen. Migración 0017 (`annotations.source`, por defecto `manual`, y `annotations.detail`; tablas `app_snapshots` y `experiments`).
 
 ## Reseñas
 

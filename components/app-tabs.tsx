@@ -11,6 +11,7 @@ const TABS = [
   { path: "/resenas", label: "Reseñas" },
   { path: "/competidores", label: "Competidores" },
   { path: "/estacionalidad", label: "Estacionalidad" },
+  { path: "/cambios", label: "Cambios" },
   { path: "/producto", label: "Producto" },
   { path: "/metadata", label: "Editor de ficha" },
   { path: "/creativos", label: "Creativos" },

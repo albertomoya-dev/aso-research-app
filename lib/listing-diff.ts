@@ -45,7 +45,7 @@ const words = (s: string) =>
     .filter((w) => w.length > 1);
 
 /** Distinct words in `b` that are not in `a`. */
-function newWords(a: string, b: string): string[] {
+export function newWords(a: string, b: string): string[] {
   const before = new Set(words(a));
   return [...new Set(words(b).filter((w) => !before.has(w)))];
 }

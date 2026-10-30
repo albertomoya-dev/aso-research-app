@@ -1,6 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import { publishAnnotation } from "./annotations";
 import type { PublicationStatus, PublishedField } from "./publications";
+import { today } from "./ranking";
 import type { Store } from "./stores/types";
 
 export type Publication = typeof schema.publications.$inferSelect;
@@ -17,12 +19,18 @@ export type NewPublication = {
   externalRef?: string | null;
 };
 
-/** Records one publish attempt (successful or not). Phase 22 reads these to annotate the charts. */
+/**
+ * Records one publish attempt (successful or not). A successful one also leaves a «publish» annotation on
+ * the position charts, so its effect can be measured (the daily job adds an «auto» one when the store shows it).
+ */
 export async function recordPublication(p: NewPublication): Promise<Publication> {
-  const [row] = await getDb()
+  const db = getDb();
+  const [row] = await db
     .insert(schema.publications)
     .values({ ...p, country: p.country ?? "", error: p.error ?? null, externalRef: p.externalRef ?? null })
     .returning();
+  const note = publishAnnotation(p);
+  if (note) await db.insert(schema.annotations).values({ appId: p.appId, date: today(), label: note.label, source: "publish", detail: note.detail });
   return row;
 }
 

@@ -15,6 +15,8 @@ import {
 } from "drizzle-orm/pg-core";
 import type { AppMeta, AppSummary } from "@/lib/stores/types";
 import type { AlertKind, AlertTone } from "@/lib/alerts";
+import type { AnnotationDetail, AnnotationSource } from "@/lib/annotations";
+import type { ExperimentStatus } from "@/lib/experiments";
 import type { IconSpec } from "@/lib/assets/icon";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import type { PublicationStatus, PublishedField } from "@/lib/publications";
@@ -120,6 +122,39 @@ export const annotations = pgTable("annotations", {
     .references(() => apps.id, { onDelete: "cascade" }),
   date: date("date").notNull(),
   label: text("label").notNull(),
+  /** manual (written by the user), auto (the daily job saw the own listing change) or publish (sent from Rankeo). */
+  source: text("source").$type<AnnotationSource>().notNull().default("manual"),
+  /** What changed, field by field (words added and removed). Null for manual annotations. */
+  detail: jsonb("detail").$type<AnnotationDetail>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The app's own published listing, stored only when it changes (F8). Feeds the automatic annotations. */
+export const appSnapshots = pgTable("app_snapshots", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  listing: jsonb("listing").$type<Listing>().notNull(),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A store listing experiment (F8): planned here, run in Play Console, result and lesson recorded here. */
+export const experiments = pgTable("experiments", {
+  id: serial("id").primaryKey(),
+  appId: integer("app_id")
+    .notNull()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  hypothesis: text("hypothesis").notNull().default(""),
+  /** What the variant changes (icon, screenshots, short description…). */
+  variant: text("variant").notNull().default(""),
+  metric: text("metric").notNull().default(""),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  result: text("result").notNull().default(""),
+  learned: text("learned").notNull().default(""),
+  status: text("status").$type<ExperimentStatus>().notNull().default("planned"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -432,3 +467,4 @@ export const searchTermStats = pgTable(
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
 export type Annotation = typeof annotations.$inferSelect;
+export type Experiment = typeof experiments.$inferSelect;

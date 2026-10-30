@@ -120,6 +120,13 @@
       "when": 1793372970865,
       "tag": "0016_publications",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793374280098,
+      "tag": "0017_auto_annotations",
+      "breakpoints": true
     }
   ]
 }

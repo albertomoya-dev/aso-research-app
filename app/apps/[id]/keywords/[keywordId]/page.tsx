@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { removeAnnotation } from "@/app/actions";
+import { AnnotationBadge } from "@/components/annotation-badge";
 import { AnnotationForm } from "@/components/annotation-form";
 import { AppIcon } from "@/components/app-icon";
 import { Position, PositionChange } from "@/components/rank";
@@ -237,7 +238,12 @@ export default async function KeywordPage(props: Props) {
           <h2 className="text-[17px] font-semibold">Anotaciones</h2>
           <p className="mt-1 text-[13px] text-muted">
             Marca cambios de ficha, versiones o campañas. Comparamos la posición media de los {ANNOTATION_WINDOW} días anteriores y posteriores. Se
-            comparten entre todas las keywords de la app.
+            comparten entre todas las keywords de la app; los cambios de la ficha publicada se anotan solos cada día. El efecto en cada keyword
+            afectada está en{" "}
+            <Link href={`/apps/${app.id}/cambios`} className="text-link hover:underline">
+              Cambios
+            </Link>
+            .
           </p>
           <div className="mt-4">
             <AnnotationForm appId={app.id} defaultDate={end} />
@@ -260,7 +266,9 @@ export default async function KeywordPage(props: Props) {
                     <tr key={n.id} className="border-t border-line">
                       <td className="py-2 pr-2 font-mono font-semibold">{n.index}</td>
                       <td className="py-2 pr-3 whitespace-nowrap">{formatDate(n.date)}</td>
-                      <td className="py-2 pr-3">{n.label}</td>
+                      <td className="py-2 pr-3">
+                        <AnnotationBadge source={n.source} /> {n.label}
+                      </td>
                       <td className="py-2 pr-3 font-mono">{fmtAvg(n.before)}</td>
                       <td className="py-2 pr-3 font-mono">
                         {fmtAvg(n.after)}

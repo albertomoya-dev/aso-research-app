@@ -9,6 +9,7 @@ import { getCountry, isCountry } from "@/lib/countries";
 import { generateRankAlerts } from "@/lib/alert-jobs";
 import { followKeywords } from "@/lib/follow";
 import { KEYWORD_SOURCES, parseKeywords } from "@/lib/keywords";
+import { recordOwnListing } from "@/lib/own-listings";
 import { KEYWORD_INTENTS, RELEVANCE_SOURCES } from "@/lib/relevance";
 import { rateNewKeywords, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { today } from "@/lib/ranking";
@@ -46,6 +47,8 @@ export async function followApp(formData: FormData) {
       set: values,
     })
     .returning({ id: schema.apps.id });
+  // Baseline for the automatic annotations (or an annotation, if the app was already followed and changed).
+  await recordOwnListing(app.id, meta);
 
   revalidatePath("/");
   redirect(`/apps/${app.id}`);
@@ -63,11 +66,9 @@ export async function refreshAppMeta(formData: FormData) {
     country: app.country,
     lang: getCountry(app.country).lang,
   });
-  await db
-    .update(schema.apps)
-    .set({ title: meta.title, developer: meta.developer, icon: meta.icon, url: meta.url, meta, metaFetchedAt: new Date() })
-    .where(eq(schema.apps.id, appId));
-  revalidatePath(`/apps/${appId}`);
+  // Same path as the daily job: a changed listing leaves an automatic annotation.
+  await recordOwnListing(appId, meta);
+  revalidatePath(`/apps/${appId}`, "layout");
 }
 
 export type AddKeywordsState = {
