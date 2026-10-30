@@ -43,7 +43,7 @@ export function AppMetadata({ meta }: { meta: AppMeta }) {
               {f.limit && f.value != null && <CharCount count={[...f.value].length} limit={f.limit} />}
             </div>
             {f.value ? (
-              <p className="mt-1.5 line-clamp-6 text-sm leading-relaxed whitespace-pre-line">{f.value}</p>
+              <p className="mt-1.5 line-clamp-6 text-sm leading-relaxed break-words whitespace-pre-line">{f.value}</p>
             ) : (
               <p className="mt-1.5 text-sm text-muted">{f.note ?? "Sin contenido"}</p>
             )}

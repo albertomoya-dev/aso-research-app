@@ -31,6 +31,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 21 | App Store Connect: enviar el borrador a la versión en preparación con vista previa y confirmación, y ver los informes de analítica disponibles | Hecho (sin probar contra una cuenta real) |
 | 22 | Anotaciones automáticas (la consulta diaria guarda la ficha propia y anota cada cambio; también cada publicación desde Rankeo), impacto por keyword ±14 días y registro de experimentos de ficha | Hecho |
 | 23 | Creativos con capturas actuales (subida múltiple y de carpetas, fecha y versión de cada captura con aviso de capturas antiguas, script `adb` opcional), keyword por pantalla entre las relevantes y con visión, colores del icono actual y pista de audio en el vídeo | Hecho (la parte de navegador sin probar a mano) |
+| 24 | Interfaz: tabla de keywords con columna fija y scroll dentro de su tarjeta, competidores vigilados resaltados en el TOP 5, pantalla de Ajustes con el estado y la prueba de cada integración, y panel de salud ASO en la portada de cada app | Hecho (sin medir en un móvil real) |
 
 ## Stack
 
@@ -68,6 +69,8 @@ Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado
 La profundidad real depende de la tienda: App Store devuelve hasta 200 resultados; Google Play suele devolver unos 30, aunque el scraper ya pide más páginas (es un límite de Google, no nuestro). Por eso cada posición «> N» lleva su propio N, el de ese día y esa búsqueda: al pulsarla (o al pasar el ratón o el foco del teclado) se explica «Fuera de los N resultados que devuelve la tienda». El histórico y el gráfico de cada keyword usan el N de cada día, no el de hoy.
 
 En App Store la posición es aproximada: la API pública no siempre ordena igual que la app de la tienda.
+
+En la tabla de keywords, la columna **TOP 5** marca tu app con un borde lavanda y los competidores que vigilas (pestaña Competidores) con uno naranja; la leyenda está encima de la tabla y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. La tabla es ancha: en el móvil o en una ventana estrecha hace scroll dentro de su tarjeta, nunca la página, y la casilla y la keyword se quedan fijas a la izquierda para no perder de vista qué fila estás leyendo. Las pestañas de cada app también hacen scroll en horizontal cuando no caben.
 
 ## Popularidad, dificultad y oportunidad
 
@@ -376,6 +379,33 @@ El menú lateral muestra cuántos avisos quedan sin leer.
 1. Crea una cuenta gratuita en [Resend](https://resend.com) y una API key.
 2. Añade `RESEND_API_KEY` y `ALERT_EMAIL` (tu correo) en Vercel. Sin dominio propio, Resend solo deja enviar al correo de tu cuenta desde `onboarding@resend.dev`; con dominio verificado, define también `EMAIL_FROM`.
 3. Opcional: `APP_URL` con la dirección pública de la app para los enlaces del email (en Vercel se detecta sola).
+
+## Ajustes
+
+La pantalla **Ajustes** (menú lateral) muestra el estado de cada integración: base de datos, contraseña de la app, consulta diaria, Claude (Anthropic), imágenes generativas, email (Resend), Google Play Console y App Store Connect. Para cada una dice si está configurada, sin configurar o mal configurada (con el motivo, por ejemplo «Falta ALERT_EMAIL» o «no es un JSON válido»), qué permite hacer en Rankeo, qué variables de entorno usa y cuáles están puestas, y si las consolas están en solo lectura o con escritura activada (`GOOGLE_PLAY_ALLOW_WRITE`, `ASC_ALLOW_WRITE`). **Nunca muestra el valor de una variable**, solo si existe: el cálculo (`lib/settings.ts`) es puro, recibe el entorno y no devuelve más que nombres y presencia, y los tests comprueban que ningún secreto aparece en la salida.
+
+Las pruebas son de solo lectura y se muestran en la misma tarjeta:
+
+- **Claude**: lista un modelo con `GET /v1/models`; comprueba que la clave es válida sin generar nada, así que no cuesta dinero.
+- **Google Play Console**: solo pide un token de acceso con la cuenta de servicio. Si Google lo da, la clave es buena; que vea tus apps depende de los permisos en Play Console.
+- **App Store Connect**: firma el token y lista como mucho una app de la cuenta.
+- **Email**: «Enviar email de prueba» manda un correo corto a `ALERT_EMAIL` con Resend.
+
+Las imágenes generativas no tienen prueba porque cada imagen se cobra. Los avisos de «falta tal clave» del resto de pantallas enlazan aquí.
+
+## Panel de salud
+
+La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señal, con su estado (bien, mejorable, necesita atención o sin datos) y un enlace a la pantalla donde se arregla. La decisión está en `lib/health.ts` (puro y con tests) y los datos se cargan en `lib/health-queries.ts` en una sola ronda de consultas en paralelo, reutilizando las keywords que la portada ya ha leído. La tarjeta llega por streaming (Suspense), así que la tabla de keywords no la espera.
+
+| Señal | De dónde sale | Umbrales |
+| --- | --- | --- |
+| Cobertura de keywords | Cobertura ponderada (la del candado de calidad) del borrador principal o, sin borrador, de la ficha publicada, con las keywords relevantes | Bien desde 60/100; mejorable desde 35 |
+| Keywords irrelevantes | Las del filtro «Probablemente irrelevantes» y el máximo recomendado de 150 | Mejorable con alguna; necesita atención con 20 o más o por encima de 150 keywords |
+| Ficha frente a tu producto | Última versión de la ficha de producto frente a la versión (o la fecha) de la tienda, y funciones marcadas para la próxima versión | Necesita atención si tu producto va por una versión más nueva: «tu ficha describe una versión anterior» |
+| Capturas | Capturas subidas en Creativos más antiguas que la ficha publicada o de otra versión (solo las fechas: el diseño no se descarga entero) | Mejorable con alguna; necesita atención si lo están todas. Las de la tienda no tienen fecha y no cuentan |
+| Normas de las tiendas | Comprobador de normas sobre el borrador principal o la ficha publicada, con las marcas detectadas | Necesita atención con errores; mejorable con avisos |
+| Reseñas sin responder | Reseñas de la última semana de Google Play Console, solo si está conectada; se piden aparte para no frenar la portada | Mejorable con alguna; necesita atención con 10 o más. En App Store y sin Play Console sale «sin datos» con un enlace a Ajustes |
+| Próximo pico estacional | El pico más cercano de las keywords relevantes con popularidad suficiente (Estacionalidad) | Mejorable si está en temporada o empieza en 35 días o menos |
 
 ## Comandos
 

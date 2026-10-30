@@ -116,6 +116,8 @@ export function createAscClient(opts: { getToken: () => Promise<string>; fetch?:
   const get = <A>(path: string, query?: Record<string, string | number | undefined>) => call<Doc<A>>(ascUrl(path, query), { retry: true });
 
   const api = {
+    /** Read-only check of the key: lists at most one app of the account. Returns how many came back (0 or 1). */
+    ping: async (): Promise<number> => list(await get("/v1/apps", { limit: 1 })).length,
     /** The app resource: by Apple ID (numeric storeId) and, if not found, by bundle id. */
     findApp: async (storeId: string, bundleId: string | null): Promise<string> => {
       if (/^\d+$/.test(storeId)) {

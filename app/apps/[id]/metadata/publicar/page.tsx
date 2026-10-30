@@ -86,7 +86,9 @@ function SetupPlay({ error }: { error: string | null }) {
           Para poder publicar, añade también <code className="font-mono">GOOGLE_PLAY_ALLOW_WRITE=1</code>; sin ella la conexión es de solo lectura.
         </li>
       </ol>
-      <p className="text-[13px] text-muted">Los pasos detallados están en el README, sección «Google Play Console».</p>
+      <p className="text-[13px] text-muted">
+        Los pasos detallados están en el README, sección «Google Play Console». En <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes probar la conexión.
+      </p>
     </Card>
   );
 }

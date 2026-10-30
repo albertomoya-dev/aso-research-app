@@ -25,7 +25,9 @@ function SetupAsc({ error }: { error: string | null }) {
           Para poder enviar textos, añade también <code className="font-mono">ASC_ALLOW_WRITE=1</code>; sin ella la conexión es de solo lectura.
         </li>
       </ol>
-      <p className="text-[13px] text-muted">Los pasos detallados están en el README, sección «App Store Connect».</p>
+      <p className="text-[13px] text-muted">
+        Los pasos detallados están en el README, sección «App Store Connect». En <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes probar la conexión.
+      </p>
     </Card>
   );
 }

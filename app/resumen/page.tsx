@@ -37,7 +37,14 @@ export default async function SummaryPage() {
           Del {formatDate(since)} al {formatDate(until)}: última posición de cada keyword frente a la de hace una semana o, si la app
           lleva menos tiempo, frente a la consulta más antigua. «&gt; 30» es fuera de los 30 resultados que devolvió la tienda: pasar de
           ahí a #18 se cuenta como «entra en los primeros 30», no como un salto que no podemos medir.
-          {email ? " Te llega por email cada lunes." : " Para recibirlo por email cada lunes, configura RESEND_API_KEY y ALERT_EMAIL."}
+          {email ? (
+            " Te llega por email cada lunes."
+          ) : (
+            <>
+              {" "}Para recibirlo por email cada lunes, configura RESEND_API_KEY y ALERT_EMAIL; su estado está en{" "}
+              <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link>.
+            </>
+          )}
         </PageHeader>
         {email && <SendSummaryButton />}
       </div>

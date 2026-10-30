@@ -100,6 +100,8 @@
   --color-warn-bg: var(--warn-bg);
   --color-warn-fg: var(--warn-fg);
   --color-up: var(--up);
+  /* Watched competitors in the TOP 5 column: a series colour, distinct from the lavender of your own app. */
+  --color-watched: var(--series-2);
   --color-down: var(--down);
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;

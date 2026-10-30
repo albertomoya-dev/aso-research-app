@@ -50,7 +50,7 @@ export type PublishedRef = { version: string | null; updatedAt: string | null };
  * date) or was uploaded while an older version was published. Store images and slides without a date
  * cannot be judged and are not listed.
  */
-export function staleSlides(slides: Slide[], published: PublishedRef): number[] {
+export function staleSlides(slides: Pick<Slide, "image" | "capturedAt" | "appVersion">[], published: PublishedRef): number[] {
   const updated = published.updatedAt ? Date.parse(published.updatedAt) : NaN;
   const out: number[] = [];
   slides.forEach((s, i) => {

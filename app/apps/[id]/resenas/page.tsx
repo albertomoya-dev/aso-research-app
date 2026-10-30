@@ -199,7 +199,7 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
         </Card>
       ) : (
         <Card className="px-5 py-4 text-sm text-ink-soft">
-          Para analizar reseñas añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno.
+          Para analizar reseñas añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno. Su estado está en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link>.
         </Card>
       )}
 

@@ -99,7 +99,7 @@ export default async function ProductPage({ params }: Props) {
             <h3 className="font-semibold">Falta la clave de Anthropic</h3>
             <p className="mt-1.5 text-ink-soft">
               Añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno (en Vercel: Settings → Environment
-              Variables) y vuelve a desplegar. Mientras tanto puedes añadir las funciones a mano.
+              Variables) y vuelve a desplegar; en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir las funciones a mano.
             </p>
           </div>
         )}

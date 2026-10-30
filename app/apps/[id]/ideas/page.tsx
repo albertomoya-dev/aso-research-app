@@ -50,7 +50,7 @@ export default async function IdeasPage({ params }: Props) {
           <h2 className="font-semibold">Falta la clave de Anthropic</h2>
           <p className="mt-1.5 text-ink-soft">
             Añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno (en Vercel: Settings → Environment Variables) y
-            vuelve a desplegar. Mientras tanto puedes añadir keywords a mano o desde{" "}
+            vuelve a desplegar; en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir keywords a mano o desde{" "}
             <Link href={`/apps/${app.id}/descubrir`} className="text-link hover:underline">
               Descubrir keywords
             </Link>

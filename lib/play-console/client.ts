@@ -116,6 +116,10 @@ export function createPlayClient(opts: { getToken: () => Promise<string>; fetch?
     fetchJson<T>(fetchFn, url, { ...req, headers: { Authorization: `Bearer ${await opts.getToken()}`, ...req.headers } }, explainPlayError);
 
   const api = {
+    /** Only asks Google for an access token: proves the service account is valid without reading or writing anything. */
+    checkToken: async () => {
+      await opts.getToken();
+    },
     insertEdit: async (pkg: string) => {
       const edit = await call<{ id: string; expiryTimeSeconds?: string }>(playUrl(pkg, ["edits"]), { method: "POST", body: {} });
       if (!edit?.id) throw new StoreApiError("Google Play no devolvió el identificador de la edición.", 500);

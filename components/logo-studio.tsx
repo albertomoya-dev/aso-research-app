@@ -161,7 +161,7 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
           ) : (
             <p className="mt-1 text-xs text-warn-fg">
               Falta un proveedor de imágenes. Añade <code className="font-mono">OPENAI_API_KEY</code> o <code className="font-mono">GEMINI_API_KEY</code> en Vercel y vuelve a
-              desplegar.
+              desplegar. El estado de cada integración está en Ajustes.
             </p>
           )}
           <label className="mt-3 flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">

@@ -9,6 +9,12 @@ const CHART_APPS = 5;
 
 export type ChangeEvent = { competitorId: number; title: string; icon: string; date: Date; changes: ListingChange[] };
 
+/** Store ids of the competitors the user watches for this app, to highlight them in the TOP 5 column. */
+export async function watchedStoreIds(appId: number): Promise<Set<string>> {
+  const rows = await getDb().select({ storeId: schema.competitors.storeId }).from(schema.competitors).where(eq(schema.competitors.appId, appId));
+  return new Set(rows.map((r) => r.storeId));
+}
+
 export async function getCompetitorPage(app: { id: number; store: "ios" | "android"; country: string; storeId: string; title: string }) {
   const db = getDb();
   const [snapshots, followed] = await Promise.all([

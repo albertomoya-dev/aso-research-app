@@ -36,7 +36,7 @@ function playBar(target: DraftTarget, hasDraft: boolean) {
       link: false,
       text: config.error
         ? `La conexión con Google Play Console está mal configurada: ${config.error}`
-        : "Para publicar desde Rankeo, conecta Google Play Console con una cuenta de servicio (GOOGLE_PLAY_SERVICE_ACCOUNT_JSON). Los pasos están en el README, sección «Google Play Console».",
+        : "Para publicar desde Rankeo, conecta Google Play Console con una cuenta de servicio (GOOGLE_PLAY_SERVICE_ACCOUNT_JSON). Los pasos están en el README, sección «Google Play Console», y el estado en Ajustes.",
     };
   }
   if (target.country) return { label, link: false, text: "La API de Google Play no permite publicar fichas personalizadas por país: copia este borrador en Play Console." };
@@ -56,7 +56,7 @@ function ascBar(target: DraftTarget, hasDraft: boolean) {
       link: false,
       text: config.error
         ? `La conexión con App Store Connect está mal configurada: ${config.error}`
-        : "Para enviar la ficha desde Rankeo, conecta App Store Connect con una clave de API (ASC_ISSUER_ID, ASC_KEY_ID y ASC_PRIVATE_KEY). Los pasos están en el README, sección «App Store Connect».",
+        : "Para enviar la ficha desde Rankeo, conecta App Store Connect con una clave de API (ASC_ISSUER_ID, ASC_KEY_ID y ASC_PRIVATE_KEY). Los pasos están en el README, sección «App Store Connect», y el estado en Ajustes.",
     };
   }
   if (!toAscLocale(target.locale)) {

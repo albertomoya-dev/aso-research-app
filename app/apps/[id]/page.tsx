@@ -5,6 +5,7 @@ import { AppIcon } from "@/components/app-icon";
 import { AppMetadata } from "@/components/app-metadata";
 import { ConfirmButton } from "@/components/confirm-button";
 import { CountriesCard } from "@/components/countries-card";
+import { HealthPanel } from "@/components/health-panel";
 import { KeywordForm } from "@/components/keyword-form";
 import { OfficialBadge, officialPeriod, OfficialStatsCard } from "@/components/official-stats";
 import { BulkRemoveBar, KeywordSelection, RowCheckbox, SelectAllCheckbox } from "@/components/keyword-selection";
@@ -15,6 +16,7 @@ import { StoreBadge } from "@/components/store-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { buttonPrimary, buttonSecondary, Card } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
+import { watchedStoreIds } from "@/lib/competitor-queries";
 import { getCountry } from "@/lib/countries";
 import { formatDate } from "@/lib/format";
 import { isKeywordSort, KEYWORD_SORTS, sortKeywordRows, type KeywordSort, type SortDir } from "@/lib/keyword-sort";
@@ -41,6 +43,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: app.title };
 }
 
+// The checkbox and keyword columns stay put while the table scrolls sideways inside its card (mobile
+// and narrow windows). Opaque background so scrolled cells pass underneath; the inset shadow is the
+// divider (cell borders do not travel with sticky cells in a collapsed table).
+const STICKY_CHECK = "sticky left-0 z-10 w-12 min-w-12 max-w-12 bg-surface";
+const STICKY_TERM = "sticky left-12 z-10 min-w-44 bg-surface shadow-[inset_-1px_0_0_var(--line)]";
+const TOP5_RING = { own: "ring-brand", watched: "ring-watched" } as const;
+
 export default async function AppPage({ params, searchParams }: Props) {
   const app = await loadApp((await params).id);
   const { f, s, d } = await searchParams;
@@ -48,7 +57,12 @@ export default async function AppPage({ params, searchParams }: Props) {
   const sort: KeywordSort = isKeywordSort(s) ? s : "opportunity";
   const dir: SortDir = d === "asc" || d === "desc" ? d : KEYWORD_SORTS[sort].dir;
   const { lang } = getCountry(app.country);
-  const [rows, official] = await Promise.all([getKeywordRows(app), app.store === "android" ? getOfficialStats(app.id) : null]);
+  const [rows, official, watched] = await Promise.all([
+    getKeywordRows(app),
+    app.store === "android" ? getOfficialStats(app.id) : null,
+    watchedStoreIds(app.id),
+  ]);
+  const top5HasWatched = rows.some((r) => r.top5.some((t) => watched.has(t.id)));
   const visible = sortKeywordRows(rows.filter((r) => filter.test(r, lang)), sort, dir);
   const unratedByUser = rows.filter((r) => r.relevanceSource !== "user").length;
   const unrated = rows.filter((r) => r.relevance == null).length;
@@ -70,10 +84,10 @@ export default async function AppPage({ params, searchParams }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
+        <div className="flex min-w-0 items-center gap-3.5">
           <AppIcon src={app.icon} size={56} />
-          <div>
-            <h1 className="text-2xl font-semibold">{app.title}</h1>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold break-words">{app.title}</h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
               <StoreBadge store={app.store} country={app.country} />
               <span>{getCountry(app.country).name}</span>
@@ -105,6 +119,8 @@ export default async function AppPage({ params, searchParams }: Props) {
           </form>
         </div>
       </header>
+
+      <HealthPanel app={app} rows={rows} />
 
       <Card aria-label="Añadir keywords" className="px-6 py-5">
         <KeywordForm appId={app.id} />
@@ -148,6 +164,17 @@ export default async function AppPage({ params, searchParams }: Props) {
                 );
               })}
             </nav>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted md:ml-auto">
+              <span>TOP 5:</span>
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="size-3 rounded-[3px] ring-2 ring-brand" />
+                Tu app
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden="true" className="size-3 rounded-[3px] ring-2 ring-watched" />
+                Competidor vigilado
+              </span>
+            </p>
           </div>
           {filter.id === "noise" && visible.length > 0 && (
             <p className="border-b border-line px-5 py-3 text-[13px] text-muted">
@@ -165,10 +192,10 @@ export default async function AppPage({ params, searchParams }: Props) {
               <table className="w-full min-w-[1380px] border-collapse text-sm">
                 <thead>
                   <tr className="text-left text-xs tracking-wider text-muted uppercase">
-                    <th scope="col" className="w-10 py-3 pl-5">
+                    <th scope="col" className={`${STICKY_CHECK} py-3 pl-5`}>
                       <SelectAllCheckbox ids={visible.map((k) => k.id)} />
                     </th>
-                    {sortHeader("term", "Keyword", "px-3")}
+                    {sortHeader("term", "Keyword", `${STICKY_TERM} px-3`)}
                     {sortHeader("position", "Posición")}
                     {sortHeader("day", "vs ayer")}
                     {sortHeader("week", "7 días")}
@@ -184,10 +211,10 @@ export default async function AppPage({ params, searchParams }: Props) {
                 <tbody>
                   {visible.map((k) => (
                     <tr key={k.id} className="border-t border-line">
-                      <td className="py-3 pl-5">
+                      <td className={`${STICKY_CHECK} py-3 pl-5`}>
                         <RowCheckbox id={k.id} term={k.term} />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className={`${STICKY_TERM} px-3 py-3`}>
                         <Link href={`/apps/${app.id}/keywords/${k.id}`} className="font-semibold hover:text-link hover:underline">
                           {k.term}
                         </Link>
@@ -219,15 +246,15 @@ export default async function AppPage({ params, searchParams }: Props) {
                       <td className="px-3 py-3">
                         {k.top5.length > 0 ? (
                           <ol className="flex items-center gap-1" aria-label={`TOP 5 de ${k.term}`}>
-                            {k.top5.map((t, i) => (
-                              <li
-                                key={t.id}
-                                title={`${i + 1}. ${t.title}${t.id === app.storeId ? " (tu app)" : ""}`}
-                                className={t.id === app.storeId ? "rounded-[7px] ring-2 ring-brand" : undefined}
-                              >
-                                <AppIcon src={t.icon} size={26} alt={`${i + 1}. ${t.title}`} />
-                              </li>
-                            ))}
+                            {k.top5.map((t, i) => {
+                              const role = t.id === app.storeId ? "own" : watched.has(t.id) ? "watched" : null;
+                              const name = `${i + 1}. ${t.title}${role === "own" ? " (tu app)" : role === "watched" ? " (competidor vigilado)" : ""}`;
+                              return (
+                                <li key={t.id} title={name} className={role ? `rounded-[7px] ring-2 ${TOP5_RING[role]}` : undefined}>
+                                  <AppIcon src={t.icon} size={26} alt={name} />
+                                </li>
+                              );
+                            })}
                           </ol>
                         ) : (
                           <span className="text-muted">–</span>
@@ -261,6 +288,9 @@ export default async function AppPage({ params, searchParams }: Props) {
             Oportunidad: popularidad descontada por la dificultad y multiplicada por la relevancia (de 0,6 con relevancia 1 a 1 con
             relevancia 5; una keyword sin valorar cuenta como 0,7). Relevancia (1–5): la estima la IA con tu ficha de producto o la fijas tú;
             la IA nunca cambia la que has puesto tú.
+            {" "}TOP 5: tu app lleva un borde lavanda y los competidores vigilados uno naranja
+            {top5HasWatched ? "" : " (aún no vigilas a ninguno de los que salen; se eligen en la pestaña Competidores)"}. El nombre de cada app sale al pasar
+            el cursor y lo leen los lectores de pantalla.
             {official &&
               ` «Oficial»: visitantes e instalaciones reales de Google Play Console del ${officialPeriod(official)}, importados del CSV; no son estimaciones y no se mezclan con la popularidad.`}
           </p>

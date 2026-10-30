@@ -12,11 +12,11 @@ export class ImageGenError extends Error {}
 
 const DEFAULT_MODEL: Record<ImageProvider, string> = { openai: "gpt-image-2.5-flare", gemini: "gemini-2.5-flash-image" };
 
-export function imageProvider(): ImageProvider | null {
-  const wanted = process.env.IMAGE_PROVIDER?.trim().toLowerCase();
+export function imageProvider(env: Record<string, string | undefined> = process.env): ImageProvider | null {
+  const wanted = env.IMAGE_PROVIDER?.trim().toLowerCase();
   if (wanted === "openai" || wanted === "gemini") return wanted;
-  if (process.env.OPENAI_API_KEY) return "openai";
-  if (process.env.GEMINI_API_KEY) return "gemini";
+  if (env.OPENAI_API_KEY) return "openai";
+  if (env.GEMINI_API_KEY) return "gemini";
   return null;
 }
 

@@ -101,6 +101,25 @@ async function askClaude<T extends z.ZodType>(
   }
 }
 
+/**
+ * Checks that the key works by listing one model (GET /v1/models): no tokens are generated, so it costs
+ * nothing. Used by «Probar conexión» in Ajustes. Returns the id of the first model the key can see.
+ */
+export async function checkAnthropicKey(): Promise<string | null> {
+  if (!hasAnthropicKey()) throw new AiError("Falta ANTHROPIC_API_KEY en las variables de entorno.");
+  try {
+    const page = await getClient().models.list({ limit: 1 });
+    return page.data[0]?.id ?? null;
+  } catch (err) {
+    if (err instanceof Anthropic.AuthenticationError) throw new AiError("La clave de Anthropic no es válida.");
+    if (err instanceof Anthropic.PermissionDeniedError) throw new AiError("La clave de Anthropic no tiene permiso para usar la API.");
+    if (err instanceof Anthropic.RateLimitError) throw new AiError("Límite de uso de la API alcanzado. Inténtalo en un minuto.");
+    if (err instanceof Anthropic.APIConnectionError) throw new AiError("No se pudo conectar con la API de Anthropic.");
+    if (err instanceof Anthropic.APIError) throw new AiError(`Error de la API de Claude (${err.status ?? "sin estado"}).`);
+    throw err;
+  }
+}
+
 /** Asks Claude for keyword ideas. */
 export function suggestKeywords(input: PromptInput): Promise<{ output: ModelOutput; model: string }> {
   return askClaude(modelOutputSchema, SYSTEM_PROMPT, buildUserPrompt(input));
