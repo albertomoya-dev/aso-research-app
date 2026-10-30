@@ -1,12 +1,10 @@
 import { and, eq, gte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { loadAlertPrefs, prefsFor } from "./alert-jobs";
-import { isAlertRelevant } from "./alerts";
 import { getCountry } from "./countries";
 import { shiftDate } from "./ranking";
-import type { KeywordIntent } from "./relevance";
+import { noiseReason, type KeywordIntent, type RelevanceSource } from "./relevance";
 import { analyzeSeasonality, canAnnouncePeak, MONTH_LONG, PEAK_ALERT_WINDOW, peakAlertDue } from "./seasonality";
-import { isNoiseTerm } from "./stopwords";
 
 /** Past peak alerts are looked up this far back: longer than the week-long warning window. */
 const REPEAT_DAYS = 35;
@@ -23,15 +21,18 @@ export function warnedPeakMonth(alertDate: string): string {
 export const peakKey = (appId: number, keywordId: number | null, peakMonth: string) => `${appId}:${keywordId}:${peakMonth}`;
 
 /**
- * Same noise rules as ranking alerts: no filler words, no foreign intent and, when rated, at least
- * the app's minimum relevance (alert preferences). Unrated keywords pass.
+ * Same rules as the keyword table: no filler words and no foreign intent (unless the user rated the
+ * keyword 3 or more) and, when rated, at least the app's minimum relevance from the alert
+ * preferences. Unrated keywords pass.
  */
 export function isSeasonalAlertRelevant(
-  row: { term: string; relevance: number | null; intent: KeywordIntent | null },
+  row: { term: string; relevance: number | null; relevanceSource?: RelevanceSource | null; intent: KeywordIntent | null },
   lang: string,
   minRelevance: number,
 ): boolean {
-  return !isNoiseTerm(row.term, lang) && isAlertRelevant(row, minRelevance);
+  const reason = noiseReason(row, lang);
+  if (reason === "filler" || reason === "foreign") return false;
+  return row.relevance == null || row.relevance >= minRelevance;
 }
 
 /**
@@ -48,6 +49,7 @@ export async function generateSeasonalAlerts(date: string): Promise<number> {
         keywordId: schema.keywords.id,
         term: schema.keywords.term,
         relevance: schema.appKeywords.relevance,
+        relevanceSource: schema.appKeywords.relevanceSource,
         intent: schema.appKeywords.intent,
         points: schema.keywordTrends.points,
         popularity: schema.keywordMetrics.popularity,

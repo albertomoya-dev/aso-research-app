@@ -17,7 +17,7 @@ import { getListingDraft } from "./listing-draft-queries";
 import { mainLocale } from "./listing-drafts";
 import { draftFromMeta, weightedCoverage } from "./metadata-check";
 import { policyCheck } from "./policy-check";
-import { factsForPrompt, hasProductFacts } from "./product-facts";
+import { hasProductFacts } from "./product-facts";
 import { getProductFacts } from "./product-queries";
 import type { KeywordRow } from "./queries";
 import { today } from "./ranking";
@@ -63,8 +63,7 @@ export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<He
     screenshotDates(app.id),
     trendPoints(app),
   ]);
-  const facts = factsForPrompt(product.facts, product.features, "next");
-  const { brands } = await detectBrands({ ...app, meta: app.meta }, rows, facts);
+  const { brands } = await detectBrands({ ...app, meta: app.meta }, rows, product);
 
   const source = draftRow ? "draft" : "published";
   const draft = draftRow?.draft ?? draftFromMeta(app.meta);

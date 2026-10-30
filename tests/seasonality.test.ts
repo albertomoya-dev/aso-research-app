@@ -180,4 +180,13 @@ describe("seasonal alert jobs", () => {
     expect(isSeasonalAlertRelevant({ ...row, intent: "foreign" }, "es", 1)).toBe(false);
     expect(isSeasonalAlertRelevant({ ...row, term: "para" }, "es", 1)).toBe(false);
   });
+
+  it("lets the user's own rating override the filler and foreign rules", () => {
+    const tiempo = { term: "tiempo", relevance: 5, relevanceSource: "user" as const, intent: null };
+    expect(isSeasonalAlertRelevant(tiempo, "es", 3)).toBe(true);
+    expect(isSeasonalAlertRelevant({ ...tiempo, relevanceSource: null, relevance: null }, "es", 3)).toBe(false);
+    const foreign = { term: "regalos navidad", relevance: 4, relevanceSource: "user" as const, intent: "foreign" as const };
+    expect(isSeasonalAlertRelevant(foreign, "es", 3)).toBe(true);
+    expect(isSeasonalAlertRelevant(foreign, "es", 5)).toBe(false);
+  });
 });

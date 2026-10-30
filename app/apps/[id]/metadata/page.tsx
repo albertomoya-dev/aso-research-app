@@ -28,7 +28,7 @@ import {
 } from "@/lib/listing-drafts";
 import { brandOf } from "@/lib/listing-optimizer";
 import { draftFromMeta } from "@/lib/metadata-check";
-import { factsForPrompt, hasProductFacts } from "@/lib/product-facts";
+import { hasProductFacts } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { isRelevantKeyword } from "@/lib/relevance";
@@ -49,8 +49,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   const target = resolveTarget(app.country, app.store, { locale: one(query.locale), country: one(query.country) });
   const [rows, product, drafts] = await Promise.all([getKeywordRows(app), getProductFacts(app.id), getListingDrafts(app.id)]);
   const { lang } = getCountry(app.country);
-  const facts = factsForPrompt(product.facts, product.features, "next");
-  const { brands, exceptions } = await detectBrands(app, rows, facts);
+  const { brands, exceptions } = await detectBrands(app, rows, product);
   // The weighted score counts only keywords worth building on, the same set the optimizer uses.
   const keywords = rows.map((r) => ({ term: r.term, opportunity: r.opportunity, relevant: isRelevantKeyword(r, lang) }));
 

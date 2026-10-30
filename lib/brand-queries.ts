@@ -21,17 +21,16 @@ type ProductSheet = { facts: ProductFacts | null; features: Pick<FeatureRow, "na
 /**
  * Competitor brands for the optimizer and the editor: the 25 apps that show up most in the TOP 5 of our
  * keywords, without our own title, tracked keywords, product sheet (pitch, audience, features) or the
- * user's exceptions. Pass the product sheet when already loaded; anything else (such as the PRODUCT
- * FACTS prompt block, which names competitors in the differentiators) makes it load the sheet itself.
+ * user's exceptions. Pass the product sheet when already loaded; without it the sheet is loaded here.
  */
 export async function detectBrands(
   app: { id: number; storeId: string; country: string; meta: { title: string; developer: string } },
   rows: { term: string; top5: AppSummary[] }[],
-  product?: ProductSheet | string | null,
+  product?: ProductSheet | null,
 ): Promise<{ brands: string[]; exceptions: string[] }> {
   const [exceptions, sheet] = await Promise.all([
     getBrandExceptions(app.id),
-    product && typeof product === "object" ? product : getProductFacts(app.id),
+    product ?? getProductFacts(app.id),
   ]);
   const brands = competitorBrands(topCompetitors(rows, app.storeId, 25), app.meta.developer, {
     ownTitle: app.meta.title,
