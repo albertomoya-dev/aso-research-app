@@ -4,8 +4,22 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { discardDraft, type DraftState, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { ListingProposal } from "@/lib/listing-optimizer";
-import { appendToKeywordField, charCount, checkMetadata, type FieldKey, FIELDS, type MetadataDraft } from "@/lib/metadata-check";
+import {
+  appendToKeywordField,
+  charCount,
+  checkMetadata,
+  type DiffItem,
+  FIELD_WEIGHTS,
+  type FieldKey,
+  FIELDS,
+  type Issue,
+  type KeywordDiff,
+  keywordDiff,
+  type MetadataDraft,
+  weightedCoverage,
+} from "@/lib/metadata-check";
 import type { Store } from "@/lib/stores/types";
+import { BrandList } from "./brand-list";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
 type Props = {
@@ -14,20 +28,30 @@ type Props = {
   initial: MetadataDraft;
   published: MetadataDraft;
   hasDraft: boolean;
-  keywords: string[];
+  /** Tracked keywords; `relevant` ones (not noise, relevance 3+ or unrated) count in the weighted score, like in the optimizer. */
+  keywords: { term: string; opportunity: number | null; relevant: boolean }[];
+  /** Store language and category, for the policy checks. */
+  policy: { lang: string; category: string | null };
+  /** Competitor brands found by the detector, and the words the user marked as «no es una marca». */
+  brands: string[];
+  brandExceptions: string[];
   aiEnabled: boolean;
   /** State of the product sheet: whether it is empty and how many features are coming in the next version. */
   product: { empty: boolean; nextCount: number };
 };
 
-export function MetadataEditor({ appId, store, initial, published, hasDraft, keywords, aiEnabled, product }: Props) {
+export function MetadataEditor({ appId, store, initial, published, hasDraft, keywords, policy, brands, brandExceptions, aiEnabled, product }: Props) {
   const [draft, setDraft] = useState(initial);
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
   const [ai, optimizeAction, optimizing] = useActionState<OptimizeState, FormData>(optimizeListing, null);
   const [focus, setFocus] = useState("");
   // Fields of the current proposal already applied or discarded.
   const [handled, setHandled] = useState<{ proposal?: ListingProposal; keys: FieldKey[] }>({ keys: [] });
-  const report = useMemo(() => checkMetadata(store, draft, keywords), [store, draft, keywords]);
+  const terms = useMemo(() => keywords.map((k) => k.term), [keywords]);
+  const scoring = useMemo(() => keywords.filter((k) => k.relevant), [keywords]);
+  const policyContext = useMemo(() => ({ ...policy, brands }), [policy, brands]);
+  const report = useMemo(() => checkMetadata(store, draft, terms, policyContext), [store, draft, terms, policyContext]);
+  const weighted = useMemo(() => weightedCoverage(store, draft, scoring), [store, draft, scoring]);
   const set = (key: FieldKey, value: string) => setDraft((d) => ({ ...d, [key]: value }));
 
   const proposal = ai?.proposal;
@@ -41,9 +65,12 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
     setDraft((d) => ({ ...d, ...Object.fromEntries(keys.map((k) => [k, proposal.fields[k] ?? d[k]])) }));
     markDone(keys);
   };
-  const proposed = proposal
-    ? checkMetadata(store, { ...draft, ...Object.fromEntries(pendingKeys.map((k) => [k, proposal.fields[k]])) }, keywords)
-    : null;
+  const proposedDraft: MetadataDraft | null = proposal ? { ...draft, ...Object.fromEntries(pendingKeys.map((k) => [k, proposal.fields[k]])) } : null;
+  const proposed = proposedDraft ? checkMetadata(store, proposedDraft, terms, policyContext) : null;
+  // Same pure function as the server's quality lock, against what is in the editor right now.
+  const proposedWeighted = proposedDraft ? weightedCoverage(store, proposedDraft, scoring) : null;
+  const diff = proposedWeighted ? keywordDiff(weighted, proposedWeighted) : null;
+  const regressed = proposedWeighted != null && proposedWeighted.score < weighted.score;
   const labels = Object.fromEntries(FIELDS[store].map((f) => [f.key, f.label])) as Record<FieldKey, string>;
   const covered = report.coverage.filter((c) => c.covered).length;
   const extra = appendToKeywordField(draft.keywordField, report.missingWords);
@@ -178,9 +205,16 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
             )}
             <span aria-live="polite" className="text-[13px] text-muted">
               {state?.error && <span className="text-danger">{state.error}</span>}
-              {state?.savedAt && "Borrador guardado"}
+              {state?.savedAt && !state.warning && "Borrador guardado"}
             </span>
           </div>
+          {state?.warning && (
+            <p role="status" className="rounded-lg bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+              Borrador guardado, pero cubre peor tus keywords relevantes que {state.warning.against === "draft" ? "el borrador anterior" : "la ficha publicada"}:
+              cobertura ponderada {state.warning.before} → {state.warning.after} de 100
+              {state.warning.lost.length > 0 && <>. Deja de cubrir: {state.warning.lost.join(", ")}</>}. Puedes seguir así si es lo que quieres.
+            </p>
+          )}
         </form>
       </Card>
 
@@ -188,10 +222,23 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
         {proposal && proposed && (pendingKeys.length > 0 || proposal.notes.length > 0) && (
           <Card aria-label="Propuesta de la IA" className="px-5 py-4">
             <h2 className="text-[15px] font-semibold">Propuesta de la IA</h2>
-            <p className="mt-1 text-[13px] text-muted">
-              Cobertura de keywords: {covered} → <span className="font-semibold text-ink">{proposed.coverage.filter((c) => c.covered).length}</span> de{" "}
-              {keywords.length}. Revisa el texto antes de publicarlo.
-            </p>
+            {proposedWeighted && (
+              <p className="mt-1 text-[13px] text-muted">
+                Cobertura ponderada: {weighted.score} →{" "}
+                <span className={`font-mono font-semibold ${regressed ? "text-down" : proposedWeighted.score > weighted.score ? "text-up" : "text-ink"}`}>
+                  {proposedWeighted.score}
+                </span>{" "}
+                de 100 · keywords cubiertas: {covered} → {proposed.coverage.filter((c) => c.covered).length} de {keywords.length}. Revisa el texto antes de
+                publicarlo.
+              </p>
+            )}
+            {regressed && proposedWeighted && (
+              <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+                Esta propuesta cubre peor tus keywords que el texto actual ({weighted.score} → {proposedWeighted.score}).
+                {proposal.attempts === 2 ? " La IA lo intentó dos veces y esta es la mejor de las dos." : ""} Aplica solo los campos que te convenzan.
+              </p>
+            )}
+            {diff && <KeywordDiffView diff={diff} labels={labels} />}
             {proposal.targetKeywords.length > 0 && (
               <div className="mt-3">
                 <h3 className="text-xs font-medium uppercase tracking-wide text-muted">Construida alrededor de</h3>
@@ -216,9 +263,15 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                 ))}
               </ul>
             )}
+            {proposed && proposed.issues.length > 0 && (
+              <div className="mt-3">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted">Avisos de la propuesta</h3>
+                <IssueList issues={proposed.issues} />
+              </div>
+            )}
             {pendingKeys.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className={buttonSecondary} onClick={() => apply(pendingKeys)}>
+                <button type="button" className={regressed ? buttonSecondary : buttonPrimary} onClick={() => apply(pendingKeys)}>
                   Aplicar todo ({pendingKeys.length})
                 </button>
                 <button type="button" className={`${buttonSecondary} text-muted`} onClick={() => markDone(pendingKeys)}>
@@ -231,21 +284,15 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
         )}
         <Card aria-label="Avisos" className="px-5 py-4">
           <h2 className="text-[15px] font-semibold">Avisos</h2>
+          <p className="mt-1 text-xs text-muted">Límites de la tienda y normas de Google Play y App Store. Cada aviso enlaza a la norma oficial.</p>
           {report.issues.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">Todo dentro de los límites.</p>
+            <p className="mt-2 text-sm text-muted">Todo dentro de los límites y sin problemas de normas detectados.</p>
           ) : (
-            <ul className="mt-2 flex flex-col gap-2 text-sm">
-              {report.issues.map((issue) => (
-                <li
-                  key={issue.text}
-                  className={`rounded-lg px-3 py-2 ${issue.level === "error" ? "bg-danger-soft text-danger" : "bg-warn-bg text-warn-fg"}`}
-                >
-                  {issue.text}
-                </li>
-              ))}
-            </ul>
+            <IssueList issues={report.issues} />
           )}
         </Card>
+
+        <BrandList appId={appId} brands={brands} exceptions={brandExceptions} />
 
         <Card aria-label="Cobertura de keywords" className="overflow-hidden">
           <div className="border-b border-line px-5 py-4">
@@ -255,6 +302,13 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                 ? "Aún no sigues ninguna keyword."
                 : `${covered} de ${keywords.length} tienen todas sus palabras en ${store === "ios" ? "nombre, subtítulo o campo de keywords" : "título o descripciones"}.`}
             </p>
+            {scoring.length > 0 && (
+              <p className="mt-1 text-[13px] text-muted">
+                Cobertura ponderada: <span className="font-mono font-semibold text-ink">{weighted.score}</span> de 100. Cuenta las {scoring.length} keywords
+                relevantes por su oportunidad y por el campo: {weightsText(store, labels)}; si solo están las palabras sueltas, cuenta{" "}
+                {store === "ios" ? "el 80 %" : "la mitad"}.
+              </p>
+            )}
           </div>
           <ul className="max-h-[480px] overflow-y-auto">
             {report.coverage.map((c) => (
@@ -304,6 +358,86 @@ function ProposalBox({ text, limit, why, onApply, onDiscard }: { text: string; l
           Descartar
         </button>
       </div>
+    </div>
+  );
+}
+
+function weightsText(store: Store, labels: Record<FieldKey, string>): string {
+  return Object.entries(FIELD_WEIGHTS[store])
+    .map(([k, w]) => `${labels[k as FieldKey]?.toLowerCase()} ×${String(w).replace(".", ",")}`)
+    .join(", ");
+}
+
+const ISSUE_STYLE: Record<Issue["level"], string> = {
+  error: "bg-danger-soft text-danger",
+  warn: "bg-warn-bg text-warn-fg",
+  info: "bg-surface-muted text-ink-soft",
+};
+const ISSUE_LABEL: Record<Issue["level"], string> = { error: "Error", warn: "Aviso", info: "Info" };
+
+function IssueList({ issues }: { issues: Issue[] }) {
+  return (
+    <ul className="mt-2 flex flex-col gap-2 text-sm">
+      {issues.map((issue) => (
+        <li key={`${issue.ruleId ?? ""}${issue.text}`} className={`rounded-lg px-3 py-2 ${ISSUE_STYLE[issue.level]}`}>
+          <span className="sr-only">{ISSUE_LABEL[issue.level]}: </span>
+          {issue.text}
+          {issue.link && (
+            <>
+              {" "}
+              <a href={issue.link} target="_blank" rel="noreferrer" className="whitespace-nowrap font-medium underline">
+                Ver norma
+              </a>
+            </>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+const DIFF_PREVIEW = 5;
+
+function KeywordDiffView({ diff, labels }: { diff: KeywordDiff; labels: Record<FieldKey, string> }) {
+  const field = (k: FieldKey | null) => (k ? labels[k]?.toLowerCase() : "palabras sueltas");
+  const groups: { key: keyof KeywordDiff; title: string; tone: string; detail: (d: DiffItem) => string }[] = [
+    { key: "lost", title: "Pierde", tone: "text-down", detail: (d) => `estaba en ${field(d.from)}` },
+    { key: "gained", title: "Gana", tone: "text-up", detail: (d) => `en ${field(d.to)}` },
+    { key: "moved", title: "Cambia de campo", tone: "text-ink-soft", detail: (d) => `${field(d.from)} → ${field(d.to)}` },
+  ];
+  if (groups.every((g) => diff[g.key].length === 0)) return null;
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {groups.map((g) =>
+        diff[g.key].length > 0 ? <DiffGroup key={g.key} title={g.title} tone={g.tone} detail={g.detail} items={diff[g.key]} /> : null,
+      )}
+    </div>
+  );
+}
+
+function DiffGroup({ title, tone, items, detail }: { title: string; tone: string; items: DiffItem[]; detail: (d: DiffItem) => string }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? items : items.slice(0, DIFF_PREVIEW);
+  return (
+    <div>
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
+        {title} ({items.length})
+      </h3>
+      <ul className="mt-1 flex flex-col text-sm">
+        {shown.map((d) => (
+          <li key={d.term} className="flex items-baseline justify-between gap-3 py-0.5">
+            <span className={tone}>{d.term}</span>
+            <span className="shrink-0 text-xs text-muted">
+              {detail(d)} · <span className="font-mono">{Math.round(d.value)}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {items.length > DIFF_PREVIEW && (
+        <button type="button" onClick={() => setOpen((o) => !o)} className="min-h-11 text-[13px] text-link hover:underline md:min-h-8">
+          {open ? "Ver menos" : `Ver ${items.length - DIFF_PREVIEW} más`}
+        </button>
+      )}
     </div>
   );
 }

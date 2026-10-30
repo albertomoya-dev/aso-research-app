@@ -22,6 +22,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | – | Estilo inspirado en Linear, oscuro por defecto (PR #13 y #15) | Hecho |
 | 13 | Ficha de producto: lo que hace la app, fuente de verdad para toda la IA | Hecho |
 | 14 | Higiene de keywords: relevancia para todas, filtro de irrelevantes y limpieza por lotes | Hecho |
+| 15 | Candado de calidad, comprobador de normas de las tiendas y detector de marcas | Hecho |
 
 ## Stack
 
@@ -103,6 +104,63 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 ## Editor de ficha
 
 La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos; para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+
+### Candado de calidad
+
+Una propuesta de la IA no puede salir como recomendada si cubre peor tus keywords que el texto actual.
+
+- **Cobertura ponderada** (`weightedCoverage` en `lib/metadata-check.ts`), de 0 a 100: cada keyword relevante (no es palabra vacía, no tiene intención ajena y su relevancia es 3 o más, o aún no está valorada) vale su oportunidad (como mínimo 1), multiplicada por el peso del campo donde está la frase exacta. Pesos: Google Play, título 3, descripción corta 2, descripción 1; App Store, nombre 3, subtítulo 2, campo de keywords 1,5, descripción 0 (Apple no la indexa). Si están todas las palabras pero no la frase junta, cuenta una parte del peso del campo más débil que hace falta: el 80 % en App Store (Apple combina las palabras de nombre, subtítulo y campo de keywords) y la mitad en Google Play. Se divide por el máximo posible (todas en el título).
+- El editor, el optimizador y el aviso al guardar usan la misma función, así que ven la misma cifra.
+- **Optimizar con IA** envía al modelo todas las keywords relevantes (hasta 150, las mejores primero), con dónde las cubre hoy la ficha y una lista «no pierdas estas» con las 20 cubiertas de más oportunidad. Pide repetir cada frase 2 o 3 veces en la descripción, el mismo umbral que el comprobador de densidad. Prompt `lst-3`.
+- Si la primera propuesta baja la puntuación, pierde una keyword con oportunidad 40 o más, rompe una norma con nivel de error, se pasa de un límite o quita la marca del título, se pide **una segunda** con la lista concreta de lo que perdió y de las normas rotas. Se queda la mejor de las dos (primero la que respeta los límites, luego la que tiene menos errores de normas y luego la de más puntuación).
+- Si aun así es peor, sale con un aviso en rojo y «Aplicar todo» pasa a botón secundario: puedes aplicar campo a campo lo que te convenza.
+- La propuesta enseña la puntuación antes y después, las keywords que **gana**, **pierde** y las que **cambian de campo** (ordenadas por oportunidad) y sus propios avisos de normas, antes de aplicarla.
+- Al guardar un borrador que cubre peor que el anterior (o que la ficha publicada si no había borrador), se guarda igual pero aparece un aviso con lo que deja de cubrir.
+
+### Comprobador de normas
+
+`lib/policy-check.ts` revisa la ficha contra las normas de Google Play y App Store. Cada regla tiene id, tienda, campo, nivel (**error**: la norma lo prohíbe; **aviso**: probable problema de revisión o de posicionamiento; **info**: conviene saberlo), mensaje en español, enlace a la norma oficial y fecha de revisión. Los avisos salen en el panel **Avisos** del editor y en el de la propuesta, y los errores se envían al modelo en el reintento.
+
+Fuentes leídas el **30 oct 2026** (descargadas y leídas, no de memoria):
+[Google Play, política de metadatos](https://support.google.com/googleplay/android-developer/answer/9898842),
+[Google Play, contenido y servicios de salud](https://support.google.com/googleplay/android-developer/answer/16679511),
+[App Store Review Guidelines 2.3 y 1.4.1](https://developer.apple.com/app-store/review/guidelines/#accurate-metadata) (actualizadas el 16 oct 2026) y
+[Apple, Creating your product page](https://developer.apple.com/app-store/product-page/) (campo de keywords).
+
+| Regla | Tienda | Campo | Nivel | Qué comprueba |
+| --- | --- | --- | --- | --- |
+| `play.title.emoji` | Play | Título | Error | Emojis y emoticonos |
+| `play.title.symbols` | Play | Título | Error | Símbolos decorativos (★, ✓, ►…) o repetidos (!!!) |
+| `play.title.caps` | Play | Título | Aviso | MAYÚSCULAS sostenidas fuera de la marca |
+| `play.title.promo` | Play | Título | Error | Rendimiento, ranking, precio, promoción o «nuevo» (gratis, mejor, nº 1, top, oferta, descuento, bonificación…) en es, en, pt, fr, de e it |
+| `play.short.promo` | Play | Descripción corta | Aviso | Ranking o precio |
+| `play.description.promo` | Play | Descripción | Aviso | Precio o promoción y afirmaciones como «la mejor app» o «nº 1» |
+| `play.title.cta` | Play | Título y descripción corta | Aviso | Llamadas a la acción («descarga ya», «download now»). La norma actual no las nombra literalmente: se deriva de «texto engañoso o no descriptivo» |
+| `play.description.density` | Play | Descripción | Aviso | Una frase seguida más de 3 veces, o una palabra suelta más de 6 veces y más de 4 por cada 1000 caracteres |
+| `play.description.keyword-list` | Play | Descripciones | Aviso | Listas de palabras sin frases («Keywords:», 6 o más elementos cortos seguidos) |
+| `play.description.testimonial` | Play | Descripción | Aviso | Testimonios con estrellas o citas sin firmar o firmadas «— un usuario» |
+| `other-apps` | Ambas | Textos visibles | Aviso | Marcas de otras apps (las del detector de marcas) |
+| `play.health.declaration` | Play | – | Info | Categoría de salud o medicina: rellenar la declaración de apps de salud en Play Console |
+| `health.claims` | Ambas | Textos visibles | Aviso | Afirmar que la app diagnostica, cura, trata o previene enfermedades (no salta en frases con negación o de aviso legal) |
+| `health.disclaimer` | Ambas | Descripción | Info | Falta el aviso de que no es un dispositivo médico ni sustituye el consejo médico |
+| `ios.name.price` | App Store | Nombre y subtítulo | Error | Precios o promociones |
+| `ios.name.claims` | App Store | Nombre y subtítulo | Aviso | Afirmaciones que no se pueden comprobar (mejor, nº 1, top) |
+| `ios.description.price` | App Store | Descripción | Aviso | Precios concretos (2,99 €) |
+| `ios.keywords.plural` | App Store | Campo de keywords | Aviso | Plurales de palabras que ya están en singular |
+| `ios.keywords.category` | App Store | Campo de keywords | Aviso | Nombre de la categoría o la palabra «app» |
+| `ios.keywords.other-apps` | App Store | Campo de keywords | Error | Nombres de otras apps o marcas |
+
+Las reglas son heurísticas: avisan, no deciden. Si una norma cambia, actualiza la regla y su `reviewedAt` (constante `REVIEWED_AT`).
+
+### Marcas detectadas
+
+La IA evita las marcas de otras apps en la ficha y en las ideas. El detector (`competitorBrands` en `lib/suggestions.ts`) mira las 25 apps que más aparecen en el TOP 5 de tus keywords y toma como marca la parte del título antes de un separador («MyTherapy: …»), el título si es de una sola palabra, la primera palabra si es rara («Medisafe Recordatorio Pastillas») y el nombre del desarrollador. Para no confundir palabras genéricas con marcas:
+
+- nunca es marca una palabra o frase de tu título, de tus keywords seguidas, de tu ficha de producto o de tus excepciones;
+- una cabeza de título que usan 3 o más apps distintas es una frase común, no una marca («Notas», «Recordatorio de pastillas - …»);
+- un desarrollador hecho solo de palabras genéricas («Apps Studio») tampoco cuenta.
+
+El editor muestra la lista **Marcas detectadas** con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo.
 
 ## Ficha de producto
 

@@ -1,4 +1,6 @@
+import { policyCheck, type PolicyContext } from "./policy-check";
 import type { AppMeta, Store } from "./stores/types";
+import { fold } from "./text";
 
 export type MetadataDraft = {
   title: string;
@@ -46,9 +48,9 @@ export function draftFromMeta(meta: AppMeta): MetadataDraft {
 /** Stores count characters, not UTF-16 units. */
 export const charCount = (s: string) => [...s].length;
 
-const fold = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase();
 export const tokens = (s: string) => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-const containsPhrase = (text: string, phrase: string) => ` ${tokens(text).join(" ")} `.includes(` ${tokens(phrase).join(" ")} `);
+/** True when the words of `phrase` appear together and in order in `text` (folded, ignoring punctuation). */
+export const containsPhrase = (text: string, phrase: string) => ` ${tokens(text).join(" ")} `.includes(` ${tokens(phrase).join(" ")} `);
 
 export type Coverage = {
   term: string;
@@ -56,12 +58,20 @@ export type Coverage = {
   covered: boolean;
   /** Strongest field holding the exact phrase, if any. */
   exactIn: FieldKey | null;
+  /** Every indexed field holding the exact phrase, strongest first. */
+  inFields: FieldKey[];
   missing: string[];
   /** Google Play: times the phrase appears in the description. */
   descriptionCount?: number;
 };
 
-export type Issue = { level: "error" | "warn"; text: string };
+export type IssueLevel = "error" | "warn" | "info";
+/**
+ * One warning in the «Avisos» panel. `error`: the store rejects it or its policy forbids it;
+ * `warn`: likely to hurt ranking or review; `info`: worth knowing. Policy issues carry the rule id
+ * and the link to the official text (see lib/policy-check.ts).
+ */
+export type Issue = { level: IssueLevel; text: string; ruleId?: string; link?: string };
 
 export type MetadataReport = {
   fields: (FieldSpec & { length: number; over: boolean })[];
@@ -71,7 +81,8 @@ export type MetadataReport = {
   missingWords: string[];
 };
 
-function countPhrase(text: string, phrase: string) {
+/** Times the phrase appears in the text, word by word (folded, ignoring punctuation). */
+export function countPhrase(text: string, phrase: string) {
   const hay = tokens(text);
   const needle = tokens(phrase);
   if (needle.length === 0) return 0;
@@ -82,7 +93,13 @@ function countPhrase(text: string, phrase: string) {
   return n;
 }
 
-export function checkMetadata(store: Store, draft: MetadataDraft, keywords: string[]): MetadataReport {
+/**
+ * Limits, coverage and warnings of a listing. Store policy checks (lib/policy-check.ts) run on top;
+ * pass `policy` with the store language, category and competitor brands to make them precise.
+ */
+const LEVEL_ORDER: Record<IssueLevel, number> = { error: 0, warn: 1, info: 2 };
+
+export function checkMetadata(store: Store, draft: MetadataDraft, keywords: string[], policy: PolicyContext = {}): MetadataReport {
   const specs = FIELDS[store];
   const indexed = specs.filter((f) => f.indexed);
   const fields = specs.map((f) => {
@@ -93,11 +110,12 @@ export function checkMetadata(store: Store, draft: MetadataDraft, keywords: stri
 
   const coverage = keywords.map((term): Coverage => {
     const missing = tokens(term).filter((w) => !indexedWords.has(w));
-    const exact = indexed.find((f) => containsPhrase(draft[f.key], term));
+    const inFields = indexed.filter((f) => containsPhrase(draft[f.key], term)).map((f) => f.key);
     return {
       term,
       covered: missing.length === 0,
-      exactIn: exact?.key ?? null,
+      exactIn: inFields[0] ?? null,
+      inFields,
       missing,
       ...(store === "android" ? { descriptionCount: countPhrase(draft.description, term) } : {}),
     };
@@ -119,15 +137,11 @@ export function checkMetadata(store: Store, draft: MetadataDraft, keywords: stri
     }
     const dupes = [...new Set(kwWords.filter((w, i) => kwWords.indexOf(w) !== i))];
     if (dupes.length > 0) issues.push({ level: "warn", text: `Palabras repetidas en el campo de keywords: ${dupes.join(", ")}.` });
-  } else {
-    const stuffed = coverage.filter((c) => (c.descriptionCount ?? 0) > 6);
-    if (stuffed.length > 0) {
-      issues.push({
-        level: "warn",
-        text: `Repetidas muchas veces en la descripción (Google puede verlo como relleno): ${stuffed.map((c) => c.term).join(", ")}.`,
-      });
-    }
   }
+
+  // Store policies: promo words, emojis, keyword density, health claims… (Google Play density lives there too).
+  issues.push(...policyCheck(store, draft, { ...policy, keywords: policy.keywords ?? keywords }));
+  issues.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
 
   const missingWords = store === "ios" ? [...new Set(coverage.flatMap((c) => c.missing))] : [];
   return { fields, coverage, issues, missingWords };
@@ -139,6 +153,109 @@ export function appendToKeywordField(field: string, words: string[]): string {
     .split(",")
     .map((w) => w.trim())
     .filter(Boolean);
-  const have = new Set(current.map(fold));
+  const have = new Set(current.map((w) => fold(w)));
   return [...current, ...words.filter((w) => !have.has(fold(w)))].join(",");
+}
+
+// ---------- Weighted coverage (quality lock) ----------
+
+/**
+ * How much each indexed field is worth for ranking. The title weighs the most in both stores;
+ * Apple does not index the description at all.
+ */
+export const FIELD_WEIGHTS: Record<Store, Partial<Record<FieldKey, number>>> = {
+  android: { title: 3, shortDescription: 2, description: 1 },
+  ios: { title: 3, subtitle: 2, keywordField: 1.5, description: 0 },
+};
+const MAX_WEIGHT = 3;
+
+/**
+ * Credit when the words of a keyword are all there but not together. Apple combines words across
+ * name, subtitle and keyword field, so scattered words almost work as well as the phrase (0.8);
+ * Google Play rewards the exact phrase much more (0.5).
+ */
+export const PARTIAL_FACTOR: Record<Store, number> = { ios: 0.8, android: 0.5 };
+
+export type ScoredKeyword = { term: string; opportunity: number | null };
+
+export type WeightedItem = {
+  term: string;
+  /** Opportunity used as the keyword's value (at least 1, so unmeasured keywords still count a little). */
+  value: number;
+  /** Weight earned, 0–3: the best field with the exact phrase, or the partial credit. */
+  credit: number;
+  /** Fields holding the exact phrase, strongest first. */
+  fields: FieldKey[];
+  /** Every word present, but never the whole phrase in one field. */
+  partial: boolean;
+};
+
+export type WeightedCoverage = {
+  /** 0–100: Σ value × credit over Σ value × 3 (every keyword in the title). */
+  score: number;
+  items: WeightedItem[];
+};
+
+const valueOf = (k: ScoredKeyword) => Math.max(1, k.opportunity ?? 0);
+
+/**
+ * Coverage weighted by each keyword's opportunity and by the field that holds it:
+ * - the exact phrase in a field earns that field's weight (the best one if it is in several);
+ * - all its words present across indexed fields, but never together, earn PARTIAL_FACTOR × the
+ *   weight of the weakest field needed (the word that is only in the description drags it down);
+ * - otherwise 0.
+ * Pure and shared by the server (optimizer, draft warning) and the editor, so both show the same number.
+ */
+export function weightedCoverage(store: Store, draft: MetadataDraft, keywords: ScoredKeyword[]): WeightedCoverage {
+  const weights = FIELD_WEIGHTS[store];
+  const fields = FIELDS[store]
+    .filter((f) => f.indexed && (weights[f.key] ?? 0) > 0)
+    .map((f) => ({ key: f.key, weight: weights[f.key] ?? 0, words: new Set(tokens(draft[f.key])) }))
+    .sort((a, b) => b.weight - a.weight);
+  let earned = 0;
+  let possible = 0;
+  const items = keywords.map((k): WeightedItem => {
+    const value = valueOf(k);
+    const inFields = fields.filter((f) => containsPhrase(draft[f.key], k.term)).map((f) => f.key);
+    let credit = inFields.length ? (weights[inFields[0]] ?? 0) : 0;
+    let partial = false;
+    const words = tokens(k.term);
+    if (!credit && words.length > 0) {
+      const best = words.map((w) => fields.find((f) => f.words.has(w))?.weight ?? 0);
+      if (best.every((b) => b > 0)) {
+        credit = PARTIAL_FACTOR[store] * Math.min(...best);
+        partial = true;
+      }
+    }
+    earned += value * credit;
+    possible += value * MAX_WEIGHT;
+    return { term: k.term, value, credit, fields: inFields, partial };
+  });
+  return { score: possible ? Math.round((earned / possible) * 1000) / 10 : 0, items };
+}
+
+export type DiffItem = { term: string; value: number; from: FieldKey | null; to: FieldKey | null };
+export type KeywordDiff = { gained: DiffItem[]; lost: DiffItem[]; moved: DiffItem[] };
+
+/**
+ * What a new listing gains and loses against the old one, most valuable first. Both coverages must
+ * come from the same keyword list. `from`/`to` are the strongest field with the exact phrase (null
+ * when only the words are there). Moved: covered in both, but the best field changed.
+ */
+export function keywordDiff(before: WeightedCoverage, after: WeightedCoverage): KeywordDiff {
+  const afterByTerm = new Map(after.items.map((i) => [i.term, i]));
+  const diff: KeywordDiff = { gained: [], lost: [], moved: [] };
+  for (const b of before.items) {
+    const a = afterByTerm.get(b.term);
+    if (!a) continue;
+    const item = { term: b.term, value: b.value, from: b.fields[0] ?? null, to: a.fields[0] ?? null };
+    if (b.credit === 0 && a.credit > 0) diff.gained.push(item);
+    else if (b.credit > 0 && a.credit === 0) diff.lost.push(item);
+    else if (b.credit > 0 && a.credit > 0 && item.from !== item.to) diff.moved.push(item);
+  }
+  const byValue = (x: DiffItem, y: DiffItem) => y.value - x.value || x.term.localeCompare(y.term);
+  diff.gained.sort(byValue);
+  diff.lost.sort(byValue);
+  diff.moved.sort(byValue);
+  return diff;
 }

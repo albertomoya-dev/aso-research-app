@@ -1,12 +1,32 @@
 import { z } from "zod";
-import { charCount, FIELDS, type FieldKey, type MetadataDraft, tokens } from "./metadata-check";
+import {
+  charCount,
+  type DiffItem,
+  FIELDS,
+  type FieldKey,
+  type Issue,
+  type KeywordDiff,
+  keywordDiff,
+  type MetadataDraft,
+  type ScoredKeyword,
+  tokens,
+  weightedCoverage,
+} from "./metadata-check";
+import { MAX_DESCRIPTION_REPEATS, policyCheck, type PolicyContext } from "./policy-check";
 import type { Store } from "./stores/types";
 import { relevanceFactor } from "./suggestions";
 
 /** Bump when the instructions or the output shape change. */
-export const LISTING_PROMPT_VERSION = "lst-2";
-/** The most useful keywords go in the prompt; the rest only add noise. */
-export const MAX_PROMPT_KEYWORDS = 60;
+export const LISTING_PROMPT_VERSION = "lst-3";
+/**
+ * Relevant keywords sent to the model, best first. 150 lines are about 6,000 input tokens: enough for
+ * every keyword worth targeting in a well-kept list (lib/relevance KEYWORD_BUDGET is also 150).
+ */
+export const MAX_PROMPT_KEYWORDS = 150;
+/** Covered keywords listed under DO NOT LOSE, most valuable first. */
+export const DO_NOT_LOSE_COUNT = 20;
+/** Losing a covered keyword with at least this opportunity (0–100) triggers the retry. */
+export const LOST_OPPORTUNITY_THRESHOLD = 40;
 
 /** Loose on purpose (plain strings) so the structured-output schema stays simple; `cleanProposal` fixes it up after. */
 export const listingOutputSchema = z.object({
@@ -41,8 +61,17 @@ Apple App Store (indexed fields: title, subtitle, keyword field; the description
 Google Play (indexed fields: title, short description, description):
 - title: max 30 characters. Brand plus the most valuable keyword phrase.
 - shortDescription: max 80 characters. A benefit-led sentence with the next most valuable keywords.
-- description: max 4000 characters. Include the target keyword phrases naturally: the most important ones in the first 167 characters and repeated 2 to 4 times across the text, never more than 5 times each. Use short paragraphs and bullet lines.
+- description: max 4000 characters. Include the target keyword phrases naturally: the most important ones in the first 167 characters and repeated ${MAX_DESCRIPTION_REPEATS - 1} to ${MAX_DESCRIPTION_REPEATS} times across the text, never more than ${MAX_DESCRIPTION_REPEATS} times each (overlapping phrases count: "pill reminder" inside "daily pill reminder" is one more use). Use short paragraphs and bullet lines.
 - Return empty subtitle and keywordField.
+
+Do not lose coverage:
+- Each keyword comes with where the current listing covers it today. The new listing must cover at least as much, weighting the title over the subtitle or short description, and those over the keyword field or description. Keep every keyword under DO NOT LOSE covered, ideally in the same field or a stronger one.
+
+Store policies (the result is checked against them):
+- Title: no emojis, emoticons, decorative or repeated symbols, and no ALL CAPS except the brand.
+- No price, promotion or ranking words in the title, subtitle or short description: free, best, #1, top, new, sale, discount, bonus and their translations. No calls to action such as "download now".
+- Description: no keyword lists without sentences, no user testimonials or star ratings, no names of other apps or brands, no prices.
+- Health apps: never claim the app diagnoses, cures, treats or prevents a disease, and keep (or add) a sentence saying it is not a medical device and does not replace a doctor's advice.
 
 Also return:
 - targetKeywords: the tracked keywords this listing is built around, best first.
@@ -91,15 +120,26 @@ export function rankKeywords(keywords: PromptKeyword[]): PromptKeyword[] {
   });
 }
 
+/** "title, description", "words only" or "not covered": where the current text covers a keyword. */
+function coverageNote(item: { fields: FieldKey[]; partial: boolean }): string {
+  if (item.fields.length) return item.fields.join(", ");
+  return item.partial ? "words only, not the phrase" : "not covered";
+}
+
 export function buildListingPrompt(input: ListingPromptInput, feedback?: string[]): string {
   const { current } = input;
   const fields = FIELDS[input.store];
-  const rows = rankKeywords(input.keywords)
-    .slice(0, MAX_PROMPT_KEYWORDS)
-    .map((k) => {
-      const pos = k.position ?? (k.depth ? `>${k.depth}` : "–");
-      return `- ${k.term} | position ${pos} | popularity ${num(k.popularity)} | difficulty ${num(k.difficulty)} | opportunity ${num(k.opportunity)} | relevance ${num(k.relevance)}`;
-    });
+  const ranked = rankKeywords(input.keywords).slice(0, MAX_PROMPT_KEYWORDS);
+  const coverage = weightedCoverage(input.store, current, ranked);
+  const rows = ranked.map((k, i) => {
+    const pos = k.position ?? (k.depth ? `>${k.depth}` : "–");
+    return `- ${k.term} | position ${pos} | popularity ${num(k.popularity)} | difficulty ${num(k.difficulty)} | opportunity ${num(k.opportunity)} | relevance ${num(k.relevance)} | today: ${coverageNote(coverage.items[i])}`;
+  });
+  const keep = coverage.items
+    .filter((c) => c.credit > 0)
+    .sort((a, b) => b.value - a.value || b.credit - a.credit)
+    .slice(0, DO_NOT_LOSE_COUNT)
+    .map((c) => `- ${c.term} (today: ${coverageNote(c)})`);
   return [
     `Store: ${input.store === "ios" ? "Apple App Store" : "Google Play"}, country: ${input.countryName}, language code: ${input.lang}.`,
     `Developer: ${input.developer}. Category: ${input.category ?? "–"}.`,
@@ -113,6 +153,7 @@ export function buildListingPrompt(input: ListingPromptInput, feedback?: string[
     `Tracked keywords, best targets first (popularity, difficulty and opportunity are 0–100; position ">N" means outside the top N):`,
     ...(rows.length ? rows : ["(none: optimise for the app's category and features)"]),
     "",
+    ...(keep.length ? [`DO NOT LOSE (covered today, most valuable first; weighted coverage today ${coverage.score}/100):`, ...keep, ""] : []),
     `Other brands, never use them: ${input.avoidBrands.length ? input.avoidBrands.join(", ") : "(none)"}`,
     input.focus ? `\nThe user asks you to focus on: ${input.focus}` : null,
     feedback?.length ? `\nYour previous answer broke these rules, fix them:\n${feedback.map((f) => `- ${f}`).join("\n")}` : null,
@@ -155,6 +196,15 @@ export type ListingProposal = {
   notes: string[];
   /** Fields still over the store limit after the retry. */
   over: FieldKey[];
+  /** Quality lock, set by optimizeListing: weighted coverage (0–100) of the text sent and of the proposal. */
+  scoreBefore?: number;
+  scoreAfter?: number;
+  /** Keywords gained, lost and moved against the text sent. */
+  diff?: KeywordDiff;
+  /** Still covers worse than the text sent, even after the retry: shown with a red warning. */
+  regression?: boolean;
+  /** Calls to the model (2 when the first answer was retried). */
+  attempts?: number;
 };
 
 /** Keeps the store's fields, tidies whitespace, fixes the keyword field and lists what is still over the limit. */
@@ -197,4 +247,85 @@ export function proposalFeedback(store: Store, proposal: ListingProposal, brand:
 export function brandOf(title: string): string {
   const parts = title.split(/\s*(?::|\s[-–—|·]\s)\s*/);
   return (parts.length > 1 ? parts[0] : title.trim().split(/\s+/)[0] ?? "").trim();
+}
+
+// ---------- Quality lock ----------
+
+export type ProposalAssessment = {
+  scoreBefore: number;
+  scoreAfter: number;
+  diff: KeywordDiff;
+  /** Lost keywords with opportunity ≥ LOST_OPPORTUNITY_THRESHOLD. */
+  lostImportant: DiffItem[];
+  /** Policy errors in the proposed listing. */
+  policyErrors: Issue[];
+  /** Worse than the current text: lower score or an important keyword lost. */
+  regressed: boolean;
+};
+
+/** The listing as it would be with the whole proposal applied. */
+export const applyProposal = (current: MetadataDraft, proposal: ListingProposal): MetadataDraft => ({ ...current, ...proposal.fields });
+
+/** Compares a proposal with the current text: weighted coverage, keyword diff and policy errors. */
+export function assessProposal(
+  store: Store,
+  current: MetadataDraft,
+  proposal: ListingProposal,
+  keywords: ScoredKeyword[],
+  policy: PolicyContext = {},
+): ProposalAssessment {
+  const proposed = applyProposal(current, proposal);
+  const before = weightedCoverage(store, current, keywords);
+  const after = weightedCoverage(store, proposed, keywords);
+  const diff = keywordDiff(before, after);
+  const lostImportant = diff.lost.filter((l) => l.value >= LOST_OPPORTUNITY_THRESHOLD);
+  const policyErrors = policyCheck(store, proposed, policy).filter((i) => i.level === "error");
+  return {
+    scoreBefore: before.score,
+    scoreAfter: after.score,
+    diff,
+    lostImportant,
+    policyErrors,
+    regressed: after.score < before.score || lostImportant.length > 0,
+  };
+}
+
+/** Concrete feedback for the retry: the score drop, the keywords lost (most valuable first) and the policy errors. */
+export function qualityFeedback(a: ProposalAssessment, maxLost = 15): string[] {
+  const out: string[] = [];
+  if (a.scoreAfter < a.scoreBefore) {
+    out.push(`Weighted keyword coverage dropped from ${a.scoreBefore} to ${a.scoreAfter} (0–100). The new listing must cover at least as much as the current one.`);
+  }
+  if (a.regressed && a.diff.lost.length) {
+    const lost = a.diff.lost.slice(0, maxLost).map((l) => `"${l.term}" (was in ${l.from ?? "loose words"})`);
+    out.push(`You dropped keywords the current listing covers; bring them back: ${lost.join(", ")}.`);
+  }
+  for (const e of a.policyErrors) out.push(`Store policy error${e.ruleId ? ` (${e.ruleId})` : ""}: ${e.text}`);
+  return out;
+}
+
+export type Attempt = { proposal: ListingProposal; assessment: ProposalAssessment };
+
+/** Best attempt: fewer fields over the limit, then fewer policy errors, then higher score; the later one on a tie. */
+export function pickBest(attempts: Attempt[]): Attempt {
+  return attempts.reduce((best, a) => {
+    const d =
+      a.proposal.over.length - best.proposal.over.length ||
+      a.assessment.policyErrors.length - best.assessment.policyErrors.length ||
+      best.assessment.scoreAfter - a.assessment.scoreAfter;
+    return d <= 0 ? a : best;
+  });
+}
+
+/** The proposal to show, with the quality lock fields filled in. Regression: still below the current score. */
+export function finalizeProposal(best: Attempt, attempts: number): ListingProposal {
+  const { assessment } = best;
+  return {
+    ...best.proposal,
+    scoreBefore: assessment.scoreBefore,
+    scoreAfter: assessment.scoreAfter,
+    diff: assessment.diff,
+    regression: assessment.scoreAfter < assessment.scoreBefore,
+    attempts,
+  };
 }

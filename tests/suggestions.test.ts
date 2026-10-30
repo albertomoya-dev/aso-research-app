@@ -6,6 +6,7 @@ import {
   MAX_SUGGESTIONS,
   relevanceFactor,
   seedWords,
+  topCompetitors,
 } from "@/lib/suggestions";
 
 const item = (keyword: string, extra: Partial<Record<string, unknown>> = {}) => ({
@@ -36,6 +37,59 @@ describe("competitorBrands", () => {
 
   it("does not treat our own developer as a competitor brand", () => {
     expect(competitorBrands([{ title: "Otra app: algo", developer: "Mi Empresa S.L." }], "Mi Empresa SL")).not.toContain("mi empresa");
+  });
+});
+
+describe("competitorBrands with options (real case)", () => {
+  // TOP 5 apps of the real case, with generic titles that the old detector took as brands.
+  const competitors = [
+    { title: "MyTherapy: Recordatorio pastillas", developer: "smartpatient gmbh" },
+    { title: "Medisafe Recordatorio Pastillas", developer: "Medisafe Project" },
+    { title: "Notas", developer: "Apps Studio" },
+    { title: "Control - Diario de salud", developer: "Mobile Apps Ltd" },
+    { title: "Recordatorios", developer: "Simple Apps" },
+    { title: "Enfermedades: guía médica", developer: "Salud Digital SL" },
+    { title: "Recordatorio de pastillas - Alarma", developer: "TOM Apps" },
+    { title: "Recordatorio de pastillas - Pills Time", developer: "Pills Time" },
+    { title: "Recordatorio de pastillas · Pastillero", developer: "Health Apps" },
+    { title: "Notas - Bloc de notas", developer: "Notes Lab" },
+    { title: "Notas: diario y listas", developer: "Pocket Apps" },
+  ];
+  const options = {
+    ownTitle: "Recordatorio pastillas y toma",
+    trackedTerms: ["recordatorio pastillas", "control de medicamentos", "recordatorios de medicación", "enfermedades crónicas"],
+    productTerms: "Alarmas exactas para cada toma. Control de tu tratamiento.",
+    lang: "es",
+  };
+
+  it("keeps real brands and drops generic words", () => {
+    const brands = competitorBrands(competitors, "Moyalo Games", options);
+    expect(brands).toEqual(expect.arrayContaining(["mytherapy", "medisafe", "medisafe project", "smartpatient", "pills time"]));
+    for (const generic of ["control", "notas", "enfermedades", "recordatorios", "recordatorio de pastillas"]) expect(brands).not.toContain(generic);
+    // Developer names made only of generic words are not brands either.
+    expect(brands).not.toContain("apps studio");
+    expect(brands).not.toContain("simple apps");
+  });
+
+  it("an app titled «Notas» does not make «notas» a brand when it is common or tracked", () => {
+    // Common: three apps of the set use «notas» in the title.
+    expect(competitorBrands(competitors, "Yo", { lang: "es" })).not.toContain("notas");
+    // Tracked, even if only one app uses it.
+    const one = [{ title: "Notas", developer: "Acme" }];
+    expect(competitorBrands(one, "Yo", { lang: "es" })).toContain("notas");
+    expect(competitorBrands(one, "Yo", { lang: "es", trackedTerms: ["notas de voz"] })).not.toContain("notas");
+  });
+
+  it("respects the user's exceptions", () => {
+    expect(competitorBrands(competitors, "Yo", { ...options, exceptions: ["MyTherapy"] })).not.toContain("mytherapy");
+  });
+});
+
+describe("topCompetitors", () => {
+  it("keeps the most frequent apps of the TOP 5, without our own", () => {
+    const app = (id: string) => ({ id, title: id, developer: id });
+    const rows = [{ top5: [app("a"), app("me"), app("b")] }, { top5: [app("b"), app("c")] }, { top5: [app("b"), app("a")] }];
+    expect(topCompetitors(rows, "me", 2).map((a) => a.id)).toEqual(["b", "a"]);
   });
 });
 

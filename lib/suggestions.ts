@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeKeyword } from "./keywords";
 import type { AppMeta, Store } from "./stores/types";
+import { genericWordsFor, stopwordsFor } from "./stopwords";
 import { fold } from "./text";
 
 /** Bump when the instructions or the output shape change, so old suggestions can be told apart. */
@@ -112,21 +113,94 @@ const LEGAL_SUFFIX = /[,.]?\s+(inc|llc|ltd|limited|gmbh|s\.?l\.?u?|s\.?a\.?|corp
 // Splits "Strava: Run & Ride" or "Nike Run Club - Running" into brand and tagline.
 const TITLE_SEPARATOR = /\s*(?::|\s[-–—|·]\s)\s*/;
 
+export type BrandOptions = {
+  /** Our own title: its words are never a competitor brand. */
+  ownTitle?: string;
+  /** Keywords the user tracks: a tracked word or phrase is never a brand. */
+  trackedTerms?: string[];
+  /** Text of the product sheet (PRODUCT FACTS): its words are never a brand. */
+  productTerms?: string;
+  /** Words the user marked as «no es una marca». */
+  exceptions?: string[];
+  /** Store language, for the stopwords and generic words. */
+  lang?: string;
+};
+
+/** A title head used by this many distinct apps or more is a common phrase, not a brand. */
+export const COMMON_TITLE_APPS = 3;
+/** Words that make up generic developer names ("Fit Apps" is a brand, "Apps Studio" is not). */
+const DEVELOPER_FILLER = new Set(
+  "apps app games game studio studios lab labs dev developer developers development mobile software soft tech technologies technology solutions digital media group team interactive online inc llc ltd corp".split(
+    " ",
+  ),
+);
+
+const words = (s: string) => foldKey(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
 /**
- * Brand phrases of other apps: the part of the title before a separator (or the
- * whole title when it is one word) and the developer name without its legal suffix.
+ * Brand phrases of other apps, for the prompts and to drop ideas: the part of the title before a
+ * separator (or the whole title when it is one word) and the developer name without its legal suffix.
+ * Without options it behaves as before; with them, generic words stop counting as brands:
+ * - never a word or phrase from our own title, the tracked keywords, the product sheet or the exceptions;
+ * - a title head only if fewer than COMMON_TITLE_APPS distinct apps of the set use it in their title
+ *   ("Notas", "Recordatorio de pastillas - X" are common, "MyTherapy" is not);
+ * - a one-word head that is only a stopword or generic word is never a brand;
+ * - the developer only if it is not made only of generic words ("Apps Studio").
  */
-export function competitorBrands(competitors: { title: string; developer: string }[], ownDeveloper: string): string[] {
+export function competitorBrands(competitors: { title: string; developer: string }[], ownDeveloper: string, options: BrandOptions = {}): string[] {
   const own = foldKey(ownDeveloper.replace(LEGAL_SUFFIX, ""));
+  const lang = options.lang ?? "en";
+  const stop = stopwordsFor(lang);
+  const generic = genericWordsFor(lang);
+  const ownText = [options.ownTitle ?? "", ...(options.trackedTerms ?? []), options.productTerms ?? ""].map((t) => words(t).join(" "));
+  const excludedWords = new Set([...ownText.flatMap((t) => t.split(" ")), ...(options.exceptions ?? []).flatMap(words)]);
+  const exceptions = new Set((options.exceptions ?? []).map((e) => words(e).join(" ")));
+  const strict = Object.keys(options).length > 0;
+  const excluded = (phrase: string) => {
+    const ws = phrase.split(" ");
+    return exceptions.has(phrase) || ws.every((w) => excludedWords.has(w)) || ownText.some((t) => ` ${t} `.includes(` ${phrase} `));
+  };
+
+  // Distinct apps per title phrase: the same app twice in the list counts once.
+  const titles = [...new Map(competitors.map((c) => [`${foldKey(c.title)}|${foldKey(c.developer)}`, ` ${words(c.title).join(" ")} `])).values()];
+  const appsUsing = (phrase: string) => titles.filter((t) => t.includes(` ${phrase} `)).length;
+
   const brands = new Set<string>();
   for (const c of competitors) {
     const parts = c.title.split(TITLE_SEPARATOR);
     const head = foldKey(parts[0]);
-    if (parts.length > 1 || !head.includes(" ")) brands.add(head);
+    if (parts.length > 1 || !head.includes(" ")) {
+      const phrase = words(head).join(" ");
+      const single = !phrase.includes(" ");
+      const filler = single && (stop.has(phrase) || generic.has(phrase));
+      if (!strict || (phrase && !filler && !excluded(phrase) && appsUsing(phrase) < COMMON_TITLE_APPS)) brands.add(head);
+    } else if (strict) {
+      // "Medisafe Recordatorio Pastillas": a rare first word that is nobody's keyword is the brand.
+      const first = words(head)[0] ?? "";
+      if (first.length >= 4 && !stop.has(first) && !generic.has(first) && !excluded(first) && appsUsing(first) < COMMON_TITLE_APPS) brands.add(first);
+    }
     const developer = foldKey(c.developer.replace(LEGAL_SUFFIX, ""));
-    if (developer && developer !== own) brands.add(developer);
+    if (developer && developer !== own) {
+      const ws = words(developer);
+      const genericName = ws.every((w) => DEVELOPER_FILLER.has(w) || stop.has(w) || generic.has(w));
+      if (!strict || (!genericName && !excluded(ws.join(" ")))) brands.add(developer);
+    }
   }
   return [...brands].filter((b) => b.length >= 3);
+}
+
+/** Apps of the TOP 5 of our keywords, most frequent first, without our own app. */
+export function topCompetitors<T extends { id: string }>(rows: { top5: T[] }[], ownStoreId: string, limit = 25): T[] {
+  const counts = new Map<string, { app: T; n: number }>();
+  for (const r of rows) {
+    for (const a of r.top5) {
+      if (a.id === ownStoreId) continue;
+      const entry = counts.get(a.id) ?? { app: a, n: 0 };
+      entry.n++;
+      counts.set(a.id, entry);
+    }
+  }
+  return [...counts.values()].sort((x, y) => y.n - x.n).slice(0, limit).map((e) => e.app);
 }
 
 const containsPhrase = (text: string, phrase: string) => ` ${text} `.includes(` ${phrase} `);

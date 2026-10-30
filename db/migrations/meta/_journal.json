@@ -85,6 +85,13 @@
       "when": 1793367503995,
       "tag": "0011_keyword_hygiene",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793369180834,
+      "tag": "0012_brand_exceptions",
+      "breakpoints": true
     }
   ]
 }

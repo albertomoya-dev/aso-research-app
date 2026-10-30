@@ -328,6 +328,18 @@ export const productReleases = pgTable("product_releases", {
   notes: text("notes").notNull().default(""),
 });
 
+/** Words the user marked as «no es una marca»: the brand detector never treats them as a competitor brand. Folded, lower case. */
+export const brandExceptions = pgTable(
+  "brand_exceptions",
+  {
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    word: text("word").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.appId, t.word] })],
+);
+
 export type App = typeof apps.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
 export type Annotation = typeof annotations.$inferSelect;

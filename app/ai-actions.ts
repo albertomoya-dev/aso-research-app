@@ -7,17 +7,28 @@ import { getDb, schema } from "@/db";
 import { AiError, rateRelevance, rewriteListing, suggestKeywords } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { followKeywords } from "@/lib/follow";
-import { brandOf, cleanProposal, type ListingProposal, proposalFeedback } from "@/lib/listing-optimizer";
-import type { MetadataDraft } from "@/lib/metadata-check";
+import { detectBrands, getBrandExceptions } from "@/lib/brand-queries";
+import {
+  assessProposal,
+  type Attempt,
+  brandOf,
+  cleanProposal,
+  finalizeProposal,
+  type ListingProposal,
+  pickBest,
+  proposalFeedback,
+  qualityFeedback,
+} from "@/lib/listing-optimizer";
+import { draftFromMeta, type MetadataDraft, weightedCoverage } from "@/lib/metadata-check";
 import { FACTS_MODES } from "@/lib/product-facts";
 import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
-import { chunk, cleanRatings } from "@/lib/relevance";
+import { chunk, cleanRatings, isRelevantKeyword } from "@/lib/relevance";
 import { rateAppKeywords, rateNewKeywords, relevanceContextFor, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
-import type { AppSummary } from "@/lib/stores/types";
-import { competitorBrands, filterSuggestions, PROMPT_VERSION, seedWords } from "@/lib/suggestions";
+import { competitorBrands, filterSuggestions, PROMPT_VERSION, seedWords, topCompetitors } from "@/lib/suggestions";
+import { fold } from "@/lib/text";
 
 const idSchema = z.coerce.number().int().positive();
 
@@ -25,7 +36,7 @@ const idSchema = z.coerce.number().int().positive();
 async function gatherContext(app: typeof schema.apps.$inferSelect) {
   const db = getDb();
   // Keyword research looks ahead, so features of the next version count too.
-  const [tracked, previous, snapshots, facts] = await Promise.all([
+  const [tracked, previous, snapshots, facts, exceptions] = await Promise.all([
     db
       .select({ term: schema.keywords.term })
       .from(schema.appKeywords)
@@ -42,10 +53,11 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
       .orderBy(desc(schema.rankSnapshots.date))
       .limit(200),
     productFactsPrompt(app.id, "next"),
+    getBrandExceptions(app.id),
   ]);
 
-  const competitors = new Map<string, AppSummary>();
-  for (const s of snapshots) for (const a of s.top5) if (a.id !== app.storeId) competitors.set(a.id, a);
+  // The 25 apps that show up most in the TOP 5 of our keywords this week.
+  const competitors = topCompetitors(snapshots, app.storeId, 25).map((c) => ({ title: c.title, developer: c.developer }));
 
   const { lang } = getCountry(app.country);
   const adapter = getAdapter(app.store);
@@ -53,13 +65,25 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
   const lists = await Promise.allSettled(seeds.map((seed) => adapter.suggest(seed, { country: app.country, lang })));
   const autocomplete = [...new Set(lists.flatMap((r) => (r.status === "fulfilled" ? r.value : [])))].slice(0, 60);
 
+  // Generic words (our title, tracked keywords, product sheet) never count as another app's brand.
+  const brands = competitorBrands(competitors, app.meta.developer, {
+    ownTitle: app.meta.title,
+    trackedTerms: tracked.map((t) => t.term),
+    productTerms: facts ?? "",
+    exceptions,
+    lang,
+  });
+
   return {
-    // Pending ideas count as "already proposed" so a new run brings different ones.
-    existing: [...tracked.map((t) => t.term), ...previous.filter((p) => p.status !== "dismissed").map((p) => p.term)],
-    rejected: previous.filter((p) => p.status === "dismissed").map((p) => p.term),
-    autocomplete,
-    competitors: [...competitors.values()].slice(0, 25).map((c) => ({ title: c.title, developer: c.developer })),
-    facts,
+    context: {
+      // Pending ideas count as "already proposed" so a new run brings different ones.
+      existing: [...tracked.map((t) => t.term), ...previous.filter((p) => p.status !== "dismissed").map((p) => p.term)],
+      rejected: previous.filter((p) => p.status === "dismissed").map((p) => p.term),
+      autocomplete,
+      competitors,
+      facts,
+    },
+    brands,
   };
 }
 
@@ -72,7 +96,7 @@ export async function generateSuggestions(_prev: GenerateState, formData: FormDa
   const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };
 
-  const context = await gatherContext(app);
+  const { context, brands } = await gatherContext(app);
   const country = getCountry(app.country);
   let result;
   try {
@@ -89,7 +113,6 @@ export async function generateSuggestions(_prev: GenerateState, formData: FormDa
     throw err;
   }
 
-  const brands = competitorBrands(context.competitors, app.meta.developer);
   const { kept, dropped } = filterSuggestions(result.output, [...context.existing, ...context.rejected], brands);
   const inserted =
     kept.length === 0
@@ -162,7 +185,9 @@ const draftSchema = z.object({
   description: z.string().max(8000),
 });
 
-export type DraftState = { savedAt?: string; error?: string } | null;
+/** Non-blocking: the draft is saved, but covers the relevant keywords worse than the text it replaces. */
+export type CoverageWarning = { before: number; after: number; against: "draft" | "published"; lost: string[] };
+export type DraftState = { savedAt?: string; warning?: CoverageWarning; error?: string } | null;
 
 export async function saveDraft(_prev: DraftState, formData: FormData): Promise<DraftState> {
   const appId = idSchema.parse(formData.get("appId"));
@@ -170,9 +195,33 @@ export async function saveDraft(_prev: DraftState, formData: FormData): Promise<
   const parsed = draftSchema.safeParse(fields);
   if (!parsed.success) return { error: "Algún campo es demasiado largo para guardarlo." };
   const draft: MetadataDraft = parsed.data;
-  await getDb().update(schema.apps).set({ draft }).where(eq(schema.apps.id, appId));
+  const db = getDb();
+  const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return { error: "App no encontrada." };
+  await db.update(schema.apps).set({ draft }).where(eq(schema.apps.id, appId));
   revalidatePath(`/apps/${appId}/metadata`);
-  return { savedAt: new Date().toISOString() };
+
+  // Same weighted coverage as the editor and the optimizer, against the previous draft or the published listing.
+  let warning: CoverageWarning | undefined;
+  try {
+    const { lang } = getCountry(app.country);
+    const rows = (await getKeywordRows(app)).filter((r) => isRelevantKeyword(r, lang));
+    const previous = app.draft ?? draftFromMeta(app.meta);
+    const before = weightedCoverage(app.store, previous, rows);
+    const after = weightedCoverage(app.store, draft, rows);
+    if (after.score < before.score) {
+      const lost = after.items
+        .filter((a, i) => a.credit === 0 && before.items[i].credit > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 5)
+        .map((a) => a.term);
+      warning = { before: before.score, after: after.score, against: app.draft ? "draft" : "published", lost };
+    }
+  } catch (err) {
+    // The draft is already saved; the warning is a bonus.
+    console.error("saveDraft: coverage check failed", err);
+  }
+  return { savedAt: new Date().toISOString(), warning };
 }
 
 export async function discardDraft(formData: FormData) {
@@ -197,10 +246,11 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };
   const [rows, facts] = await Promise.all([getKeywordRows(app), productFactsPrompt(app.id, mode)]);
-  const competitors = new Map<string, AppSummary>();
-  for (const r of rows) for (const a of r.top5) if (a.id !== app.storeId) competitors.set(a.id, a);
   const country = getCountry(app.country);
   const brand = brandOf(current.title || app.meta.title);
+  const { brands } = await detectBrands(app, rows, facts);
+  // Only keywords worth building on: no filler, no foreign intent, relevance 3+ (or unrated).
+  const relevant = rows.filter((r) => isRelevantKeyword(r, country.lang));
   const input = {
     store: app.store,
     countryName: country.name,
@@ -208,29 +258,67 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
     developer: app.meta.developer,
     category: app.meta.category,
     current,
-    keywords: rows,
-    avoidBrands: competitorBrands([...competitors.values()], app.meta.developer),
+    keywords: relevant,
+    avoidBrands: brands,
     facts,
     version: app.meta.version,
     releaseNotes: app.meta.releaseNotes,
     focus: focus || undefined,
   };
   const tracked = rows.map((r) => r.term);
+  const policy = { lang: country.lang, category: app.meta.category, keywords: tracked, brands, ownBrand: brand };
+  const attempt = (output: Parameters<typeof cleanProposal>[1]): Attempt => {
+    const proposal = cleanProposal(app.store, output, tracked);
+    return { proposal, assessment: assessProposal(app.store, current, proposal, relevant, policy) };
+  };
 
   try {
-    let result = await rewriteListing(input);
-    let proposal = cleanProposal(app.store, result.output, tracked);
-    // One more try when a field is over its limit or the brand was dropped.
-    const feedback = proposalFeedback(app.store, proposal, brand);
+    const first = await rewriteListing(input);
+    const attempts = [attempt(first.output)];
+    let model = first.model;
+    // Quality lock: one more try when a field is over its limit, the brand was dropped, the coverage
+    // got worse, an important keyword was lost or a store policy is broken. Then keep the best one.
+    const feedback = [...proposalFeedback(app.store, attempts[0].proposal, brand), ...qualityFeedback(attempts[0].assessment)];
     if (feedback.length > 0) {
-      result = await rewriteListing(input, feedback);
-      proposal = cleanProposal(app.store, result.output, tracked);
+      try {
+        const second = await rewriteListing(input, feedback);
+        attempts.push(attempt(second.output));
+        model = second.model;
+      } catch (err) {
+        // The first answer is still worth showing.
+        if (!(err instanceof AiError)) throw err;
+      }
     }
-    return { proposal, model: result.model };
+    return { proposal: finalizeProposal(pickBest(attempts), attempts.length), model };
   } catch (err) {
     if (err instanceof AiError) return { error: err.message };
     throw err;
   }
+}
+
+const brandExceptionSchema = z.object({
+  appId: idSchema,
+  word: z.string().trim().min(1).max(100),
+  exception: z.enum(["1", "0"]),
+});
+
+/** «No es una marca» (exception=1) or «Es una marca» (exception=0) for a word the brand detector found. */
+export async function setBrandException(formData: FormData): Promise<void> {
+  const parsed = brandExceptionSchema.safeParse({
+    appId: formData.get("appId"),
+    word: formData.get("word"),
+    exception: formData.get("exception"),
+  });
+  if (!parsed.success) return;
+  const { appId, exception } = parsed.data;
+  const word = fold(parsed.data.word).replace(/\s+/g, " ");
+  const db = getDb();
+  if (exception === "1") {
+    await db.insert(schema.brandExceptions).values({ appId, word }).onConflictDoNothing();
+  } else {
+    await db.delete(schema.brandExceptions).where(and(eq(schema.brandExceptions.appId, appId), eq(schema.brandExceptions.word, word)));
+  }
+  revalidatePath(`/apps/${appId}/metadata`);
 }
 
 export type RelevanceState = { rated?: number; asked?: number; error?: string } | null;

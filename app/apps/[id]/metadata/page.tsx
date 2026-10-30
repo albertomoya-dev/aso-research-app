@@ -1,14 +1,16 @@
-import { eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MetadataEditor } from "@/components/metadata-editor";
 import { PageHeader } from "@/components/ui";
-import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
+import { detectBrands } from "@/lib/brand-queries";
 import { hasAnthropicKey } from "@/lib/claude";
+import { getCountry } from "@/lib/countries";
 import { draftFromMeta } from "@/lib/metadata-check";
-import { hasProductFacts } from "@/lib/product-facts";
+import { factsForPrompt, hasProductFacts } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
+import { getKeywordRows } from "@/lib/queries";
+import { isRelevantKeyword } from "@/lib/relevance";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -16,15 +18,11 @@ export const metadata: Metadata = { title: "Editor de ficha" };
 
 export default async function MetadataPage({ params }: Props) {
   const app = await loadApp((await params).id);
-  const [keywords, product] = await Promise.all([
-    getDb()
-      .select({ term: schema.keywords.term })
-      .from(schema.appKeywords)
-      .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
-      .where(eq(schema.appKeywords.appId, app.id))
-      .orderBy(schema.keywords.term),
-    getProductFacts(app.id),
-  ]);
+  const [rows, product] = await Promise.all([getKeywordRows(app), getProductFacts(app.id)]);
+  const { lang } = getCountry(app.country);
+  const { brands, exceptions } = await detectBrands(app, rows, factsForPrompt(product.facts, product.features, "next"));
+  // The weighted score counts only keywords worth building on, the same set the optimizer uses.
+  const keywords = rows.map((r) => ({ term: r.term, opportunity: r.opportunity, relevant: isRelevantKeyword(r, lang) }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,7 +42,10 @@ export default async function MetadataPage({ params }: Props) {
         initial={app.draft ?? draftFromMeta(app.meta)}
         published={draftFromMeta(app.meta)}
         hasDraft={app.draft != null}
-        keywords={keywords.map((k) => k.term)}
+        keywords={keywords}
+        policy={{ lang, category: app.meta.category }}
+        brands={brands}
+        brandExceptions={exceptions}
         aiEnabled={hasAnthropicKey()}
         product={{
           empty: !hasProductFacts(product.facts, product.features),
