@@ -1,7 +1,7 @@
 import type { KeywordIntent } from "./relevance";
 import type { AppSummary } from "./stores/types";
 
-export type AlertKind = "entered_top10" | "left_top10" | "moved_up" | "moved_down" | "lost_ranking" | "new_leader" | "competitor_change";
+export type AlertKind = "entered_top10" | "left_top10" | "moved_up" | "moved_down" | "lost_ranking" | "new_leader" | "competitor_change" | "seasonal_peak";
 export type AlertTone = "up" | "down" | "info";
 
 export type DraftAlert = {
@@ -143,6 +143,7 @@ export const ALERT_KIND_GROUPS: { id: string; label: string; kinds: AlertKind[] 
   { id: "lost", label: "Deja de aparecer en los resultados", kinds: ["lost_ranking"] },
   { id: "leader", label: "Cambios de nº 1", kinds: ["new_leader"] },
   { id: "competitor", label: "Una ficha vigilada cambia", kinds: ["competitor_change"] },
+  { id: "seasonal", label: "Un pico de temporada empieza en 3 semanas", kinds: ["seasonal_peak"] },
 ];
 export const ALL_ALERT_KINDS: AlertKind[] = ALERT_KIND_GROUPS.flatMap((g) => g.kinds);
 
@@ -155,10 +156,11 @@ export function applyAlertPrefs<T extends { kind: AlertKind }>(alerts: T[], pref
   return alerts.filter((a) => wanted.has(a.kind));
 }
 
-/** Order within a day: what happened to our app first, then other apps' #1, then competitor listings. */
+/** Order within a day: what happened to our app first, then coming peaks, other apps' #1 and competitor listings. */
 export function alertPriority(alert: { kind: AlertKind; tone: AlertTone }): number {
   if (alert.kind === "entered_top10" || alert.kind === "left_top10") return 0;
   if (alert.kind === "new_leader") return alert.tone === "info" ? 3 : 0;
+  if (alert.kind === "seasonal_peak") return 2;
   if (alert.kind === "competitor_change") return 4;
   return 1;
 }

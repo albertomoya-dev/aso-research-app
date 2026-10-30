@@ -3,6 +3,7 @@ import { generateRankAlerts } from "@/lib/alert-jobs";
 import { trackCompetitors } from "@/lib/competitors";
 import { appUrl, emailConfigured, renderSummaryEmail, sendEmail } from "@/lib/email";
 import { today } from "@/lib/ranking";
+import { generateSeasonalAlerts } from "@/lib/seasonality-jobs";
 import { getWeeklySummaries } from "@/lib/summary";
 import { trackRankings } from "@/lib/tracking";
 
@@ -10,7 +11,7 @@ import { trackRankings } from "@/lib/tracking";
 export const maxDuration = 300;
 
 /**
- * Daily job (see vercel.json): positions, ranking alerts, competitor listings and, on Mondays,
+ * Daily job (see vercel.json): positions, ranking alerts, coming seasonal peaks, competitor listings and, on Mondays,
  * the weekly email. Vercel Cron sends CRON_SECRET as a bearer token.
  */
 export async function GET(request: NextRequest) {
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
   }
   const report = await trackRankings();
   const alerts = await generateRankAlerts(today());
+  const seasonal = await generateSeasonalAlerts(today());
   const competitors = await trackCompetitors();
 
   // Weekly summary by email on Mondays, when Resend is configured.
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
   }
   return NextResponse.json(
-    { ...report, alerts, competitors, email },
+    { ...report, alerts, seasonal, competitors, email },
     { status: report.errors.length > 0 && report.searches === 0 ? 502 : 200 },
   );
 }

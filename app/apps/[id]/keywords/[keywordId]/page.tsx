@@ -16,7 +16,7 @@ import { getCountry } from "@/lib/countries";
 import { formatDate, formatRating } from "@/lib/format";
 import { ANNOTATION_WINDOW, getKeywordDetail } from "@/lib/queries";
 import { averagePosition, positionChange, RANK_DEPTH, shiftDate, today } from "@/lib/ranking";
-import { peakMonth } from "@/lib/trends";
+import { completePoints, MIN_POPULARITY, peakMonth, signalQuality } from "@/lib/seasonality";
 
 type Props = {
   params: Promise<{ id: string; keywordId: string }>;
@@ -44,7 +44,8 @@ const fmtAvg = (n: number | null) => (n == null ? "–" : `#${n.toFixed(1).repla
 
 export default async function KeywordPage(props: Props) {
   const { app, days, keyword, since, history, latest, annotations, metrics, trend } = await load(props);
-  const peak = trend?.points ? peakMonth(trend.points) : null;
+  const peak = trend?.points ? peakMonth(trend.points, metrics.popularity) : null;
+  const weakSignal = trend?.points ? !signalQuality(completePoints(trend.points)) : false;
   const end = today();
   const series = dailySeries(history, since, end);
   // Each check keeps its own depth (Google Play returns a different number of results per search);
@@ -171,7 +172,15 @@ export default async function KeywordPage(props: Props) {
         </p>
         {trend?.points && trend.points.length > 0 ? (
           <>
-            {peak && <p className="mt-2 text-sm font-medium">Pico de interés en {peak}: prepara la ficha unas semanas antes.</p>}
+            {peak ? (
+              <p className="mt-2 text-sm font-medium">Pico de interés en {peak}: prepara la ficha unas semanas antes.</p>
+            ) : weakSignal ? (
+              <p className="mt-2 text-sm text-muted">Sin datos suficientes: Google tiene muy poca señal para esta búsqueda, así que no se puede hablar de temporadas.</p>
+            ) : metrics.popularity != null && metrics.popularity < MIN_POPULARITY ? (
+              <p className="mt-2 text-sm text-muted">
+                La popularidad en la tienda es menor de {MIN_POPULARITY}: aunque Google muestre subidas, no compensa preparar la ficha para ellas.
+              </p>
+            ) : null}
             <div className="mt-3">
               <TrendChart points={trend.points} />
             </div>

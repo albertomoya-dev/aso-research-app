@@ -70,21 +70,3 @@ export async function fetchInterest(term: string, country: string, lang: string)
     ),
   );
 }
-
-const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-
-/** Month with the highest average interest, when it clearly stands out (25% over the mean). */
-export function peakMonth(points: TrendPoint[]): string | null {
-  if (points.length < 12) return null;
-  const sums = new Array(12).fill(0);
-  const counts = new Array(12).fill(0);
-  for (const p of points) {
-    const m = Number(p.date.slice(5, 7)) - 1;
-    sums[m] += p.value;
-    counts[m]++;
-  }
-  const avgs = sums.map((s, i) => (counts[i] ? s / counts[i] : 0));
-  const mean = points.reduce((s, p) => s + p.value, 0) / points.length;
-  const best = avgs.indexOf(Math.max(...avgs));
-  return mean > 0 && avgs[best] >= mean * 1.25 ? MONTHS[best] : null;
-}

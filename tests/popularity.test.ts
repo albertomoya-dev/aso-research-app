@@ -3,7 +3,7 @@ import { discoveryPrefixes, mergeSuggestions } from "@/lib/discover";
 import { autocompleteScore, difficultyScore, measureAutocomplete, opportunityScore } from "@/lib/popularity";
 import { parseHints } from "@/lib/stores/ios";
 import type { AppSummary } from "@/lib/stores/types";
-import { parseTrendsJson, peakMonth, toPoints } from "@/lib/trends";
+import { parseTrendsJson, toPoints } from "@/lib/trends";
 
 describe("autocompleteScore", () => {
   it("is highest when suggested first after one letter", () => {
@@ -110,18 +110,5 @@ describe("Google Trends", () => {
   it("strips the anti-JSON prefix and converts the timeline", () => {
     const body = `)]}',\n{"default":{"timelineData":[{"time":"1760227200","value":[42]}]}}`;
     expect(toPoints(parseTrendsJson(body))).toEqual([{ date: "2025-10-12", value: 42 }]);
-  });
-
-  it("finds a clear seasonal peak", () => {
-    const points = Array.from({ length: 52 }, (_, i) => {
-      const d = new Date(Date.UTC(2025, 0, 5 + i * 7));
-      return { date: d.toISOString().slice(0, 10), value: d.getUTCMonth() === 0 ? 100 : 30 };
-    });
-    expect(peakMonth(points)).toBe("enero");
-  });
-
-  it("returns null for a flat series", () => {
-    const points = Array.from({ length: 52 }, (_, i) => ({ date: new Date(Date.UTC(2025, 0, 5 + i * 7)).toISOString().slice(0, 10), value: 50 }));
-    expect(peakMonth(points)).toBeNull();
   });
 });

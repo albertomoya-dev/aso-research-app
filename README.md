@@ -24,6 +24,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 14 | Higiene de keywords: relevancia para todas, filtro de irrelevantes y limpieza por lotes | Hecho |
 | 15 | Candado de calidad, comprobador de normas de las tiendas y detector de marcas | Hecho |
 | 16 | Alertas útiles (sin ruido, agrupadas y con preferencias), profundidad real del ranking y resumen sin movimientos falsos | Hecho |
+| 17 | Estacionalidad fiable: señal mínima, picos sostenidos, popularidad mínima, calendario y aviso 3 semanas antes | Hecho |
 
 ## Stack
 
@@ -196,7 +197,14 @@ La distribución de estrellas y la media se calculan con las reseñas leídas, n
 
 ## Estacionalidad y otros países
 
-La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen.
+La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen. Todo sale de `lib/seasonality.ts`, también el «Pico de interés en …» de la página de cada keyword. Para no anunciar temporadas que no existen:
+
+- **Señal mínima.** Una serie con más de la mitad de las semanas a 0, o con interés en menos de 6 meses, no tiene datos suficientes: su fila sale en gris, «Sin datos suficientes», en lugar de un mapa de calor engañoso (una semana a 100 entre 51 ceros pintaría un pico enorme).
+- **Pico sostenido.** Un mes es pico si su media supera en un 25 % la media del año **y** tiene al menos 3 semanas por encima de ese umbral. Una semana viral no es una temporada.
+- **Mes en curso.** El último mes descargado aún no ha terminado, así que no cuenta; si hay datos del mismo mes del año anterior, se usan esos, y si no, la casilla sale vacía.
+- **Popularidad mínima.** No se anuncia ningún pico si la popularidad en la tienda es menor de 10 (o aún no se ha medido): que la gente lo busque en Google no significa que lo busque en la tienda. La lista «Picos que empiezan pronto» y el calendario solo incluyen además keywords relevantes.
+- **Calendario de picos.** Los 12 meses con las keywords que están en temporada alta en cada uno, marcando el mes en que empieza.
+- **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos).
 
 En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país se sigue por separado, con sus posiciones y su histórico.
 
@@ -222,7 +230,8 @@ Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») co
 - sube o baja 5 posiciones o más dentro de las 50 primeras;
 - deja de aparecer en los resultados, solo si la tienda devolvió más resultados que tu posición anterior (si estabas el #35 y Google Play solo devuelve 30, no sabemos si has bajado y no se avisa);
 - cambia el nº 1, solo donde compites: tu app está entre las 30 primeras (antes o ahora), el nº 1 nuevo o el anterior es un competidor vigilado, o ganas o pierdes tú el nº 1;
-- una ficha vigilada cambia.
+- una ficha vigilada cambia;
+- un pico de temporada de una keyword relevante empieza en unas 3 semanas (ver Estacionalidad).
 
 Para que no se llene de ruido:
 
