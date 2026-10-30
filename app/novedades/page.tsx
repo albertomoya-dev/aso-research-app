@@ -1,11 +1,13 @@
 import { and, desc, eq, gte } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { markAlertsRead } from "@/app/alert-actions";
+import { markAlertsRead, saveAlertPrefs } from "@/app/alert-actions";
 import { AppIcon } from "@/components/app-icon";
 import { SubmitButton } from "@/components/submit-button";
-import { buttonSecondary, Card, PageHeader } from "@/components/ui";
+import { buttonSecondary, Card, inputClass, PageHeader } from "@/components/ui";
 import { getDb, hasDatabase, schema } from "@/db";
+import { loadAlertPrefs, prefsFor } from "@/lib/alert-jobs";
+import { ALERT_KIND_GROUPS, alertPriority } from "@/lib/alerts";
 import { formatDate } from "@/lib/format";
 import { shiftDate, today } from "@/lib/ranking";
 
@@ -25,7 +27,7 @@ export default async function AlertsPage({ searchParams }: Props) {
   if (!hasDatabase()) return null;
   const appFilter = Number((await searchParams).app) || null;
   const db = getDb();
-  const [apps, rows] = await Promise.all([
+  const [apps, rows, prefs] = await Promise.all([
     db.select({ id: schema.apps.id, title: schema.apps.title, icon: schema.apps.icon }).from(schema.apps).orderBy(schema.apps.title),
     db
       .select()
@@ -33,16 +35,23 @@ export default async function AlertsPage({ searchParams }: Props) {
       .where(and(gte(schema.alerts.date, shiftDate(today(), -DAYS)), appFilter ? eq(schema.alerts.appId, appFilter) : undefined))
       .orderBy(desc(schema.alerts.date), desc(schema.alerts.id))
       .limit(300),
+    loadAlertPrefs(),
   ]);
   const appById = new Map(apps.map((a) => [a.id, a]));
   const unread = rows.filter((r) => !r.readAt).length;
-  const byDate = Map.groupBy(rows, (r) => r.date);
+  // Within a day, what happened to our app goes first; rows arrive newest day first.
+  const byDate = new Map(
+    [...Map.groupBy(rows, (r) => r.date)].map(([date, items]) => [date, items.toSorted((a, b) => alertPriority(a) - alertPriority(b) || b.id - a.id)]),
+  );
+  const prefApps = appFilter ? apps.filter((a) => a.id === appFilter) : apps;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Novedades">
-          Subidas y bajadas fuertes, entradas y salidas del TOP 10, cambios de nº 1 y cambios en las fichas que vigilas. Últimos {DAYS} días.
+          Primero lo que le pasa a tu app (entra o sale del TOP 10, sube o baja 5 puestos o más, deja de aparecer); después los cambios de
+          nº 1 donde compites (estás entre los 30 primeros o el nº 1 es un competidor vigilado), agrupados en un aviso por día, y los cambios
+          en las fichas que vigilas. Las keywords de relevancia baja solo avisan de entradas y salidas del TOP 10. Últimos {DAYS} días.
         </PageHeader>
         {unread > 0 && (
           <form action={markAlertsRead}>
@@ -72,6 +81,59 @@ export default async function AlertsPage({ searchParams }: Props) {
             );
           })}
         </nav>
+      )}
+
+      {prefApps.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted">Qué avisos quieres recibir</summary>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {prefApps.map((a) => {
+              const p = prefsFor(prefs, a.id);
+              return (
+                <Card key={a.id} className="p-5">
+                  <form action={saveAlertPrefs} className="flex flex-col gap-3" aria-label={`Avisos de ${a.title}`}>
+                    <input type="hidden" name="appId" value={a.id} />
+                    <div className="flex items-center gap-2 font-semibold">
+                      <AppIcon src={a.icon} size={20} />
+                      {a.title}
+                    </div>
+                    <fieldset className="flex flex-col gap-1.5">
+                      <legend className="mb-1.5 text-xs text-muted">Tipos de aviso</legend>
+                      {ALERT_KIND_GROUPS.map((g) => (
+                        <label key={g.id} className="flex min-h-11 items-center gap-2.5 md:min-h-8">
+                          <input
+                            type="checkbox"
+                            name="group"
+                            value={g.id}
+                            defaultChecked={g.kinds.some((k) => p.kinds.includes(k))}
+                            className="size-5 accent-[var(--brand)]"
+                          />
+                          {g.label}
+                        </label>
+                      ))}
+                    </fieldset>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="text-xs text-muted">
+                        Subidas, bajadas, salidas de los resultados y cambios de nº 1 solo en keywords con relevancia desde (las que aún no tienen relevancia cuentan)
+                      </span>
+                      <select name="minRelevance" defaultValue={p.minRelevance} className={inputClass}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <option key={n} value={n}>
+                            {n === 1 ? "1 (todas)" : n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-xs text-muted">Se aplica desde la próxima consulta de posiciones; los avisos ya creados no cambian.</p>
+                    <SubmitButton className={`${buttonSecondary} self-start`} pendingLabel="Guardando…">
+                      Guardar
+                    </SubmitButton>
+                  </form>
+                </Card>
+              );
+            })}
+          </div>
+        </details>
       )}
 
       {rows.length === 0 ? (

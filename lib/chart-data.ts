@@ -6,18 +6,22 @@ export type ChartPoint = {
   position: number | null;
   /** "out": checked but outside the results. "none": not checked that day. */
   state: "ranked" | "out" | "none";
+  /** Results the store returned that day, when known. */
+  depth?: number;
 };
 
 /** One point per day from `from` to `to`, so gaps and time stay to scale. */
-export function dailySeries(points: { date: string; position: number | null }[], from: string, to: string): ChartPoint[] {
-  const byDate = new Map(points.map((p) => [p.date, p.position]));
+export function dailySeries(points: { date: string; position: number | null; depth?: number }[], from: string, to: string): ChartPoint[] {
+  const byDate = new Map(points.map((p) => [p.date, p]));
   const series: ChartPoint[] = [];
   for (let date = from; date <= to; date = shiftDate(date, 1)) {
-    const position = byDate.get(date);
+    const point = byDate.get(date);
+    const position = point?.position ?? null;
     series.push({
       date,
-      position: position ?? null,
-      state: position != null ? "ranked" : byDate.has(date) ? "out" : "none",
+      position,
+      state: position != null ? "ranked" : point ? "out" : "none",
+      ...(point?.depth != null && { depth: point.depth }),
     });
   }
   return series;

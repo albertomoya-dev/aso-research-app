@@ -6,14 +6,14 @@ import { StoreBadge } from "@/components/store-badge";
 import { Card, PageHeader } from "@/components/ui";
 import { hasDatabase } from "@/db";
 import { emailConfigured } from "@/lib/email";
-import { formatDate } from "@/lib/format";
+import { describeMove, weekPosition } from "@/lib/alerts";
+import { formatDate, formatDay } from "@/lib/format";
 import { getWeeklySummaries } from "@/lib/summary";
 
 export const metadata: Metadata = { title: "Resumen semanal" };
 export const dynamic = "force-dynamic";
 
 const pct = (v: number | null) => (v == null ? "–" : `${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })}%`);
-const position = (p: number | null) => (p == null ? "fuera" : `#${p}`);
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: React.ReactNode }) {
   return (
@@ -34,7 +34,9 @@ export default async function SummaryPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Resumen semanal">
-          Del {formatDate(since)} al {formatDate(until)}: última posición de cada keyword frente a la de hace una semana.
+          Del {formatDate(since)} al {formatDate(until)}: última posición de cada keyword frente a la de hace una semana o, si la app
+          lleva menos tiempo, frente a la consulta más antigua. «&gt; 30» es fuera de los 30 resultados que devolvió la tienda: pasar de
+          ahí a #18 se cuenta como «entra en los primeros 30», no como un salto que no podemos medir.
           {email ? " Te llega por email cada lunes." : " Para recibirlo por email cada lunes, configura RESEND_API_KEY y ALERT_EMAIL."}
         </PageHeader>
         {email && <SendSummaryButton />}
@@ -42,7 +44,7 @@ export default async function SummaryPage() {
 
       {apps.length === 0 && <Card className="px-5 py-10 text-center text-sm text-muted">Aún no sigues ninguna app.</Card>}
 
-      {apps.map(({ app, week, share, shareBefore, alerts }) => {
+      {apps.map(({ app, week, baselineDate, share, shareBefore, alerts }) => {
         const shareDelta = share != null && shareBefore != null ? share - shareBefore : null;
         const competitorChanges = alerts.filter((a) => a.tone === "info").length;
         return (
@@ -52,17 +54,30 @@ export default async function SummaryPage() {
                 <AppIcon src={app.icon} size={36} />
                 <span className="text-[17px] font-semibold">{app.title}</span>
               </Link>
-              <StoreBadge store={app.store} country={app.country} />
+              <div className="flex items-center gap-3">
+                <span className="text-[13px] text-muted">
+                  {baselineDate ? `Frente al ${formatDay(baselineDate)}` : "Aún no hay una consulta anterior con la que comparar"}
+                </span>
+                <StoreBadge store={app.store} country={app.country} />
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              <Stat label="Suben / bajan" value={`${week.improved} / ${week.worsened}`} sub={`de ${week.tracked} keywords`} />
-              <Stat label="En el TOP 10" value={String(week.top10)} sub={`antes ${week.top10Before}`} />
+              <Stat
+                label="Suben / bajan"
+                value={`${week.improved} / ${week.worsened}`}
+                sub={
+                  week.noBaseline > 0
+                    ? `de ${week.tracked} keywords; ${week.noBaseline} ${week.noBaseline === 1 ? "nueva" : "nuevas"} sin comparación`
+                    : `de ${week.tracked} keywords`
+                }
+              />
+              <Stat label="En el TOP 10" value={String(week.top10)} sub={baselineDate ? `antes ${week.top10Before}` : undefined} />
               <Stat
                 label="Cuota de visibilidad"
                 value={pct(share)}
                 sub={
                   shareDelta == null ? (
-                    "sin datos de hace una semana"
+                    "sin una consulta anterior"
                   ) : (
                     <span className={shareDelta > 0 ? "text-up" : shareDelta < 0 ? "text-down" : ""}>
                       {shareDelta > 0 ? "+" : ""}
@@ -91,10 +106,10 @@ export default async function SummaryPage() {
                               {r.term}
                             </Link>
                             <span className="shrink-0 font-mono text-[13px]">
-                              {position(r.before)} → {position(r.now)}{" "}
+                              {weekPosition(r.before, r.beforeDepth)} → {weekPosition(r.now, r.nowDepth)}{" "}
                               <span className={group.className}>
                                 {group.icon}
-                                {r.before != null && r.now != null && ` ${Math.abs(r.change)}`}
+                                {r.movement === "move" ? ` ${Math.abs(r.change)}` : <span className="font-sans"> {describeMove(r)}</span>}
                               </span>
                             </span>
                           </li>

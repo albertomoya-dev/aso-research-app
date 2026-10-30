@@ -23,6 +23,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 13 | Ficha de producto: lo que hace la app, fuente de verdad para toda la IA | Hecho |
 | 14 | Higiene de keywords: relevancia para todas, filtro de irrelevantes y limpieza por lotes | Hecho |
 | 15 | Candado de calidad, comprobador de normas de las tiendas y detector de marcas | Hecho |
+| 16 | Alertas útiles (sin ruido, agrupadas y con preferencias), profundidad real del ranking y resumen sin movimientos falsos | Hecho |
 
 ## Stack
 
@@ -55,7 +56,9 @@ Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD`, `CRON_S
 
 ## Posiciones
 
-Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda de 200 resultados y se guarda la posición de cada app que la sigue y el TOP 5. Si la app no aparece, se guarda «fuera de los 200 primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
+Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda (se piden 200 resultados) y se guarda la posición de cada app que la sigue, el TOP 5 y cuántos resultados devolvió la tienda. Si la app no aparece, se guarda «fuera de los N primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
+
+La profundidad real depende de la tienda: App Store devuelve hasta 200 resultados; Google Play suele devolver unos 30, aunque el scraper ya pide más páginas (es un límite de Google, no nuestro). Por eso cada posición «> N» lleva su propio N, el de ese día y esa búsqueda: al pulsarla (o al pasar el ratón o el foco del teclado) se explica «Fuera de los N resultados que devuelve la tienda». El histórico y el gráfico de cada keyword usan el N de cada día, no el de hoy.
 
 En App Store la posición es aproximada: la API pública no siempre ordena igual que la app de la tienda.
 
@@ -217,13 +220,20 @@ Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») co
 
 - entra o sale del TOP 10;
 - sube o baja 5 posiciones o más dentro de las 50 primeras;
-- deja de aparecer en los resultados;
-- cambia el nº 1 (o pasas a serlo);
+- deja de aparecer en los resultados, solo si la tienda devolvió más resultados que tu posición anterior (si estabas el #35 y Google Play solo devuelve 30, no sabemos si has bajado y no se avisa);
+- cambia el nº 1, solo donde compites: tu app está entre las 30 primeras (antes o ahora), el nº 1 nuevo o el anterior es un competidor vigilado, o ganas o pierdes tú el nº 1;
 - una ficha vigilada cambia.
+
+Para que no se llene de ruido:
+
+- Las keywords con relevancia por debajo del mínimo (3 por defecto) o cuya búsqueda busca otro tipo de app solo avisan cuando entras o sales del TOP 10 o ganas o pierdes el nº 1. Las que aún no tienen relevancia cuentan como relevantes.
+- Los cambios de nº 1 de otras apps de un mismo día van juntos en un único aviso, «7 keywords cambiaron de nº 1», con el detalle de cada una. Si vuelves a consultar posiciones ese día, el aviso se actualiza en lugar de repetirse.
+- Dentro de cada día aparece primero lo que le pasa a tu app y después los cambios de nº 1 y de fichas de competidores.
+- En **Qué avisos quieres recibir** eliges, por app, qué tipos de aviso quieres y la relevancia mínima (tabla `alert_prefs`). Se aplica desde la siguiente consulta.
 
 El menú lateral muestra cuántos avisos quedan sin leer.
 
-**Resumen semanal** compara la última posición de cada keyword con la de hace una semana: cuántas suben y bajan, cuántas están en el TOP 10, la cuota de visibilidad y las que más se mueven. Para recibirlo por email cada lunes:
+**Resumen semanal** compara la última posición de cada keyword con la de hace una semana: cuántas suben y bajan, cuántas están en el TOP 10, la cuota de visibilidad y las que más se mueven. Si la app lleva menos de una semana, compara con la consulta más antigua y lo dice («frente al 26 oct»). Distingue «sin datos» de «fuera de los N»: pasar de «> 30» a #18 se cuenta como «entra en los primeros 30», no como una subida de 183 puestos que no podemos medir, y las keywords sin consulta en la fecha de referencia salen aparte como «nuevas sin comparación». Para recibirlo por email cada lunes:
 
 1. Crea una cuenta gratuita en [Resend](https://resend.com) y una API key.
 2. Añade `RESEND_API_KEY` y `ALERT_EMAIL` (tu correo) en Vercel. Sin dominio propio, Resend solo deja enviar al correo de tu cuenta desde `onboarding@resend.dev`; con dominio verificado, define también `EMAIL_FROM`.

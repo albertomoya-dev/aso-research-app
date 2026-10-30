@@ -92,6 +92,23 @@ describe("dailySeries", () => {
   });
 });
 
+describe("dailySeries depth", () => {
+  it("keeps the depth of each check, since Google Play returns a different number of results per search", () => {
+    const series = dailySeries(
+      [
+        { date: "2026-10-01", position: null, depth: 29 },
+        { date: "2026-10-02", position: 4, depth: 31 },
+      ],
+      "2026-10-01",
+      "2026-10-02",
+    );
+    expect(series.map((p) => [p.state, p.depth])).toEqual([
+      ["out", 29],
+      ["ranked", 31],
+    ]);
+  });
+});
+
 describe("positionTicks", () => {
   it("starts at #1 and uses round steps", () => {
     expect(positionTicks(30)).toEqual([1, 5, 10, 15, 20, 25, 30]);

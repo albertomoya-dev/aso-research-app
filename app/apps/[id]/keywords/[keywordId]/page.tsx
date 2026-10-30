@@ -47,7 +47,10 @@ export default async function KeywordPage(props: Props) {
   const peak = trend?.points ? peakMonth(trend.points) : null;
   const end = today();
   const series = dailySeries(history, since, end);
-  const depth = latest?.depth ?? RANK_DEPTH;
+  // Each check keeps its own depth (Google Play returns a different number of results per search);
+  // the chart axis only needs the deepest one in the range.
+  const depths = series.flatMap((p) => (p.depth != null ? [p.depth] : []));
+  const depth = depths.length ? Math.max(...depths) : RANK_DEPTH;
   const weekAgo = latest ? history.find((h) => h.date === shiftDate(latest.date, -7)) : undefined;
 
   // Oldest first, numbered as they appear on the chart.
@@ -99,7 +102,13 @@ export default async function KeywordPage(props: Props) {
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-[17px] font-semibold">Posición de {app.title}</h2>
-            <p className="text-[13px] text-muted">Arriba es mejor. Los huecos son días fuera de los {depth} primeros resultados o sin consulta.</p>
+            <p className="text-[13px] text-muted">
+              Arriba es mejor. Los huecos son días en los que la app no aparecía entre los resultados que devolvió la tienda o no se
+              consultó.{" "}
+              {app.store === "android"
+                ? "Google Play suele devolver unos 30 resultados por búsqueda; la tabla indica cuántos hubo cada día."
+                : "App Store devuelve hasta 200 resultados por búsqueda; la tabla indica cuántos hubo cada día."}
+            </p>
           </div>
           <nav aria-label="Periodo" className="flex rounded-lg bg-surface-muted p-0.5">
             {RANGES.map((r) => (
@@ -141,7 +150,7 @@ export default async function KeywordPage(props: Props) {
                       .map((p) => (
                         <tr key={p.date} className="border-t border-line">
                           <td className="py-1.5">{formatDate(p.date)}</td>
-                          <td className="py-1.5 font-mono">{p.position != null ? `#${p.position}` : `> ${depth}`}</td>
+                          <td className="py-1.5 font-mono">{p.position != null ? `#${p.position}` : `> ${p.depth ?? depth}`}</td>
                         </tr>
                       ))}
                   </tbody>

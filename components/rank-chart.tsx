@@ -102,7 +102,11 @@ function RankTooltip({ active, label, data }: TooltipProps) {
     <div className="rounded-lg border border-line-strong bg-surface-muted px-3 py-2 text-sm">
       <div className="text-xs text-muted">{fmt(point.date, fullDay)}</div>
       <div className="mt-0.5 font-mono text-base font-semibold">
-        {point.position != null ? `#${point.position}` : "Fuera de los resultados"}
+        {point.position != null
+          ? `#${point.position}`
+          : point.depth != null
+            ? `Fuera de los ${point.depth} resultados`
+            : "Fuera de los resultados"}
       </div>
       {change != null && change !== 0 && (
         <div className={`font-mono text-xs ${change > 0 ? "text-up" : "text-down"}`}>

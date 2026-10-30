@@ -1,6 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import { getDb, schema } from "@/db";
+import { loadAlertPrefs, prefsFor } from "./alert-jobs";
 import { getCountry } from "./countries";
 import { diffListings, toListing } from "./listing-diff";
 import { getAdapter } from "./stores";
@@ -23,6 +24,7 @@ export async function trackCompetitors(filter: { appId?: number; competitorId?: 
           ? eq(schema.competitors.appId, filter.appId)
           : undefined,
     );
+  const prefs = await loadAlertPrefs([...new Set(rows.map((r) => r.competitor.appId))]);
   const report: CompetitorReport = { checked: 0, changed: 0, errors: [] };
   const limit = pLimit(4);
 
@@ -42,8 +44,9 @@ export async function trackCompetitors(filter: { appId?: number; competitorId?: 
           if (!last || changes.length > 0) {
             await db.insert(schema.competitorSnapshots).values({ competitorId: competitor.id, listing });
           }
-          if (changes.length > 0) {
-            report.changed++;
+          if (changes.length > 0) report.changed++;
+          // A changed listing is stored once, so this alert cannot repeat on a second run.
+          if (changes.length > 0 && prefsFor(prefs, competitor.appId).kinds.includes("competitor_change")) {
             await db.insert(schema.alerts).values({
               appId: competitor.appId,
               competitorId: competitor.id,

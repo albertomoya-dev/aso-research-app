@@ -1,6 +1,6 @@
 import type { AppSummary } from "./stores/types";
 
-/** Results fetched per search: the App Store API returns at most 200. */
+/** Results requested per search. The App Store API returns up to 200; Google Play usually returns about 30 (its limit, not ours), so every snapshot stores the real count in `depth`. */
 export const RANK_DEPTH = 200;
 
 export type RankResult = { position: number | null; top5: AppSummary[] };

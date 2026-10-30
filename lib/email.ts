@@ -1,4 +1,5 @@
-import { formatDate } from "./format";
+import { describeMove, weekPosition } from "./alerts";
+import { formatDate, formatDay } from "./format";
 import type { AppWeek } from "./summary";
 
 export function emailConfigured(): boolean {
@@ -13,15 +14,16 @@ export function appUrl(): string | null {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const pct = (v: number | null) => (v == null ? "–" : `${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })}%`);
-const position = (p: number | null) => (p == null ? "fuera" : `#${p}`);
 
 /** Plain table-based HTML: email clients ignore most CSS. */
 export function renderSummaryEmail(summary: { since: string; until: string; apps: AppWeek[] }, baseUrl: string | null): string {
   const link = (path: string, text: string) => (baseUrl ? `<a href="${esc(baseUrl + path)}" style="color:#3046c5">${esc(text)}</a>` : esc(text));
-  const blocks = summary.apps.map(({ app, week, share, shareBefore, alerts }) => {
+  const move = (m: AppWeek["week"]["gainers"][number]) =>
+    `${esc(m.term)}: ${esc(weekPosition(m.before, m.beforeDepth))} → ${esc(weekPosition(m.now, m.nowDepth))}${m.movement === "move" ? "" : ` (${describeMove(m)})`}`;
+  const blocks = summary.apps.map(({ app, week, baselineDate, share, shareBefore, alerts }) => {
     const movers = [
-      ...week.gainers.map((g) => `<li style="color:#1e7b46">▲ ${esc(g.term)}: ${position(g.before)} → ${position(g.now)}</li>`),
-      ...week.losers.map((l) => `<li style="color:#b42318">▼ ${esc(l.term)}: ${position(l.before)} → ${position(l.now)}</li>`),
+      ...week.gainers.map((g) => `<li style="color:#1e7b46">▲ ${move(g)}</li>`),
+      ...week.losers.map((l) => `<li style="color:#b42318">▼ ${move(l)}</li>`),
     ].join("");
     const changes = alerts
       .filter((a) => a.tone === "info")
@@ -31,7 +33,8 @@ export function renderSummaryEmail(summary: { since: string; until: string; apps
     return `
       <h2 style="font-size:17px;margin:24px 0 6px">${link(`/apps/${app.id}`, app.title)}</h2>
       <p style="margin:0 0 8px;color:#555">
-        ${week.tracked} keywords · ${week.improved} suben · ${week.worsened} bajan ·
+        ${baselineDate ? `Frente al ${formatDay(baselineDate)}` : "Aún sin una consulta anterior con la que comparar"} ·
+        ${week.tracked} keywords · ${week.improved} suben · ${week.worsened} bajan${week.noBaseline ? ` · ${week.noBaseline} nuevas sin comparación` : ""} ·
         TOP 10: ${week.top10} (antes ${week.top10Before}) · cuota de visibilidad ${pct(share)} (antes ${pct(shareBefore)})
       </p>
       ${movers ? `<ul style="margin:0 0 8px;padding-left:18px">${movers}</ul>` : ""}

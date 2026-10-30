@@ -253,7 +253,7 @@ export default async function AppPage({ params, searchParams }: Props) {
             Posición en los resultados de búsqueda de la tienda para {getCountry(app.country).name}, consultada cada día.
             {app.store === "ios" && " En App Store es aproximada: la API pública no siempre ordena igual que la app de la tienda."} «&gt; N»
             significa que la app no aparece entre los N resultados que devuelve la tienda para esa búsqueda (cada búsqueda
-            devuelve un número distinto, hasta 200). Popularidad
+            devuelve un número distinto: hasta 200 en App Store; Google Play suele devolver unos 30). Popularidad
             (0–100): estimada con el autocompletado de la tienda, se actualiza cada semana. Dificultad (0–100): fuerza del TOP 10.
             Oportunidad: popularidad descontada por la dificultad y multiplicada por la relevancia (de 0,6 con relevancia 1 a 1 con
             relevancia 5; una keyword sin valorar cuenta como 0,7). Relevancia (1–5): la estima la IA con tu ficha de producto o la fijas tú;

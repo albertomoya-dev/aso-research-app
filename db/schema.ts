@@ -235,6 +235,17 @@ export const alerts = pgTable(
   (t) => [uniqueIndex("alerts_dedupe_idx").on(t.appId, t.kind, t.keywordId, t.date)],
 );
 
+/** Which alerts the user wants for an app. No row means the defaults: every kind, relevance 3 or more. */
+export const alertPrefs = pgTable("alert_prefs", {
+  appId: integer("app_id")
+    .primaryKey()
+    .references(() => apps.id, { onDelete: "cascade" }),
+  kinds: jsonb("kinds").$type<AlertKind[]>().notNull(),
+  /** Keywords rated below this only raise TOP 10 entries and exits. Unrated keywords always count. */
+  minRelevance: integer("min_relevance").notNull().default(3),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Claude's reading of the latest reviews of our app or a competitor. */
 export const reviewAnalyses = pgTable("review_analyses", {
   id: serial("id").primaryKey(),

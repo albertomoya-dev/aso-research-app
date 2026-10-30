@@ -7,7 +7,8 @@ import type { KeywordIntent, RelevanceSource } from "./relevance";
 import { relevanceFactor } from "./suggestions";
 import type { AppSummary } from "./stores/types";
 
-export type HistoryPoint = { date: string; position: number | null };
+/** `depth`: results the store returned that day; a null position means "outside the first `depth`". */
+export type HistoryPoint = { date: string; position: number | null; depth: number };
 
 export type KeywordRow = {
   id: number;
@@ -131,7 +132,7 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
       depth: latest?.depth ?? null,
       changeDay: latest ? positionChange(latest.position, on(shiftDate(latest.date, -1))) : null,
       changeWeek: latest ? positionChange(latest.position, on(shiftDate(latest.date, -7))) : null,
-      history: history.map(({ date, position }) => ({ date, position })),
+      history: history.map(({ date, position, depth }) => ({ date, position, depth })),
       top5: latest?.top5.slice(0, 5) ?? [],
       ...withOpportunity(metrics.get(k.id), k.relevance),
     };
@@ -193,7 +194,7 @@ export async function getKeywordDetail(
     keyword,
     since,
     /** Includes the window before `since`; filter by `since` for the chart. */
-    history: snapshots.map(({ date, position }) => ({ date, position })),
+    history: snapshots.map(({ date, position, depth }) => ({ date, position, depth })),
     latest: snapshots.at(-1) ?? null,
     annotations,
     metrics: { ...withOpportunity(metrics, keyword.relevance), prefixLength: metrics?.prefixLength ?? null },
