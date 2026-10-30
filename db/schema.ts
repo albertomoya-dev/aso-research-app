@@ -255,6 +255,9 @@ export const reviewAnalyses = pgTable("review_analyses", {
   /** Store id of the analysed app: ours or a competitor's. */
   targetStoreId: text("target_store_id").notNull(),
   targetTitle: text("target_title").notNull(),
+  /** Store country the reviews were read from. Null only in rows older than 0014 that the backfill missed. */
+  country: text("country"),
+  /** stats.count 0 means the store returned no recent reviews: result is empty and nothing was sent to Claude. */
   stats: jsonb("stats").$type<RatingStats>().notNull(),
   result: jsonb("result").$type<ReviewAnalysis>().notNull(),
   model: text("model").notNull(),

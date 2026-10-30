@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { buildReviewPrompt, ratingStats } from "@/lib/review-analysis";
+import {
+  aggregateCategoryAsks,
+  buildReviewPrompt,
+  coveringFeature,
+  EMPTY_REVIEW_ANALYSIS,
+  ratingStats,
+  reviewAnalysisSchema,
+  storedReviewAnalysisSchema,
+  type ReviewAnalysis,
+} from "@/lib/review-analysis";
+import { findInTop5, topCompetitors } from "@/lib/review-queries";
 import { toReview } from "@/lib/stores/android";
 import { parseReviewFeed } from "@/lib/stores/ios";
 import type { Review } from "@/lib/stores/types";
@@ -87,5 +97,94 @@ describe("buildReviewPrompt with PRODUCT FACTS", () => {
     });
     expect(prompt).toContain("Version in the store now: 3.1.");
     expect(prompt.indexOf("PRODUCT FACTS")).toBeLessThan(prompt.indexOf("most recent reviews"));
+  });
+});
+
+const analysis = (over: Partial<ReviewAnalysis> = {}): ReviewAnalysis => ({ ...EMPTY_REVIEW_ANALYSIS, summary: "Bien", ...over });
+
+describe("review analysis schema", () => {
+  it("reads old rows without opportunities and asks the model for them", () => {
+    const { opportunities, ...old } = analysis();
+    expect(opportunities).toEqual([]);
+    expect(storedReviewAnalysisSchema.safeParse(old).success).toBe(true);
+    expect(reviewAnalysisSchema.safeParse(old).success).toBe(false);
+    const withOpportunities = { ...old, opportunities: [{ need: "Escanear códigos", feature: "Escáner", quote: "ojalá escaneara" }] };
+    expect(reviewAnalysisSchema.parse(withOpportunities).opportunities).toHaveLength(1);
+    expect(storedReviewAnalysisSchema.parse(withOpportunities).opportunities).toHaveLength(1);
+  });
+});
+
+describe("buildReviewPrompt for a competitor", () => {
+  it("adds our facts in their own section", () => {
+    const prompt = buildReviewPrompt({
+      appTitle: "Rival",
+      storeName: "Google Play",
+      countryName: "España",
+      lang: "es",
+      reviews: [review(2, "2026-10-01T00:00:00Z")],
+      facts: null,
+      ourFacts: "PRODUCT FACTS (test):\n- Escáner de códigos de barras",
+    });
+    expect(prompt).toContain("OUR APP (the reviewed app is a competitor");
+    expect(prompt).toContain("- Escáner de códigos de barras");
+    expect(prompt.indexOf("OUR APP")).toBeLessThan(prompt.indexOf("most recent reviews"));
+    expect(buildReviewPrompt({ appTitle: "Runly", storeName: "App Store", countryName: "España", lang: "es", reviews: [], facts: null })).not.toContain(
+      "OUR APP",
+    );
+  });
+});
+
+describe("category asks", () => {
+  const features = [
+    { name: "Escáner de códigos de barras", summary: "Lee el código y muestra el producto" },
+    { name: "Modo sin conexión", summary: "Funciona sin internet" },
+  ];
+
+  it("matches a need with a feature by its words", () => {
+    expect(coveringFeature("Poder escanear el código de barras", features)).toBe("Escáner de códigos de barras");
+    expect(coveringFeature("Que funcione sin conexión en el avión", features)).toBe("Modo sin conexión");
+    expect(coveringFeature("Más temas de colores", features)).toBeNull();
+  });
+
+  it("merges the competitors' asks and splits covered from future features", () => {
+    const asks = aggregateCategoryAsks(
+      [
+        { targetTitle: "Rival A", result: analysis({ requests: ["Escanear códigos de barras", "Exportar a Excel"], complaints: ["Demasiados anuncios"] }) },
+        {
+          targetTitle: "Rival B",
+          result: analysis({
+            requests: ["Exportar a Excel"],
+            opportunities: [{ need: "No funciona sin wifi", feature: "Modo sin conexión", quote: "sin wifi no va" }],
+          }),
+        },
+      ],
+      features,
+    );
+    expect(asks[0]).toEqual({ text: "Exportar a Excel", kind: "request", apps: ["Rival A", "Rival B"], coveredBy: null });
+    expect(asks.find((a) => a.text === "Escanear códigos de barras")?.coveredBy).toBe("Escáner de códigos de barras");
+    expect(asks.find((a) => a.text === "No funciona sin wifi")?.coveredBy).toBe("Modo sin conexión");
+    expect(asks.find((a) => a.text === "Demasiados anuncios")).toMatchObject({ kind: "complaint", coveredBy: null });
+    // Old analyses without opportunities still aggregate.
+    const old: ReviewAnalysis = { ...analysis({ requests: ["Modo oscuro"] }), opportunities: undefined };
+    expect(aggregateCategoryAsks([{ targetTitle: "Rival C", result: old }], [])).toHaveLength(1);
+  });
+});
+
+describe("review targets from the TOP 5", () => {
+  const app = (id: string, title = id) => ({ store: "android" as const, id, title, developer: "", icon: "", rating: null, url: "" });
+  const snapshots = [
+    { keywordId: 1, date: "2026-10-01", top5: [app("rival", "Rival viejo"), app("own")] },
+    { keywordId: 1, date: "2026-10-20", top5: [app("own"), app("rival", "Rival"), app("other")] },
+    { keywordId: 2, date: "2026-10-20", top5: [app("rival", "Rival"), app("other")] },
+  ];
+
+  it("finds an app in any stored TOP 5, newest title first", () => {
+    expect(findInTop5(snapshots, "rival")?.title).toBe("Rival");
+    expect(findInTop5(snapshots, "nobody")).toBeNull();
+  });
+
+  it("suggests the strongest other apps by visibility share", () => {
+    const top = topCompetitors(snapshots, new Map(), "own", 3);
+    expect(top.map((r) => r.app.id)).toEqual(["rival", "other"]);
   });
 });

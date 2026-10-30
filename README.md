@@ -25,6 +25,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 15 | Candado de calidad, comprobador de normas de las tiendas y detector de marcas | Hecho |
 | 16 | Alertas útiles (sin ruido, agrupadas y con preferencias), profundidad real del ranking y resumen sin movimientos falsos | Hecho |
 | 17 | Estacionalidad fiable: señal mínima, picos sostenidos, popularidad mínima, calendario y aviso 3 semanas antes | Hecho |
+| 18 | Reseñas de la competencia: cualquier app del TOP 5, selector de país, oportunidades para la ficha y lo que pide la categoría | Hecho |
 
 ## Stack
 
@@ -186,7 +187,7 @@ La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 
 ## Reseñas
 
-La pestaña **Reseñas** lee hasta 300 reseñas recientes del país (App Store: feed RSS de Apple; Google Play: `google-play-scraper`) de tu app o de un competidor que vigiles, y Claude resume:
+La pestaña **Reseñas** lee hasta 300 reseñas recientes (App Store: feed RSS de Apple; Google Play: `google-play-scraper`) de tu app, de un competidor que vigiles o de cualquier app que haya salido en el TOP 5 de tus keywords en los últimos 30 días (se comprueba en el servidor con los TOP 5 guardados), y Claude resume:
 
 - los temas más mencionados, con su tono, cuántas reseñas los mencionan y una cita;
 - las quejas y las peticiones más repetidas;
@@ -194,6 +195,12 @@ La pestaña **Reseñas** lee hasta 300 reseñas recientes del país (App Store: 
 - las frases con las que los usuarios describen la app, que puedes seguir como keywords.
 
 La distribución de estrellas y la media se calculan con las reseñas leídas, no con IA. Cada análisis se guarda, así que puedes comparar la media entre análisis.
+
+- **País.** Por defecto, el de la app; el selector lee las reseñas de otra tienda nacional. Cada análisis guarda su país (`review_analyses.country`, migración 0014; los anteriores se rellenan con el país de la app).
+- **Sin reseñas.** Si la tienda no devuelve reseñas recientes, no es un error pasajero: se guarda la comprobación (sin llamar a Claude) y la página lo sigue diciendo al recargar, con la fecha y un botón para comprobar de nuevo.
+- **Por dónde empezar.** Mientras no hay análisis, la página sugiere las 3 apps con más cuota de visibilidad en tu TOP 5.
+- **Oportunidades.** Al analizar un competidor, Claude recibe tu ficha de producto (versión publicada) y devuelve las quejas y peticiones de sus usuarios que tu app ya resuelve, con la función que lo hace y una cita: material para el texto y las capturas de tu ficha. Los análisis anteriores a `rv-3` no las tienen.
+- **Lo que piden los usuarios de la categoría.** Junta las quejas y peticiones del último análisis de cada competidor en ese país. Las que coinciden con una función publicada de tu ficha de producto (por palabras, sin IA, así que conviene revisarlo) salen como «ya lo resuelves»; el resto, como posibles funciones futuras.
 
 ## Estacionalidad y otros países
 
