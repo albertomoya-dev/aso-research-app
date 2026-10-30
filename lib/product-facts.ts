@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fold } from "./text";
 
 // No "@/" imports with values here: db/schema.ts imports this file and drizzle-kit loads it without the alias.
 
@@ -68,6 +69,9 @@ export function factsForPrompt(facts: ProductFacts | null, features: ProductFeat
   const shipped = listed.filter((x) => x.status === "shipped");
   const next = listed.filter((x) => x.status === "next_release");
   const line = (x: ProductFeature) => `- ${x.name}${x.summary.trim() ? `: ${x.summary.trim()}` : ""}${x.sinceVersion ? ` (since ${x.sinceVersion})` : ""}`;
+  // Retired and planned features are named so the model removes them if the current listing still mentions them.
+  // Features the owner does not advertise stay out entirely.
+  const unavailable = features.filter((x) => x.advertise && (x.status === "retired" || x.status === "planned"));
   const constraints = listed.length
     ? [...f.constraints, "Never promise features that are not listed here, even if the current listing mentions them."]
     : f.constraints;
@@ -80,6 +84,9 @@ export function factsForPrompt(facts: ProductFacts | null, features: ProductFeat
     shipped.length ? ["Features available in the published version:", ...shipped.map(line)].join("\n") : null,
     next.length ? ["Features of the next version (the listing is for that version, so present them as available):", ...next.map(line)].join("\n") : null,
     listed.length === 0 ? "Features: none declared for this version; for features, rely only on the current listing." : null,
+    unavailable.length
+      ? `Do NOT mention (retired or not yet available), and remove them if the current listing mentions them: ${unavailable.map((x) => x.name).join("; ")}.`
+      : null,
     constraints.length ? ["Constraints, follow them strictly:", ...bullets(constraints)].join("\n") : null,
     f.tone.trim() ? `Brand tone: ${f.tone.trim()}` : null,
     f.languages.length ? `Languages the app supports: ${f.languages.join(", ")}` : null,
@@ -198,26 +205,26 @@ export type ProposedFeature = FeatureInput & {
 };
 export type ChangelogProposal = { features: ProposedFeature[]; releases: ReleaseInput[]; notes: string[] };
 
-const fold = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+const foldName = (s: string) => fold(s).replace(/\s+/g, " ").trim();
 
 /** Validates the model's items, matches them to existing features and drops repeats and no-op updates. */
 export function cleanChangelogProposal(
   output: ChangelogOutput,
   existing: { id: number; name: string; summary: string; status: FeatureStatus; sinceVersion: string | null }[],
 ): ChangelogProposal {
-  const byName = new Map(existing.map((f) => [fold(f.name), f]));
+  const byName = new Map(existing.map((f) => [foldName(f.name), f]));
   const seen = new Set<string>();
   const features: ProposedFeature[] = [];
   for (const item of output.features) {
     const parsed = featureInputSchema.safeParse({ ...item, name: item.name.slice(0, 120), summary: item.summary.slice(0, 300), advertise: true });
     if (!parsed.success) continue;
-    const match = byName.get(fold(item.updates)) ?? byName.get(fold(parsed.data.name)) ?? null;
-    const key = match ? `#${match.id}` : fold(parsed.data.name);
+    const match = byName.get(foldName(item.updates)) ?? byName.get(foldName(parsed.data.name)) ?? null;
+    const key = match ? `#${match.id}` : foldName(parsed.data.name);
     if (seen.has(key)) continue;
     seen.add(key);
     const f = parsed.data;
     // Nothing would change: not worth a checkbox.
-    if (match && match.status === f.status && fold(match.summary) === fold(f.summary || match.summary) && (f.sinceVersion ?? match.sinceVersion) === match.sinceVersion) {
+    if (match && match.status === f.status && foldName(match.summary) === foldName(f.summary || match.summary) && (f.sinceVersion ?? match.sinceVersion) === match.sinceVersion) {
       continue;
     }
     // An update keeps the owner's name and, when the model gives none, their summary.

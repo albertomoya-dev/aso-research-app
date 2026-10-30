@@ -27,6 +27,14 @@ import {
   type ChangelogOutput,
   changelogOutputSchema,
 } from "./product-facts";
+import {
+  buildRelevancePrompt,
+  type RelevanceContext,
+  type RelevanceItem,
+  type RelevanceOutput,
+  relevanceOutputSchema,
+  RELEVANCE_SYSTEM_PROMPT,
+} from "./relevance";
 import { buildReviewPrompt, REVIEW_SYSTEM_PROMPT, reviewAnalysisSchema, type ReviewAnalysis, type ReviewPromptInput } from "./review-analysis";
 import { buildUserPrompt, modelOutputSchema, type ModelOutput, type PromptInput, SYSTEM_PROMPT } from "./suggestions";
 
@@ -112,4 +120,9 @@ export function writeBackgroundPrompts(input: CreativeInput, theme?: BackgroundT
 /** Asks Claude to turn a CHANGELOG into features with their status. Only a proposal: the owner confirms what gets saved. */
 export function importChangelog(text: string, current: ChangelogContext): Promise<{ output: ChangelogOutput; model: string }> {
   return askClaude(changelogOutputSchema, CHANGELOG_SYSTEM_PROMPT, buildChangelogPrompt(text, current));
+}
+
+/** Asks Claude to rate 1–5 how relevant each keyword is for the app, and whether searchers want another kind of app. One batch (up to 100). */
+export function rateRelevance(context: RelevanceContext, items: RelevanceItem[]): Promise<{ output: RelevanceOutput; model: string }> {
+  return askClaude(relevanceOutputSchema, RELEVANCE_SYSTEM_PROMPT, buildRelevancePrompt(context, items));
 }

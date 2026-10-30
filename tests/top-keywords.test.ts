@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { extractTopTerms, phrases, stopwordsFor, toCsv, type TopListing } from "@/lib/top-keywords";
+import { stopwordsFor } from "@/lib/stopwords";
+import { extractTopTerms, phrases, toCsv, type TopListing } from "@/lib/top-keywords";
 
 const listing = (id: string, title: string, description = "", short = ""): TopListing => ({ id, title, short, description });
 
@@ -55,6 +56,26 @@ describe("extractTopTerms", () => {
     expect(terms.map((t) => t.term)).toContain("ruido blanco");
     expect(terms.map((t) => t.term)).not.toContain("blanco");
     expect(terms.map((t) => t.term)).not.toContain("ruido");
+  });
+
+  it("never outputs filler words or web leftovers from the descriptions (audit H3)", () => {
+    const description =
+      "Además, ahora puedes configurar tus alarmas de pastillas. Debe estar disponible en cualquier móvil, etc. Más datos en www.ejemplo.com. Después, la experiencia mejora.";
+    const terms = extractTopTerms(
+      [listing("a", "Recordatorio pastillas", description), listing("b", "Pastillas: recordatorio", description), listing("c", "Alarma pastillas", description)],
+      { lang: "es" },
+    ).map((t) => t.term);
+    for (const noise of ["además", "ahora", "puedes", "etc", "com", "www", "debe", "disponible", "cualquier", "datos", "después", "experiencia", "configurar"]) {
+      expect(terms, noise).not.toContain(noise);
+    }
+    expect(terms).toContain("pastillas");
+    expect(terms).toContain("alarmas de pastillas");
+  });
+
+  it("keeps generic words inside a longer phrase", () => {
+    const terms = extractTopTerms([listing("a", "", "Copia de datos segura."), listing("b", "", "Copia de datos segura.")], { lang: "es" }).map((t) => t.term);
+    expect(terms).toContain("copia de datos");
+    expect(terms).not.toContain("datos");
   });
 
   it("leaves out the searched keyword", () => {

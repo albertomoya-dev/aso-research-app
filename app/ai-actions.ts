@@ -4,7 +4,7 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { AiError, rewriteListing, suggestKeywords } from "@/lib/claude";
+import { AiError, rateRelevance, rewriteListing, suggestKeywords } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { followKeywords } from "@/lib/follow";
 import { brandOf, cleanProposal, type ListingProposal, proposalFeedback } from "@/lib/listing-optimizer";
@@ -12,6 +12,8 @@ import type { MetadataDraft } from "@/lib/metadata-check";
 import { FACTS_MODES } from "@/lib/product-facts";
 import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
+import { chunk, cleanRatings } from "@/lib/relevance";
+import { rateAppKeywords, rateNewKeywords, relevanceContextFor, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
 import type { AppSummary } from "@/lib/stores/types";
@@ -114,7 +116,7 @@ export async function generateSuggestions(_prev: GenerateState, formData: FormDa
   return { created: inserted.length, dropped: dropped.length + kept.length - inserted.length };
 }
 
-export type AcceptState = { added?: number; trackingFailed?: boolean; error?: string } | null;
+export type AcceptState = { added?: number; trackingFailed?: boolean; relevance?: RelevanceStatus; error?: string } | null;
 
 export async function acceptSuggestions(_prev: AcceptState, formData: FormData): Promise<AcceptState> {
   const appId = idSchema.parse(formData.get("appId"));
@@ -125,17 +127,19 @@ export async function acceptSuggestions(_prev: AcceptState, formData: FormData):
     .select()
     .from(schema.aiSuggestions)
     .where(and(eq(schema.aiSuggestions.appId, appId), inArray(schema.aiSuggestions.id, ids)));
-  const { added, trackingFailed } = await followKeywords(
+  const { added, keywordIds, trackingFailed } = await followKeywords(
     appId,
     picked.map((s) => ({ term: s.term, relevance: s.relevance })),
     "ai",
   );
+  // The idea already has a relevance; this adds the intent, now that the search results are known.
+  const relevance = await rateNewKeywords(appId, keywordIds);
   await db
     .update(schema.aiSuggestions)
     .set({ status: "accepted" })
     .where(inArray(schema.aiSuggestions.id, picked.map((s) => s.id)));
   revalidatePath(`/apps/${appId}`, "layout");
-  return { added, trackingFailed };
+  return { added, trackingFailed, relevance };
 }
 
 export async function dismissSuggestions(formData: FormData) {
@@ -225,6 +229,79 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
     return { proposal, model: result.model };
   } catch (err) {
     if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
+}
+
+export type RelevanceState = { rated?: number; asked?: number; error?: string } | null;
+
+/** «Recalcular relevancia»: rates with Claude every keyword of the app the user has not rated by hand. */
+export async function recalculateRelevance(_prev: RelevanceState, formData: FormData): Promise<RelevanceState> {
+  const appId = idSchema.parse(formData.get("appId"));
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return { error: "App no encontrada." };
+  try {
+    const report = await rateAppKeywords(app);
+    revalidatePath(`/apps/${appId}`, "layout");
+    if (report.error && report.rated === 0) return { error: report.error };
+    return report;
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
+}
+
+const relevanceSchema = z.object({
+  appId: idSchema,
+  keywordId: idSchema,
+  relevance: z.number().int().min(1).max(5),
+});
+
+/**
+ * The user's own relevance for a keyword. From then on the AI never changes it. Rating it 3 or more
+ * also clears a «foreign intent» mark: the user knows best.
+ */
+export async function setKeywordRelevance(appId: number, keywordId: number, relevance: number): Promise<{ error?: string }> {
+  const parsed = relevanceSchema.safeParse({ appId, keywordId, relevance });
+  if (!parsed.success) return { error: "La relevancia va de 1 a 5." };
+  await getDb()
+    .update(schema.appKeywords)
+    .set({
+      relevance: parsed.data.relevance,
+      relevanceSource: "user",
+      relevanceCheckedAt: new Date(),
+      ...(parsed.data.relevance >= 3 ? { intent: "own" as const } : {}),
+    })
+    .where(and(eq(schema.appKeywords.appId, parsed.data.appId), eq(schema.appKeywords.keywordId, parsed.data.keywordId)));
+  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  return {};
+}
+
+export type EstimateResult = { ratings: Record<string, number>; error?: string };
+
+/**
+ * Relevance of candidate keywords (TOP 10, Descubrir) before following them. Nothing is stored:
+ * the list only uses it to show the estimate and untick those rated 2 or less. At most 200 terms.
+ */
+export async function estimateRelevance(appId: number, terms: string[]): Promise<EstimateResult> {
+  const parsed = z
+    .object({ appId: idSchema, terms: z.array(z.string().trim().min(1).max(100)).min(1).max(200) })
+    .safeParse({ appId, terms });
+  if (!parsed.success) return { ratings: {}, error: "No hay keywords que estimar." };
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, parsed.data.appId) });
+  if (!app) return { ratings: {}, error: "App no encontrada." };
+  try {
+    const context = await relevanceContextFor(app);
+    const batches = chunk(parsed.data.terms);
+    const outputs = await Promise.all(batches.map((batch) => rateRelevance(context, batch.map((term) => ({ term, top: [] })))));
+    const ratings: Record<string, number> = {};
+    outputs.forEach(({ output }, i) => {
+      // A search for another kind of app is not worth following, whatever the score.
+      for (const r of cleanRatings(output, batches[i])) ratings[r.term] = r.intent === "foreign" ? Math.min(r.relevance, 2) : r.relevance;
+    });
+    return { ratings };
+  } catch (err) {
+    if (err instanceof AiError) return { ratings: {}, error: err.message };
     throw err;
   }
 }

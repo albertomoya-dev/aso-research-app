@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeKeyword } from "./keywords";
 import type { AppMeta, Store } from "./stores/types";
+import { fold } from "./text";
 
 /** Bump when the instructions or the output shape change, so old suggestions can be told apart. */
 export const PROMPT_VERSION = "kw-2";
@@ -105,7 +106,8 @@ export function buildUserPrompt(input: PromptInput): string {
     .join("\n");
 }
 
-const fold = (s: string) => normalizeKeyword(s.normalize("NFD").replace(/\p{Diacritic}/gu, ""));
+/** Folded and normalized: "Zapatillas  Running" → "zapatillas running". */
+const foldKey = (s: string) => normalizeKeyword(fold(s));
 const LEGAL_SUFFIX = /[,.]?\s+(inc|llc|ltd|limited|gmbh|s\.?l\.?u?|s\.?a\.?|corp(oration)?|co|pty|ab|oy|bv|ag|sas|srl|plc)\.?$/i;
 // Splits "Strava: Run & Ride" or "Nike Run Club - Running" into brand and tagline.
 const TITLE_SEPARATOR = /\s*(?::|\s[-–—|·]\s)\s*/;
@@ -115,13 +117,13 @@ const TITLE_SEPARATOR = /\s*(?::|\s[-–—|·]\s)\s*/;
  * whole title when it is one word) and the developer name without its legal suffix.
  */
 export function competitorBrands(competitors: { title: string; developer: string }[], ownDeveloper: string): string[] {
-  const own = fold(ownDeveloper.replace(LEGAL_SUFFIX, ""));
+  const own = foldKey(ownDeveloper.replace(LEGAL_SUFFIX, ""));
   const brands = new Set<string>();
   for (const c of competitors) {
     const parts = c.title.split(TITLE_SEPARATOR);
-    const head = fold(parts[0]);
+    const head = foldKey(parts[0]);
     if (parts.length > 1 || !head.includes(" ")) brands.add(head);
-    const developer = fold(c.developer.replace(LEGAL_SUFFIX, ""));
+    const developer = foldKey(c.developer.replace(LEGAL_SUFFIX, ""));
     if (developer && developer !== own) brands.add(developer);
   }
   return [...brands].filter((b) => b.length >= 3);
@@ -131,7 +133,7 @@ const containsPhrase = (text: string, phrase: string) => ` ${text} `.includes(` 
 
 /** Variant key so "zapatillas running" and "zapatilla running" count as the same keyword. */
 const variantKey = (term: string) =>
-  fold(term)
+  foldKey(term)
     .split(" ")
     .map((w) => (w.length > 3 ? w.replace(/(es|s)$/, "") : w))
     .sort()
@@ -142,7 +144,7 @@ export type FilterResult = { kept: Suggestion[]; dropped: { keyword: string; why
 /** Validates the model output and drops invalid items, duplicates, tracked keywords and other brands. */
 export function filterSuggestions(output: ModelOutput, existing: string[], brands: string[]): FilterResult {
   const seen = new Set(existing.map(variantKey));
-  const foldedBrands = brands.map(fold);
+  const foldedBrands = brands.map(foldKey);
   const kept: Suggestion[] = [];
   const dropped: FilterResult["dropped"] = [];
   for (const raw of output.suggestions) {
@@ -157,7 +159,7 @@ export function filterSuggestions(output: ModelOutput, existing: string[], brand
       dropped.push({ keyword: s.keyword, why: "existing" });
     } else if (seen.has(key)) {
       dropped.push({ keyword: s.keyword, why: "duplicate" });
-    } else if (foldedBrands.some((b) => containsPhrase(fold(s.keyword), b))) {
+    } else if (foldedBrands.some((b) => containsPhrase(foldKey(s.keyword), b))) {
       dropped.push({ keyword: s.keyword, why: "brand" });
     } else {
       seen.add(key);
@@ -170,14 +172,20 @@ export function filterSuggestions(output: ModelOutput, existing: string[], brand
 
 /** Words from the title and category used as autocomplete seeds. */
 export function seedWords(title: string, category: string | null, max = 4): string[] {
-  const words = fold(`${title.split(TITLE_SEPARATOR).slice(1).join(" ") || title} ${category ?? ""}`)
+  const words = foldKey(`${title.split(TITLE_SEPARATOR).slice(1).join(" ") || title} ${category ?? ""}`)
     .split(/[^\p{L}\p{N}]+/u)
     .filter((w) => w.length >= 4);
   return [...new Set(words)].slice(0, max);
 }
 
-/** Relevance 1–5 → factor for the opportunity score; unknown (manual keywords) counts as fully relevant. */
+/** Factor for a keyword nobody has rated yet: a little above relevance 1 (0.6), well below 5 (1). */
+export const UNRATED_RELEVANCE_FACTOR = 0.7;
+
+/**
+ * Relevance 1–5 → factor for the opportunity score (0.6–1). Unrated keywords count as 0.7, so a popular
+ * generic word added by hand no longer beats a central phrase rated 5.
+ */
 export function relevanceFactor(relevance: number | null | undefined): number {
-  if (relevance == null) return 1;
+  if (relevance == null) return UNRATED_RELEVANCE_FACTOR;
   return 0.5 + Math.min(5, Math.max(1, relevance)) / 10;
 }

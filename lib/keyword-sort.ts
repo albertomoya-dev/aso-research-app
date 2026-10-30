@@ -11,6 +11,7 @@ type SortableRow = {
   popularity: number | null;
   difficulty: number | null;
   opportunity: number | null;
+  relevance?: number | null;
 };
 
 /** Positions gained over the sparkline window: first known position against the latest one. */
@@ -29,6 +30,7 @@ export const KEYWORD_SORTS = {
   popularity: { value: (r: SortableRow) => r.popularity, dir: "desc" },
   difficulty: { value: (r: SortableRow) => r.difficulty, dir: "asc" },
   opportunity: { value: (r: SortableRow) => r.opportunity, dir: "desc" },
+  relevance: { value: (r: SortableRow) => r.relevance ?? null, dir: "desc" },
 } as const satisfies Record<string, { value: (r: SortableRow) => string | number | null; dir: SortDir }>;
 
 export type KeywordSort = keyof typeof KEYWORD_SORTS;

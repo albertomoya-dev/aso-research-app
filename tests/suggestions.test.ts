@@ -89,8 +89,10 @@ describe("seedWords", () => {
 });
 
 describe("relevanceFactor", () => {
-  it("maps 1–5 to 0.6–1 and leaves manual keywords at 1", () => {
-    expect(relevanceFactor(null)).toBe(1);
+  it("maps 1–5 to 0.6–1 and counts unrated keywords as 0.7", () => {
+    expect(relevanceFactor(null)).toBe(0.7);
+    expect(relevanceFactor(undefined)).toBe(0.7);
+    expect(relevanceFactor(2)).toBeCloseTo(0.7);
     expect(relevanceFactor(5)).toBe(1);
     expect(relevanceFactor(1)).toBeCloseTo(0.6);
     expect(relevanceFactor(9)).toBe(1);

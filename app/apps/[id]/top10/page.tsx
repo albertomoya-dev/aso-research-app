@@ -6,6 +6,7 @@ import { TopKeywordsTable } from "@/components/top-keywords-table";
 import { buttonPrimary, Card, ErrorNote, inputClass, PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
+import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { normalizeKeyword } from "@/lib/keywords";
 import { fetchTopApps, type TopAppsResult } from "@/lib/top-apps";
@@ -23,12 +24,13 @@ export default async function TopKeywordsPage({ params, searchParams }: Props) {
   const country = getCountry(app.country);
 
   const followed = await getDb()
-    .select({ term: schema.keywords.term })
+    .select({ term: schema.keywords.term, relevance: schema.appKeywords.relevance })
     .from(schema.appKeywords)
     .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
     .where(eq(schema.appKeywords.appId, app.id))
     .orderBy(asc(schema.keywords.term));
   const followedTerms = followed.map((f) => f.term);
+  const followedRelevance = Object.fromEntries(followed.flatMap((f) => (f.relevance == null ? [] : [[f.term, f.relevance]])));
 
   // A typed term wins over the selector; "all" searches the first followed keywords.
   const typed = normalizeKeyword(rawTerm).slice(0, 60);
@@ -118,6 +120,9 @@ export default async function TopKeywordsPage({ params, searchParams }: Props) {
                 appCount={result.apps.length}
                 titles={titles}
                 followed={followedTerms}
+                followedRelevance={followedRelevance}
+                lang={country.lang}
+                aiEnabled={hasAnthropicKey()}
                 fileName={`keywords-top10-${label}-${app.store}-${app.country}`}
               />
             )}

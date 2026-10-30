@@ -6,6 +6,7 @@ import { StoreBadge } from "@/components/store-badge";
 import { buttonPrimary, Card, ErrorNote, inputClass, PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
+import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { discoveryPrefixes, mergeSuggestions } from "@/lib/discover";
 import { getAdapter } from "@/lib/stores";
@@ -79,7 +80,14 @@ export default async function DiscoverPage({ params, searchParams }: Props) {
               La tienda no sugiere nada nuevo para «{seed}» en {country.name}. Prueba con una palabra más general.
             </p>
           ) : (
-            <DiscoverList appId={app.id} seed={seed} suggestions={suggestions} countryName={country.name} />
+            <DiscoverList
+              appId={app.id}
+              seed={seed}
+              suggestions={suggestions}
+              countryName={country.name}
+              lang={country.lang}
+              aiEnabled={hasAnthropicKey()}
+            />
           )}
         </Card>
       )}

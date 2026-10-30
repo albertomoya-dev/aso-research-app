@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { charCount, FIELDS, type FieldKey, type MetadataDraft, tokens } from "./metadata-check";
 import type { Store } from "./stores/types";
+import { relevanceFactor } from "./suggestions";
 
 /** Bump when the instructions or the output shape change. */
 export const LISTING_PROMPT_VERSION = "lst-2";
@@ -81,9 +82,9 @@ const clip = (s: string, max: number) => {
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 };
 
-/** Best targets first: opportunity, then popularity, then relevance. */
+/** Best targets first: opportunity (already scaled by relevance), then popularity, then the relevance factor (unrated counts as 0.7). */
 export function rankKeywords(keywords: PromptKeyword[]): PromptKeyword[] {
-  const score = (k: PromptKeyword) => [k.opportunity ?? -1, k.popularity ?? -1, k.relevance ?? 0];
+  const score = (k: PromptKeyword) => [k.opportunity ?? -1, k.popularity ?? -1, relevanceFactor(k.relevance)];
   return [...keywords].sort((a, b) => {
     const [x, y] = [score(a), score(b)];
     return y[0] - x[0] || y[1] - x[1] || y[2] - x[2] || a.term.localeCompare(b.term);

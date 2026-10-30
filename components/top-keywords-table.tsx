@@ -2,8 +2,11 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { addKeywords, type AddKeywordsState } from "@/app/actions";
+import { relevanceNote } from "./relevance-note";
 import { normalizeKeyword } from "@/lib/keywords";
+import { LOW_RELEVANCE, preselect } from "@/lib/relevance";
 import { toCsv, type TopTerm } from "@/lib/top-keywords";
+import { EstimateButton, RelevanceHint, useRelevanceEstimate } from "./relevance-estimate";
 import { buttonPrimary, buttonSecondary } from "./ui";
 
 type Props = {
@@ -12,7 +15,13 @@ type Props = {
   appCount: number;
   titles: Record<string, string>;
   followed: string[];
+  /** Relevance of the keywords the app already follows, by term. */
+  followedRelevance: Record<string, number>;
   fileName: string;
+  /** Store language, for filler words. */
+  lang: string;
+  /** Shows «Estimar relevancia con IA» when there is an Anthropic key. */
+  aiEnabled: boolean;
 };
 
 const SIZES = [
@@ -32,18 +41,26 @@ function download(name: string, csv: string) {
   URL.revokeObjectURL(url);
 }
 
-export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fileName }: Props) {
+export function TopKeywordsTable({ appId, terms, appCount, titles, followed, followedRelevance, fileName, lang, aiEnabled }: Props) {
   const [state, action, pending] = useActionState<AddKeywordsState, FormData>(addKeywords, null);
   const [size, setSize] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const followedSet = useMemo(() => new Set(followed), [followed]);
   const isFollowed = (t: TopTerm) => followedSet.has(normalizeKeyword(t.term));
+  const estimate = useRelevanceEstimate(appId);
+  const ratingOf = (term: string) => followedRelevance[normalizeKeyword(term)] ?? estimate.ratingOf(term);
 
   // The App Store does not publish the subtitle, so the column would always be empty.
   const hasShort = terms.some((t) => t.inShort > 0);
   const shown = terms.filter((t) => size === 0 || t.words === size);
   const selectable = shown.filter((t) => !isFollowed(t)).map((t) => t.term);
-  const allSelected = selectable.length > 0 && selectable.every((t) => selected.has(t));
+  // «Seleccionar todas» leaves out filler words and those rated 2 or less; they can still be ticked one by one.
+  const picks = selectable.filter((t) => preselect(t, ratingOf(t), lang));
+  const allSelected = picks.length > 0 && picks.every((t) => selected.has(t));
+  const runEstimate = () =>
+    estimate.run(selectable, (rated) =>
+      setSelected((prev) => new Set([...prev].filter((t) => !((rated[normalizeKeyword(t)] ?? Infinity) <= LOW_RELEVANCE)))),
+    );
   const toggle = (term: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -59,7 +76,7 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fil
   return (
     <form action={action}>
       <input type="hidden" name="appId" value={appId} />
-      <input type="hidden" name="source" value="manual" />
+      <input type="hidden" name="source" value="top10" />
       {[...selected].map((term) => (
         <input key={term} type="hidden" name="keywords" value={term} />
       ))}
@@ -80,6 +97,7 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fil
           ))}
         </div>
         <div className="flex flex-wrap gap-2">
+          {aiEnabled && <EstimateButton count={selectable.length} pending={estimate.pending} onClick={runEstimate} />}
           <button type="button" className={buttonSecondary} onClick={exportCsv}>
             {selected.size > 0 ? `Exportar ${selected.size} a CSV` : `Exportar ${shown.length} a CSV`}
           </button>
@@ -89,11 +107,13 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fil
         </div>
       </div>
       <p aria-live="polite" className="px-5 text-[13px]">
+        {estimate.error && <span className="mt-3 block text-danger">{estimate.error}</span>}
         {state?.error && <span className="mt-3 block text-danger">{state.error}</span>}
         {state && !state.error && (
           <span className="mt-3 block text-ink-soft">
             {state.added === 1 ? "1 añadida" : `${state.added} añadidas`} a tus keywords con su posición de hoy
             {state.trackingFailed && " · su posición se consultará en la próxima actualización"}
+            {relevanceNote(state.relevance)}
           </span>
         )}
       </p>
@@ -106,11 +126,11 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fil
                   type="checkbox"
                   aria-label={allSelected ? "Quitar selección" : "Seleccionar todas"}
                   checked={allSelected}
-                  disabled={selectable.length === 0}
+                  disabled={picks.length === 0}
                   onChange={() =>
                     setSelected((prev) => {
                       const next = new Set(prev);
-                      for (const t of selectable) {
+                      for (const t of allSelected ? selectable : picks) {
                         if (allSelected) next.delete(t);
                         else next.add(t);
                       }
@@ -151,6 +171,7 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fil
                   </td>
                   <td className="px-3 py-2">
                     <span className="font-medium">{t.term}</span>
+                    <RelevanceHint term={t.term} rating={ratingOf(t.term)} lang={lang} />
                     {done && <span className="ml-2 text-xs text-muted">ya la sigues</span>}
                   </td>
                   <td className="px-3 py-2" title={t.appIds.map((id) => titles[id] ?? id).join("\n")}>

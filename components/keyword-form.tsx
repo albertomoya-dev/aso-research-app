@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { addKeywords, type AddKeywordsState } from "@/app/actions";
 import { parseKeywords } from "@/lib/keywords";
+import { relevanceNote } from "./relevance-note";
 import { buttonPrimary } from "./ui";
 
 export function KeywordForm({ appId }: { appId: number }) {
@@ -34,6 +35,7 @@ export function KeywordForm({ appId }: { appId: number }) {
             {state.added === 1 ? "1 añadida" : `${state.added} añadidas`}
             {state.skipped > 0 && ` · ${state.skipped} ya estaban`}
             {state.trackingFailed && " · no se pudo consultar su posición; se reintentará en la consulta diaria"}
+            {relevanceNote(state.relevance)}
           </span>
         )}
       </p>

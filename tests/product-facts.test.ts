@@ -24,6 +24,14 @@ const feature = (name: string, o: Partial<ProductFeature> = {}): ProductFeature 
   ...o,
 });
 
+const splitDoNot = (block: string) => {
+  const lines = block.split("\n");
+  return {
+    doNot: lines.filter((l) => l.startsWith("Do NOT mention")).join("\n"),
+    rest: lines.filter((l) => !l.startsWith("Do NOT mention")).join("\n"),
+  };
+};
+
 describe("featuresFor", () => {
   it("keeps shipped always, next_release only for the next version, never planned or retired", () => {
     const list = [
@@ -46,14 +54,18 @@ describe("factsForPrompt", () => {
     expect(hasProductFacts(EMPTY_FACTS, [feature("a", { status: "planned" })])).toBe(true);
   });
 
-  it("with the real case, the next version mentions the barcode scan and never the retired or planned features", () => {
+  it("with the real case, the next version mentions the barcode scan and lists retired or planned features only as do-not-mention", () => {
     const block = factsForPrompt(product.facts, features, "next")!;
+    const { doNot, rest } = splitDoNot(block);
     expect(block).toContain("PRODUCT FACTS");
     expect(block).toContain("código de barras");
     expect(block).toContain("Informe PDF para el médico");
     expect(block).toContain("Alarmas exactas");
-    expect(block).not.toContain("doble toma");
-    expect(block).not.toContain("Modo cuidador");
+    expect(doNot).toContain("Protección contra doble toma");
+    expect(doNot).toContain("Modo cuidador");
+    expect(doNot).not.toContain("Alarmas exactas");
+    expect(rest).not.toContain("doble toma");
+    expect(rest).not.toContain("Modo cuidador");
     expect(block).toContain("No hacer afirmaciones médicas");
     expect(block).toContain("no sustituye el consejo médico");
     expect(block).toContain("Languages the app supports: español, inglés");
@@ -64,7 +76,8 @@ describe("factsForPrompt", () => {
     expect(block).toContain("Alarmas exactas");
     expect(block).not.toContain("código de barras");
     expect(block).not.toContain("Features of the next version");
-    expect(block).not.toContain("doble toma");
+    expect(splitDoNot(block).rest).not.toContain("doble toma");
+    expect(splitDoNot(block).doNot).toContain("doble toma");
     expect(block).toContain("the version published in the store");
   });
 
@@ -73,6 +86,13 @@ describe("factsForPrompt", () => {
     expect(block).toContain("What it is: Un pastillero");
     expect(block).toContain("rely only on the current listing");
     expect(block).not.toContain("Never promise features that are not listed here");
+  });
+
+  it("leaves features the owner does not advertise out entirely, even retired ones", () => {
+    const block = factsForPrompt(EMPTY_FACTS, [feature("a"), feature("interna", { advertise: false }), feature("vieja", { status: "retired", advertise: false })], "next")!;
+    expect(block).not.toContain("interna");
+    expect(block).not.toContain("vieja");
+    expect(block).not.toContain("Do NOT mention");
   });
 });
 

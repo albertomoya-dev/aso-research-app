@@ -1,5 +1,6 @@
 import { normalizeKeyword } from "./keywords";
 import type { AppSummary } from "./stores/types";
+import { fold } from "./text";
 
 /** Longest prefix tried before giving up on finding the keyword in the autocomplete. */
 export const MAX_PREFIX = 12;
@@ -39,8 +40,6 @@ export async function measureAutocomplete(term: string, suggest: (prefix: string
   // Not suggested even with the first 12 letters: rarely searched.
   return { popularity: 0, prefixLength: null, requests };
 }
-
-const fold = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase();
 
 /**
  * 0–100 from the strength of the top 10: how many target the keyword in their title,

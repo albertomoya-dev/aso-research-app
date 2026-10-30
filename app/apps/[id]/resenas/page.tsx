@@ -181,7 +181,7 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
                 <h2 className="text-[15px] font-semibold">Palabras que usan los usuarios</h2>
                 <p className="mt-1 text-[13px] text-muted">Frases con las que describen la app o lo que buscan. Marca las que quieras seguir como keywords.</p>
               </div>
-              <DiscoverList appId={app.id} suggestions={ideas} countryName="" caption={`${ideas.length} ideas que aún no sigues`} source="ai" />
+              <DiscoverList appId={app.id} suggestions={ideas} countryName="" caption={`${ideas.length} ideas que aún no sigues`} source="ai" lang={getCountry(app.country).lang} />
             </Card>
           )}
 

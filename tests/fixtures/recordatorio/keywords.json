@@ -1,0 +1,372 @@
+{
+  "note": "Keywords del caso real (Play ES), con la relevancia que les daría la IA. expected: keep = frase central, noise = la propone el filtro «Probablemente irrelevantes». Las que tienen relevance null aún no se han valorado.",
+  "lang": "es",
+  "keywords": [
+    {
+      "term": "recordatorio pastillas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "alarma medicamentos",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillero digital",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillas recordatorio",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio de pastillas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillero electrónico",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio medicamentos",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio de medicamentos",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "alarma pastillas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "alarma para tomar pastillas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillero",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "app pastillas",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "control de medicación",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "toma de medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordar pastillas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "medicación diaria",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillero semanal",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio medicinas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "alarma medicinas",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "tomar pastillas",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "aviso medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "gestor de medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "horario medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "adherencia al tratamiento",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "stock de medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "prospecto medicamentos",
+      "relevance": 3,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "cima aemps",
+      "relevance": 3,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio pastilla anticonceptiva",
+      "relevance": 3,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "widget medicación",
+      "relevance": 3,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "recordatorio de pastillas y medicamentos",
+      "relevance": 5,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "mis medicamentos",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "pastillas a tiempo",
+      "relevance": 4,
+      "intent": "own",
+      "expected": "keep"
+    },
+    {
+      "term": "acceso",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "además",
+      "relevance": null,
+      "intent": null,
+      "expected": "noise"
+    },
+    {
+      "term": "ahora",
+      "relevance": null,
+      "intent": null,
+      "expected": "noise"
+    },
+    {
+      "term": "com",
+      "relevance": null,
+      "intent": null,
+      "expected": "noise"
+    },
+    {
+      "term": "etc",
+      "relevance": null,
+      "intent": null,
+      "expected": "noise"
+    },
+    {
+      "term": "debe",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "puedes",
+      "relevance": null,
+      "intent": null,
+      "expected": "noise"
+    },
+    {
+      "term": "cualquier",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "diferentes",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "ejemplo",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "después",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "disponible",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "necesario",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "lugar",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "datos",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "configurar",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "experiencia",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "botones",
+      "relevance": 1,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "tomas omitidas",
+      "relevance": 2,
+      "intent": "foreign",
+      "expected": "noise"
+    },
+    {
+      "term": "doctor mario pastillas",
+      "relevance": 1,
+      "intent": "foreign",
+      "expected": "noise"
+    },
+    {
+      "term": "pastillas juego",
+      "relevance": 1,
+      "intent": "foreign",
+      "expected": "noise"
+    },
+    {
+      "term": "móvil",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "médico",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "notas",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "alarma",
+      "relevance": 2,
+      "intent": "foreign",
+      "expected": "noise"
+    },
+    {
+      "term": "temporizador",
+      "relevance": 2,
+      "intent": "foreign",
+      "expected": "noise"
+    },
+    {
+      "term": "horario",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "enfermedades",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    },
+    {
+      "term": "rastreador",
+      "relevance": 2,
+      "intent": "own",
+      "expected": "noise"
+    }
+  ]
+}

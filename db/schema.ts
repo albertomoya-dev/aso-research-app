@@ -20,12 +20,14 @@ import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 // Relative so drizzle-kit can load it without the "@/" alias.
+import { KEYWORD_SOURCES } from "../lib/keywords";
 import { FEATURE_STATUSES } from "../lib/product-facts";
+import type { KeywordIntent, RelevanceSource } from "@/lib/relevance";
 import type { RatingStats, ReviewAnalysis } from "@/lib/review-analysis";
 import type { TrendPoint } from "@/lib/trends";
 
 export const storeEnum = pgEnum("store", ["ios", "android"]);
-export const keywordSourceEnum = pgEnum("keyword_source", ["manual", "ai", "autocomplete"]);
+export const keywordSourceEnum = pgEnum("keyword_source", KEYWORD_SOURCES);
 export const suggestionStatusEnum = pgEnum("suggestion_status", ["pending", "accepted", "dismissed"]);
 
 /** A followed app in one store and one country. */
@@ -71,8 +73,13 @@ export const appKeywords = pgTable(
       .notNull()
       .references(() => keywords.id, { onDelete: "cascade" }),
     source: keywordSourceEnum("source").notNull().default("manual"),
-    /** 1–5 as estimated by the AI; null for keywords added by hand. */
+    /** 1–5: how well the app answers this search. Null until the AI rates it or the user sets it. */
     relevance: integer("relevance"),
+    /** Who set the relevance: "ai" (rateRelevance or an AI idea) or "user". The AI never overwrites "user". */
+    relevanceSource: text("relevance_source").$type<RelevanceSource>(),
+    /** "own" when people searching it want an app like this one, "foreign" when they want something else (a game, a messenger…). */
+    intent: text("intent").$type<KeywordIntent>(),
+    relevanceCheckedAt: timestamp("relevance_checked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.keywordId] })],

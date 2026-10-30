@@ -1,7 +1,9 @@
 import { and, asc, desc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
+import type { KeywordSource } from "./keywords";
 import { opportunityScore } from "./popularity";
 import { positionChange, shiftDate, today } from "./ranking";
+import type { KeywordIntent, RelevanceSource } from "./relevance";
 import { relevanceFactor } from "./suggestions";
 import type { AppSummary } from "./stores/types";
 
@@ -10,8 +12,14 @@ export type HistoryPoint = { date: string; position: number | null };
 export type KeywordRow = {
   id: number;
   term: string;
-  source: "manual" | "ai" | "autocomplete";
+  source: KeywordSource;
+  /** 1–5, or null while nobody has rated it (counts as 0.7 in the opportunity). */
   relevance: number | null;
+  /** "user" when the user set it by hand: the AI never overwrites it. */
+  relevanceSource: RelevanceSource | null;
+  /** "foreign" when people searching it want another kind of app. Use `isRelevantKeyword` / `isLikelyIrrelevant` from lib/relevance to filter. */
+  intent: KeywordIntent | null;
+  relevanceCheckedAt: Date | null;
   position: number | null;
   /** Date of the latest snapshot; null when the keyword was never tracked. */
   checkedOn: string | null;
@@ -73,6 +81,9 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
         term: schema.keywords.term,
         source: schema.appKeywords.source,
         relevance: schema.appKeywords.relevance,
+        relevanceSource: schema.appKeywords.relevanceSource,
+        intent: schema.appKeywords.intent,
+        relevanceCheckedAt: schema.appKeywords.relevanceCheckedAt,
       })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))

@@ -21,6 +21,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | – | Optimizar la ficha con IA alrededor de las keywords seguidas (PR #14) | Hecho |
 | – | Estilo inspirado en Linear, oscuro por defecto (PR #13 y #15) | Hecho |
 | 13 | Ficha de producto: lo que hace la app, fuente de verdad para toda la IA | Hecho |
+| 14 | Higiene de keywords: relevancia para todas, filtro de irrelevantes y limpieza por lotes | Hecho |
 
 ## Stack
 
@@ -63,10 +64,24 @@ Las tiendas no publican cuántas veces se busca una palabra, así que son estima
 
 - **Popularidad**: se escribe la keyword letra a letra en el buscador de la tienda (autocompletado) hasta que la tienda la sugiere. Cuantas menos letras hagan falta, y cuanto más arriba salga, más se busca. Se recalcula cada semana.
 - **Dificultad**: fuerza del TOP 10 de la búsqueda: cuántas apps llevan la keyword en el título, su valoración y, en App Store, su número de valoraciones. Se recalcula cada día.
-- **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100) × relevancia`. La relevancia solo existe en keywords añadidas desde las ideas con IA (de 1 a 5 → factor 0,6 a 1); las demás cuentan como 1.
+- **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100) × factor de relevancia`. La relevancia de 1 a 5 da un factor de 0,6 a 1; una keyword **sin valorar cuenta como 0,7**, así una palabra genérica muy buscada ya no gana a una frase central valorada con un 5 (ver *Relevancia e higiene de keywords*).
 - **Google Trends**: interés semanal en Google de los últimos 12 meses en el país, relativo al pico de la propia keyword. Sirve para ver la estacionalidad, no para comparar keywords. Google Trends no tiene API pública y limita mucho las peticiones: se descargan como máximo 20 keywords por día y se refrescan cada semana.
 
 La pantalla **Descubrir keywords** consulta el autocompletado con una palabra semilla, sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
+
+## Relevancia e higiene de keywords
+
+Una lista con cientos de keywords mezcla frases que de verdad traen usuarios con ruido: palabras vacías de las descripciones («además», «puedes», «etc», «com»), búsquedas donde la gente quiere otra cosa («tomas omitidas» da *Thomas y sus amigos*) y palabras sueltas demasiado amplias («móvil», «alarma»). Ese ruido infla la oportunidad, llena Novedades de avisos y mete apps como «Reloj» entre tus competidores.
+
+- **Palabras vacías** (`lib/stopwords.ts`): listas por idioma (es, en, pt, fr, de, it) de artículos, preposiciones, conectores, adverbios, verbos auxiliares y modales con sus formas habituales y restos web (com, www, etc). Además, palabras genéricas de cualquier descripción («datos», «configurar», «experiencia»): nunca son keyword solas, pero sí dentro de una frase («copia de datos»). *Keywords del TOP 10* ya no las propone.
+- **Relevancia para todas**: al añadir keywords, Claude valora de 1 a 5 cuánto encaja cada una con tu app, usando la ficha de producto (o la ficha publicada si no la hay), en lotes de 100 por petición. Si tarda más de 20 segundos, sigue en segundo plano y aparece al recargar; si falla, las keywords se añaden igual. **Recalcular relevancia con IA** vuelve a valorar todas menos las que has valorado tú.
+- **Tu relevancia manda**: en la tabla de keywords cada fila tiene un selector de 1 a 5 que indica si la puso la IA o tú. La que pones tú no la cambia nunca la IA (columna `relevance_source`).
+- **Intención ajena**: las tiendas no dan la categoría de las apps en los resultados de búsqueda, así que no se puede comparar categorías. Con cada keyword se le pasan a Claude los títulos de las 5 primeras apps de hoy y se le pide marcar `foreign` cuando al menos 4 son otro tipo de app (juegos, dibujos, mensajería, relojes). Es una estimación del modelo, no un dato de la tienda; si no estás de acuerdo, súbele la relevancia a 3 o más y deja de contar como ajena.
+- **Filtro «Probablemente irrelevantes»** (`?f=noise`): relevancia 2 o menos, intención ajena o palabra vacía. Puedes marcar varias y **Quitar seleccionadas**: pide confirmación y deja **Deshacer** durante 15 segundos, que recupera las keywords con su origen y su relevancia. El histórico de posiciones no se borra al quitar una keyword.
+- **Presupuesto**: por encima de 150 keywords seguidas la tabla avisa de que alertas y cuota pierden precisión.
+- En **Keywords del TOP 10** y **Descubrir**, «Seleccionar todas» deja fuera las palabras vacías y las de relevancia 2 o menos. **Estimar relevancia con IA** valora las candidatas sin guardar nada (una petición por cada 100, hasta 200 por clic).
+- El origen de cada keyword distingue **TOP 10 de la competencia** y **Descubrir** de las añadidas a mano.
+- Para filtrar keywords «relevantes» en otras partes: `isRelevantKeyword` y `isLikelyIrrelevant` de `lib/relevance.ts`. Prompt versión `rel-1`.
 
 ## Keywords del TOP 10
 
@@ -94,7 +109,7 @@ La pantalla **Editor de ficha** sirve para preparar la próxima versión del tex
 La ficha publicada en la tienda siempre va por detrás del producto: si la IA solo la lee, describe funciones viejas y se olvida de las nuevas. La pestaña **Producto** guarda lo que hace la app contado por su dueño, y el optimizador de ficha, las ideas de keywords, los textos e iconos de Creativos y el análisis de reseñas la usan como **fuente de verdad** (bloque `PRODUCT FACTS` en el prompt).
 
 - Resumen: qué es, para quién, diferenciales, lo que la ficha nunca debe decir (por ejemplo, «no hacer afirmaciones médicas»), tono e idiomas.
-- Funciones con estado: **publicada**, **próxima versión**, **planeada** o **retirada**, la versión en que llegó y si se puede anunciar. Las planeadas y las retiradas nunca llegan a la IA.
+- Funciones con estado: **publicada**, **próxima versión**, **planeada** o **retirada**, la versión en que llegó y si se puede anunciar. Las planeadas y las retiradas nunca se describen como disponibles: llegan a la IA solo en una línea «no las menciones», para que las quite si la ficha actual aún las nombra. Las que no se anuncian no llegan nunca.
 - En el editor de ficha eliges «Ficha para la versión publicada» (solo funciones publicadas) o «Ficha para la próxima versión» (también las de la próxima). Ideas y Creativos usan la próxima versión; las reseñas, la publicada.
 - **Importar desde CHANGELOG**: pegas el texto, Claude propone las funciones con su estado y las versiones, y tú marcas qué se guarda. Nada se guarda sin tu confirmación.
 - Sin ficha de producto todo funciona como antes (la IA solo usa la ficha publicada) y el editor lo avisa.

@@ -142,8 +142,14 @@ describe("buildListingPrompt with PRODUCT FACTS (real case)", () => {
     expect(prompt).toContain("reference for tone and wording only");
     expect(prompt).toContain("Published version: 2.4.0");
     // The outdated listing still mentions it; the facts the model must follow do not.
-    expect(factsSection(prompt)).not.toContain("doble toma");
-    expect(factsSection(prompt)).not.toContain("Modo cuidador");
+    // Retired and planned features only appear in the "Do NOT mention" line.
+    const lines = factsSection(prompt).split("\n");
+    const doNot = lines.filter((l) => l.startsWith("Do NOT mention")).join("\n");
+    const rest = lines.filter((l) => !l.startsWith("Do NOT mention")).join("\n");
+    expect(doNot).toContain("Protección contra doble toma");
+    expect(doNot).toContain("Modo cuidador");
+    expect(rest).not.toContain("doble toma");
+    expect(rest).not.toContain("Modo cuidador");
     expect(factsSection(prompt)).toContain("No hacer afirmaciones médicas");
   });
 

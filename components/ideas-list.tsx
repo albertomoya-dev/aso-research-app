@@ -3,6 +3,7 @@
 import { useActionState, useState, useTransition } from "react";
 import { acceptSuggestions, type AcceptState, dismissSuggestions } from "@/app/ai-actions";
 import { COMPETITION_LABEL, INTENT_LABEL } from "@/lib/suggestions";
+import { relevanceNote } from "./relevance-note";
 import { buttonPrimary, buttonSecondary } from "./ui";
 
 type Idea = { id: number; term: string; intent: string; relevance: number; competition: string; reason: string };
@@ -71,6 +72,7 @@ export function IdeasList({ appId, ideas, generatedBy }: { appId: number; ideas:
           <span className="mt-3 block text-ink-soft">
             {state.added === 1 ? "1 añadida" : `${state.added} añadidas`} a tus keywords
             {state.trackingFailed && " · su posición se consultará en la próxima actualización"}
+            {relevanceNote(state.relevance)}
           </span>
         )}
       </p>

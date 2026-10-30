@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -8,7 +8,9 @@ import { getDb, schema } from "@/db";
 import { getCountry, isCountry } from "@/lib/countries";
 import { generateRankAlerts } from "@/lib/alert-jobs";
 import { followKeywords } from "@/lib/follow";
-import { parseKeywords } from "@/lib/keywords";
+import { KEYWORD_SOURCES, parseKeywords } from "@/lib/keywords";
+import { KEYWORD_INTENTS, RELEVANCE_SOURCES } from "@/lib/relevance";
+import { rateNewKeywords, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { today } from "@/lib/ranking";
 import { trackRankings } from "@/lib/tracking";
 import { getAdapter } from "@/lib/stores";
@@ -68,22 +70,30 @@ export async function refreshAppMeta(formData: FormData) {
   revalidatePath(`/apps/${appId}`);
 }
 
-export type AddKeywordsState = { added: number; skipped: number; error?: string; trackingFailed?: boolean } | null;
+export type AddKeywordsState = {
+  added: number;
+  skipped: number;
+  error?: string;
+  trackingFailed?: boolean;
+  /** Whether the AI rated the new keywords (see rateNewKeywords). */
+  relevance?: RelevanceStatus;
+} | null;
 
 export async function addKeywords(_prev: AddKeywordsState, formData: FormData): Promise<AddKeywordsState> {
   const appId = appIdSchema.parse(formData.get("appId"));
   // A textarea sends one value; the discovery checklist sends one per ticked keyword.
   const terms = parseKeywords(formData.getAll("keywords").join("\n"));
-  const source = z.enum(["manual", "autocomplete", "ai"]).catch("manual").parse(formData.get("source"));
+  const source = z.enum(KEYWORD_SOURCES).catch("manual").parse(formData.get("source"));
   if (terms.length === 0) return { added: 0, skipped: 0, error: "Escribe al menos una keyword." };
 
-  const { added, trackingFailed } = await followKeywords(
+  const { added, keywordIds, trackingFailed } = await followKeywords(
     appId,
     terms.map((term) => ({ term })),
     source,
   );
+  const relevance = await rateNewKeywords(appId, keywordIds);
   revalidatePath(`/apps/${appId}`, "layout");
-  return { added, skipped: terms.length - added, trackingFailed };
+  return { added, skipped: terms.length - added, trackingFailed, relevance };
 }
 
 export async function removeKeyword(formData: FormData) {
@@ -93,6 +103,93 @@ export async function removeKeyword(formData: FormData) {
     .delete(schema.appKeywords)
     .where(and(eq(schema.appKeywords.appId, appId), eq(schema.appKeywords.keywordId, keywordId)));
   revalidatePath(`/apps/${appId}`);
+}
+
+const removeSchema = z.object({
+  appId: z.number().int().positive(),
+  keywordIds: z.array(z.number().int().positive()).min(1).max(500),
+});
+
+/** A removed keyword with everything needed to put it back. Dates as ISO strings. */
+export type RemovedKeyword = {
+  keywordId: number;
+  term: string;
+  source: (typeof KEYWORD_SOURCES)[number];
+  relevance: number | null;
+  relevanceSource: (typeof RELEVANCE_SOURCES)[number] | null;
+  intent: (typeof KEYWORD_INTENTS)[number] | null;
+  relevanceCheckedAt: string | null;
+  createdAt: string;
+};
+
+export type RemoveKeywordsResult = { removed: RemovedKeyword[]; error?: string };
+
+/**
+ * Stops following several keywords at once. Returns the removed rows so «Deshacer» can put them back.
+ * The position history is kept (it belongs to the keyword, not to the app's list).
+ */
+export async function removeKeywords(appId: number, keywordIds: number[]): Promise<RemoveKeywordsResult> {
+  const parsed = removeSchema.safeParse({ appId, keywordIds });
+  if (!parsed.success) return { removed: [], error: "Selecciona al menos una keyword." };
+  const where = and(eq(schema.appKeywords.appId, parsed.data.appId), inArray(schema.appKeywords.keywordId, parsed.data.keywordIds));
+  const db = getDb();
+  const rows = await db
+    .select({
+      keywordId: schema.appKeywords.keywordId,
+      term: schema.keywords.term,
+      source: schema.appKeywords.source,
+      relevance: schema.appKeywords.relevance,
+      relevanceSource: schema.appKeywords.relevanceSource,
+      intent: schema.appKeywords.intent,
+      relevanceCheckedAt: schema.appKeywords.relevanceCheckedAt,
+      createdAt: schema.appKeywords.createdAt,
+    })
+    .from(schema.appKeywords)
+    .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
+    .where(where);
+  await db.delete(schema.appKeywords).where(where);
+  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  return {
+    removed: rows.map((r) => ({ ...r, relevanceCheckedAt: r.relevanceCheckedAt?.toISOString() ?? null, createdAt: r.createdAt.toISOString() })),
+  };
+}
+
+const restoreSchema = z.object({
+  appId: z.number().int().positive(),
+  rows: z
+    .array(
+      z.object({
+        keywordId: z.number().int().positive(),
+        source: z.enum(KEYWORD_SOURCES),
+        relevance: z.number().int().min(1).max(5).nullable(),
+        relevanceSource: z.enum(RELEVANCE_SOURCES).nullable(),
+        intent: z.enum(KEYWORD_INTENTS).nullable(),
+        relevanceCheckedAt: z.iso.datetime().nullable(),
+        createdAt: z.iso.datetime(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/** «Deshacer»: follows again the keywords just removed, with their origin, relevance and date. */
+export async function restoreKeywords(appId: number, rows: RemovedKeyword[]): Promise<{ restored: number; error?: string }> {
+  const parsed = restoreSchema.safeParse({ appId, rows });
+  if (!parsed.success) return { restored: 0, error: "No se pudieron recuperar las keywords." };
+  const restored = await getDb()
+    .insert(schema.appKeywords)
+    .values(
+      parsed.data.rows.map((r) => ({
+        ...r,
+        appId: parsed.data.appId,
+        relevanceCheckedAt: r.relevanceCheckedAt ? new Date(r.relevanceCheckedAt) : null,
+        createdAt: new Date(r.createdAt),
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({ keywordId: schema.appKeywords.keywordId });
+  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  return { restored: restored.length };
 }
 
 export async function unfollowApp(formData: FormData) {
@@ -169,13 +266,20 @@ export async function followInCountry(formData: FormData) {
 
   if (copyKeywords) {
     const terms = await db
-      .select({ term: schema.keywords.term, relevance: schema.appKeywords.relevance })
+      .select({
+        term: schema.keywords.term,
+        source: schema.appKeywords.source,
+        relevance: schema.appKeywords.relevance,
+        relevanceSource: schema.appKeywords.relevanceSource,
+        intent: schema.appKeywords.intent,
+      })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
       .where(eq(schema.appKeywords.appId, appId));
     await followKeywords(
       app.id,
-      terms.map((t) => ({ term: t.term, relevance: t.relevance ?? undefined })),
+      // Same origin and relevance as in the original country.
+      terms,
       "manual",
     );
   }
