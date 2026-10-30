@@ -20,6 +20,14 @@ import {
   type ScreenshotCopy,
   screenshotCopySchema,
 } from "./assets/creative-ai";
+import { buildLocalizePrompt, LOCALIZE_SYSTEM_PROMPT, type LocalizePromptInput } from "./localize";
+import {
+  buildReleaseNotesPrompt,
+  RELEASE_NOTES_SYSTEM_PROMPT,
+  type ReleaseNotesInput,
+  type ReleaseNotesOutput,
+  releaseNotesOutputSchema,
+} from "./release-notes";
 import {
   buildChangelogPrompt,
   CHANGELOG_SYSTEM_PROMPT,
@@ -125,4 +133,14 @@ export function importChangelog(text: string, current: ChangelogContext): Promis
 /** Asks Claude to rate 1–5 how relevant each keyword is for the app, and whether searchers want another kind of app. One batch (up to 100). */
 export function rateRelevance(context: RelevanceContext, items: RelevanceItem[]): Promise<{ output: RelevanceOutput; model: string }> {
   return askClaude(relevanceOutputSchema, RELEVANCE_SYSTEM_PROMPT, buildRelevancePrompt(context, items));
+}
+
+/** Asks Claude to write the listing for another locale from that market's searches (not a literal translation). Only a proposal. */
+export function localizeListing(input: LocalizePromptInput, feedback?: string[]): Promise<{ output: ListingOutput; model: string }> {
+  return askClaude(listingOutputSchema, LOCALIZE_SYSTEM_PROMPT, buildLocalizePrompt(input, feedback));
+}
+
+/** Asks Claude for the release notes of the next version in one locale. */
+export function writeReleaseNotes(input: ReleaseNotesInput, feedback?: string[]): Promise<{ output: ReleaseNotesOutput; model: string }> {
+  return askClaude(releaseNotesOutputSchema, RELEASE_NOTES_SYSTEM_PROMPT, buildReleaseNotesPrompt(input, feedback));
 }

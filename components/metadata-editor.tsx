@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { discardDraft, type DraftState, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
+import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
+import type { DraftAge, DraftTarget } from "@/lib/listing-drafts";
 import type { ListingProposal } from "@/lib/listing-optimizer";
 import {
   appendToKeywordField,
@@ -26,8 +27,21 @@ type Props = {
   appId: number;
   store: Store;
   initial: MetadataDraft;
-  published: MetadataDraft;
+  /** Published listing to compare with; null for a language the store listing is not in. */
+  published: MetadataDraft | null;
   hasDraft: boolean;
+  /** Which listing this is: a locale's main listing (country "") or a Google Play custom listing. */
+  target: DraftTarget;
+  /** Spanish names: "inglés (Estados Unidos)" for the target, and the main listing's locale. */
+  targetName: string;
+  mainName: string;
+  isMain: boolean;
+  /** Same language as the main listing: the optimizer and the tracked keywords apply. */
+  sameLanguage: boolean;
+  /** «Borrador del … · la ficha publicada cambió el …» (H11.6). */
+  age: DraftAge | null;
+  /** Shown in the coverage card instead of the list when the keywords do not apply to this language. */
+  keywordNote?: string;
   /** Tracked keywords; `relevant` ones (not noise, relevance 3+ or unrated) count in the weighted score, like in the optimizer. */
   keywords: { term: string; opportunity: number | null; relevant: boolean }[];
   /** Store language and category, for the policy checks. */
@@ -40,10 +54,33 @@ type Props = {
   product: { empty: boolean; nextCount: number };
 };
 
-export function MetadataEditor({ appId, store, initial, published, hasDraft, keywords, policy, brands, brandExceptions, aiEnabled, product }: Props) {
+export function MetadataEditor({
+  appId,
+  store,
+  initial,
+  published,
+  hasDraft,
+  target,
+  targetName,
+  mainName,
+  isMain,
+  sameLanguage,
+  age,
+  keywordNote,
+  keywords,
+  policy,
+  brands,
+  brandExceptions,
+  aiEnabled,
+  product,
+}: Props) {
   const [draft, setDraft] = useState(initial);
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
-  const [ai, optimizeAction, optimizing] = useActionState<OptimizeState, FormData>(optimizeListing, null);
+  // One proposal at a time: «Optimizar con IA» or «Adaptar a …», told apart by the submit button's intent.
+  const [ai, aiAction, optimizing] = useActionState<OptimizeState, FormData>(
+    (prev, formData) => (formData.get("intent") === "localize" ? localizeListingAction(prev, formData) : optimizeListing(prev, formData)),
+    null,
+  );
   const [focus, setFocus] = useState("");
   // Fields of the current proposal already applied or discarded.
   const [handled, setHandled] = useState<{ proposal?: ListingProposal; keys: FieldKey[] }>({ keys: [] });
@@ -80,15 +117,31 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
       <Card className="px-5 py-5">
         <form action={action} className="flex flex-col gap-5">
           <input type="hidden" name="appId" value={appId} />
+          <input type="hidden" name="locale" value={target.locale} />
+          <input type="hidden" name="country" value={target.country} />
+          {age && (
+            <p role={age.stale ? "status" : undefined} className={`rounded-lg px-3 py-2 text-[13px] ${age.stale ? "bg-warn-bg text-warn-fg" : "bg-surface-muted text-muted"}`}>
+              {age.text}
+            </p>
+          )}
           {aiEnabled && (
             <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-muted px-4 py-3">
               <label htmlFor="ai-focus" className="text-[13px] font-medium text-ink-soft">
-                Optimizar con IA
+                {isMain ? "Optimizar con IA" : `Escribir la ficha en ${targetName} con IA`}
               </label>
-              <p className="text-xs text-muted">
-                Reescribe la ficha con tus keywords (prioriza las de más oportunidad y las que ya rozan el top) respetando los límites de la tienda.
-                Verás la propuesta campo a campo antes de aplicarla.
-              </p>
+              {isMain ? (
+                <p className="text-xs text-muted">
+                  Reescribe la ficha con tus keywords (prioriza las de más oportunidad y las que ya rozan el top) respetando los límites de la tienda.
+                  Verás la propuesta campo a campo antes de aplicarla.
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  «Adaptar» parte de la ficha principal ({mainName}) y usa lo que se busca en el país de destino: el autocompletado de la tienda y los
+                  títulos de las apps que salen arriba. No es una traducción literal. Verás la propuesta campo a campo; no se guarda nada hasta que
+                  pulses «Guardar borrador».
+                  {sameLanguage ? " «Optimizar» reescribe este texto con tus keywords, como en la ficha principal." : ""}
+                </p>
+              )}
               {product.empty ? (
                 <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
                   Tu ficha de producto está vacía: la IA solo conoce la ficha publicada, que puede estar desfasada.{" "}
@@ -129,9 +182,32 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
                   placeholder="Opcional: en qué centrarse, p. ej. «entrenar para un maratón»"
                   className={`${inputClass} min-w-0 flex-1`}
                 />
-                <button type="submit" formAction={optimizeAction} disabled={optimizing} aria-busy={optimizing} className={buttonSecondary}>
-                  {optimizing ? "Optimizando…" : "Optimizar con IA"}
-                </button>
+                {!isMain && (
+                  <button
+                    type="submit"
+                    name="intent"
+                    value="localize"
+                    formAction={aiAction}
+                    disabled={optimizing}
+                    aria-busy={optimizing}
+                    className={buttonSecondary}
+                  >
+                    {optimizing ? "Escribiendo…" : `Adaptar a ${target.locale}`}
+                  </button>
+                )}
+                {sameLanguage && (
+                  <button
+                    type="submit"
+                    name="intent"
+                    value="optimize"
+                    formAction={aiAction}
+                    disabled={optimizing}
+                    aria-busy={optimizing}
+                    className={buttonSecondary}
+                  >
+                    {optimizing ? "Optimizando…" : "Optimizar con IA"}
+                  </button>
+                )}
               </div>
               <span aria-live="polite" className="text-[13px]">
                 {ai?.error && <span className="text-danger">{ai.error}</span>}
@@ -147,7 +223,7 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
             ))}
           {report.fields.map((f) => {
             const id = `field-${f.key}`;
-            const changed = draft[f.key] !== published[f.key];
+            const changed = published != null && draft[f.key] !== published[f.key];
             const props = {
               id,
               name: f.key,
@@ -195,9 +271,11 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
             <button type="submit" disabled={pending} className={buttonPrimary}>
               {pending ? "Guardando…" : "Guardar borrador"}
             </button>
-            <button type="button" className={buttonSecondary} onClick={() => setDraft(published)}>
-              Volver a la ficha publicada
-            </button>
+            {published && (
+              <button type="button" className={buttonSecondary} onClick={() => setDraft(published)}>
+                {isMain ? "Volver a la ficha publicada" : "Volver al texto de partida"}
+              </button>
+            )}
             {hasDraft && (
               <button type="submit" formAction={discardDraft} className={`${buttonSecondary} text-danger`}>
                 Borrar borrador
@@ -222,7 +300,7 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
         {proposal && proposed && (pendingKeys.length > 0 || proposal.notes.length > 0) && (
           <Card aria-label="Propuesta de la IA" className="px-5 py-4">
             <h2 className="text-[15px] font-semibold">Propuesta de la IA</h2>
-            {proposedWeighted && (
+            {proposedWeighted && scoring.length > 0 && (
               <p className="mt-1 text-[13px] text-muted">
                 Cobertura ponderada: {weighted.score} →{" "}
                 <span className={`font-mono font-semibold ${regressed ? "text-down" : proposedWeighted.score > weighted.score ? "text-up" : "text-ink"}`}>
@@ -298,7 +376,9 @@ export function MetadataEditor({ appId, store, initial, published, hasDraft, key
           <div className="border-b border-line px-5 py-4">
             <h2 className="text-[15px] font-semibold">Cobertura de keywords</h2>
             <p className="mt-1 text-[13px] text-muted">
-              {keywords.length === 0
+              {keywordNote
+                ? keywordNote
+                : keywords.length === 0
                 ? "Aún no sigues ninguna keyword."
                 : `${covered} de ${keywords.length} tienen todas sus palabras en ${store === "ios" ? "nombre, subtítulo o campo de keywords" : "título o descripciones"}.`}
             </p>

@@ -26,6 +26,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 16 | Alertas útiles (sin ruido, agrupadas y con preferencias), profundidad real del ranking y resumen sin movimientos falsos | Hecho |
 | 17 | Estacionalidad fiable: señal mínima, picos sostenidos, popularidad mínima, calendario y aviso 3 semanas antes | Hecho |
 | 18 | Reseñas de la competencia: cualquier app del TOP 5, selector de país, oportunidades para la ficha y lo que pide la categoría | Hecho |
+| 19 | Fichas por idioma y país (borradores por locale, fichas personalizadas de Play, adaptación con IA, matriz de cobertura) y notas de la versión | Hecho |
 
 ## Stack
 
@@ -108,7 +109,30 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 
 ## Editor de ficha
 
-La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos; para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos, uno por idioma (ver «Fichas por idioma y país»); para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+
+### Fichas por idioma y país
+
+Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (migración `0015_listing_drafts`): `locale` (BCP 47: `es-ES`, `en-US`, `zh-Hans`…), `country` y el texto. `country` vale `""` para la ficha principal del idioma y un código de país (`mx`) para una **ficha personalizada por país** de Google Play. Se eligió `""` y no `NULL` porque en Postgres dos `NULL` nunca chocan en un índice único: con `""` basta el índice `(app_id, locale, country)` y el guardado es un upsert.
+
+- **Selector de idioma** encima del editor (`?locale=en-US&country=mx` en la URL). Ofrece la ficha principal (el `locale` del país de la app en `lib/countries.ts`), en el App Store los otros idiomas que Apple indexa en ese país (`extraLocales`), los borradores guardados y el resto de idiomas. En Google Play, además, «Ficha personalizada por país».
+- `extraLocales` sale de la tabla [App Store localizations](https://developer.apple.com/help/app-store-connect/reference/app-store-localizations) de Apple, leída el **30 oct 2026**: por ejemplo, en Estados Unidos también cuentan el español (México), el chino, el francés, el coreano, el portugués (Brasil), el ruso, el árabe y el vietnamita; en España, el catalán y el inglés (Reino Unido). Apple la cambia de vez en cuando: verifícala antes de fiarte. De la India solo se guarda el hindi de sus 11 idiomas extra.
+- **Antigüedad del borrador**: «Borrador del 27 oct · la ficha publicada cambió el 29 oct…» en amarillo cuando la tienda actualizó la app (`meta.updatedAt`) después de guardar el borrador; si la tienda no da fecha, solo dice cuándo se leyó la ficha (`metaFetchedAt`).
+- **Adaptar a otro idioma** con IA (`localizeListing`, prompt `loc-1` en `lib/localize.ts`): parte de la ficha principal (borrador o publicada) y usa el autocompletado de la tienda y los títulos del TOP en el país de destino (`lib/locale-market.ts`: 1 lectura de la ficha, hasta 4 autocompletados y 2 búsquedas, con caché de 6 horas por servidor), más la ficha de producto. No es una traducción literal. La propuesta sale campo a campo como la del optimizador, pasa por el comprobador de normas (con un reintento si rompe un límite, la marca o una norma con nivel de error) y no se guarda hasta que pulsas «Guardar borrador».
+- Tus keywords son las del país de la app: en un borrador de otro idioma el editor no las mide y lo dice. Para medir otro idioma, sigue la app en ese país desde «Otros países».
+- **Cobertura por idioma**: cuando hay más de una ficha, una tabla con tus 25 keywords relevantes de más oportunidad × cada ficha guardada, con la cobertura ponderada de cada una y el campo que cubre cada keyword.
+- `apps.draft` se copió a `listing_drafts` en la migración (con el locale del país de la app) y ya no se escribe; se borrará en una versión posterior.
+- Para leer un borrador desde otro módulo (la publicación en Google Play de la fase 20): `getListingDraft(appId, locale, country = "")` en `lib/listing-draft-queries.ts`, o `getListingDrafts(appId)` para todos. El `locale` es BCP 47 con región; Play Console usa algunos códigos propios (`es-419` para Latinoamérica), así que hará falta un mapeo al publicar.
+
+### Notas de la versión
+
+La tarjeta **Notas de la versión** del editor escribe el texto de «Novedades de esta versión» en el idioma abierto (`writeReleaseNotes`, prompt `rn-1` en `lib/release-notes.ts`).
+
+- Parte de las funciones **Próxima versión** de la ficha de producto, las notas de la última versión declarada y el CHANGELOG que pegues (hasta 10.000 caracteres). Usa el tono de la marca y, solo si encajan con naturalidad, tus 10 keywords relevantes de más oportunidad (si el idioma es el de tus keywords).
+- Límites: Google Play, **500** caracteres por idioma; App Store, **4000**. Si la IA se pasa, el texto se corta en la última línea completa, se avisa y se pide una segunda versión más corta.
+- Texto plano para la tienda: quita el markdown y usa viñetas «•».
+- Comprobador de normas reducido: términos de precio, promoción o ranking, otras marcas, testimonios, afirmaciones de salud y precios concretos, más la longitud. Se repite en el navegador mientras editas el texto.
+- No se guarda: se edita en la tarjeta y se copia con «Copiar» a la consola de la tienda.
 
 ### Candado de calidad
 

@@ -4,11 +4,12 @@ import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
-import { AiError, rateRelevance, rewriteListing, suggestKeywords } from "@/lib/claude";
+import { AiError, localizeListing, rateRelevance, rewriteListing, suggestKeywords, writeReleaseNotes } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { followKeywords } from "@/lib/follow";
 import { detectBrands, getBrandExceptions } from "@/lib/brand-queries";
 import {
+  applyProposal,
   assessProposal,
   type Attempt,
   brandOf,
@@ -19,11 +20,26 @@ import {
   proposalFeedback,
   qualityFeedback,
 } from "@/lib/listing-optimizer";
+import { deleteListingDraft, getListingDraft, saveListingDraft } from "@/lib/listing-draft-queries";
+import {
+  type DraftTarget,
+  isMainTarget,
+  localeLanguage,
+  mainLocale,
+  marketCountryFor,
+  resolveTarget,
+  sharesMainLanguage,
+  storeLangFor,
+} from "@/lib/listing-drafts";
+import { researchMarket } from "@/lib/locale-market";
+import { cleanLocalizedProposal } from "@/lib/localize";
 import { draftFromMeta, type MetadataDraft, weightedCoverage } from "@/lib/metadata-check";
-import { FACTS_MODES } from "@/lib/product-facts";
-import { productFactsPrompt } from "@/lib/product-queries";
+import { policyCheck } from "@/lib/policy-check";
+import { FACTS_MODES, factsForPrompt } from "@/lib/product-facts";
+import { getProductFacts, productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { chunk, cleanRatings, isRelevantKeyword } from "@/lib/relevance";
+import { cleanReleaseNotes, hasReleaseMaterial, MAX_PASTED_CHANGELOG, type ReleaseNotes } from "@/lib/release-notes";
 import { rateAppKeywords, rateNewKeywords, relevanceContextFor, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
@@ -189,6 +205,15 @@ const draftSchema = z.object({
 export type CoverageWarning = { before: number; after: number; against: "draft" | "published"; lost: string[] };
 export type DraftState = { savedAt?: string; warning?: CoverageWarning; error?: string } | null;
 
+/** Which draft the form is for: hidden «locale» and «country» fields, validated like the page's URL. */
+function targetFrom(formData: FormData, app: { country: string; store: "ios" | "android" }): DraftTarget {
+  const str = (k: string) => {
+    const v = formData.get(k);
+    return typeof v === "string" ? v : null;
+  };
+  return resolveTarget(app.country, app.store, { locale: str("locale"), country: str("country") });
+}
+
 export async function saveDraft(_prev: DraftState, formData: FormData): Promise<DraftState> {
   const appId = idSchema.parse(formData.get("appId"));
   const fields = Object.fromEntries(Object.keys(draftSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
@@ -198,35 +223,43 @@ export async function saveDraft(_prev: DraftState, formData: FormData): Promise<
   const db = getDb();
   const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };
-  await db.update(schema.apps).set({ draft }).where(eq(schema.apps.id, appId));
+  const target = targetFrom(formData, app);
+  const previousRow = await getListingDraft(appId, target.locale, target.country);
+  // apps.draft is no longer written: drafts live in listing_drafts, one per locale (and country).
+  const savedAt = await saveListingDraft(appId, target, draft);
   revalidatePath(`/apps/${appId}/metadata`);
 
   // Same weighted coverage as the editor and the optimizer, against the previous draft or the published listing.
+  // Only for listings in the language of the tracked keywords: in another language they say nothing.
   let warning: CoverageWarning | undefined;
-  try {
-    const { lang } = getCountry(app.country);
-    const rows = (await getKeywordRows(app)).filter((r) => isRelevantKeyword(r, lang));
-    const previous = app.draft ?? draftFromMeta(app.meta);
-    const before = weightedCoverage(app.store, previous, rows);
-    const after = weightedCoverage(app.store, draft, rows);
-    if (after.score < before.score) {
-      const lost = after.items
-        .filter((a, i) => a.credit === 0 && before.items[i].credit > 0)
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 5)
-        .map((a) => a.term);
-      warning = { before: before.score, after: after.score, against: app.draft ? "draft" : "published", lost };
+  if (sharesMainLanguage(app.country, target)) {
+    try {
+      const { lang } = getCountry(app.country);
+      const rows = (await getKeywordRows(app)).filter((r) => isRelevantKeyword(r, lang));
+      const previous = previousRow?.draft ?? draftFromMeta(app.meta);
+      const before = weightedCoverage(app.store, previous, rows);
+      const after = weightedCoverage(app.store, draft, rows);
+      if (after.score < before.score) {
+        const lost = after.items
+          .filter((a, i) => a.credit === 0 && before.items[i].credit > 0)
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 5)
+          .map((a) => a.term);
+        warning = { before: before.score, after: after.score, against: previousRow ? "draft" : "published", lost };
+      }
+    } catch (err) {
+      // The draft is already saved; the warning is a bonus.
+      console.error("saveDraft: coverage check failed", err);
     }
-  } catch (err) {
-    // The draft is already saved; the warning is a bonus.
-    console.error("saveDraft: coverage check failed", err);
   }
-  return { savedAt: new Date().toISOString(), warning };
+  return { savedAt: savedAt.toISOString(), warning };
 }
 
 export async function discardDraft(formData: FormData) {
   const appId = idSchema.parse(formData.get("appId"));
-  await getDb().update(schema.apps).set({ draft: null }).where(eq(schema.apps.id, appId));
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return;
+  await deleteListingDraft(appId, targetFrom(formData, app));
   revalidatePath(`/apps/${appId}/metadata`);
 }
 
@@ -390,6 +423,178 @@ export async function estimateRelevance(appId: number, terms: string[]): Promise
     return { ratings };
   } catch (err) {
     if (err instanceof AiError) return { ratings: {}, error: err.message };
+    throw err;
+  }
+}
+
+/**
+ * «Adaptar a <idioma>»: Claude writes the listing for the editor's locale from the main listing (its
+ * saved draft, or the published one), using that market's autocomplete and top app titles. Nothing is
+ * saved: the editor shows it as a proposal, field by field, like the optimizer's.
+ */
+export async function localizeListingAction(_prev: OptimizeState, formData: FormData): Promise<OptimizeState> {
+  const appId = idSchema.parse(formData.get("appId"));
+  const focus = z.string().trim().max(200).catch("").parse(formData.get("focus") ?? "");
+  const mode = z.enum(FACTS_MODES).catch("next").parse(formData.get("factsMode"));
+  const fields = Object.fromEntries(Object.keys(draftSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
+  const parsed = draftSchema.safeParse(fields);
+  if (!parsed.success) return { error: "Algún campo es demasiado largo para enviarlo a la IA." };
+  const current: MetadataDraft = parsed.data;
+
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return { error: "App no encontrada." };
+  const target = targetFrom(formData, app);
+  if (isMainTarget(app.country, target)) return { error: "Esta es la ficha principal: elige otro idioma o país para adaptarla." };
+
+  const sourceLocale = mainLocale(app.country);
+  const country = getCountry(app.country);
+  const [mainRow, rows, facts] = await Promise.all([
+    getListingDraft(appId, sourceLocale, ""),
+    getKeywordRows(app),
+    productFactsPrompt(app.id, mode),
+  ]);
+  const source = mainRow?.draft ?? draftFromMeta(app.meta);
+  const brand = brandOf(source.title || app.meta.title);
+  const { brands } = await detectBrands(app, rows, facts);
+  const marketCode = marketCountryFor(target);
+  const market = marketCode
+    ? await researchMarket(
+        app,
+        { country: marketCode, lang: storeLangFor(target.locale) },
+        { title: source.title || app.meta.title, category: app.meta.category },
+      )
+    : null;
+  const input = {
+    store: app.store,
+    sourceLocale,
+    targetLocale: target.locale,
+    marketCountryName: marketCode ? getCountry(marketCode).name : null,
+    brand,
+    source,
+    sourceKeywords: rows.filter((r) => isRelevantKeyword(r, country.lang)).map((r) => ({ term: r.term, opportunity: r.opportunity })),
+    autocomplete: market?.autocomplete ?? [],
+    topTitles: market?.topTitles ?? [],
+    existing: market?.existing ?? null,
+    category: market?.category ?? app.meta.category,
+    facts,
+    avoidBrands: brands,
+    focus: focus || undefined,
+  };
+  const policy = { lang: localeLanguage(target.locale), category: app.meta.category, brands, ownBrand: brand };
+  // Rule breaks of a proposal: over the limit, brand dropped, store policy errors (lib/policy-check.ts).
+  const problems = (proposal: ListingProposal) => [
+    ...proposalFeedback(app.store, proposal, brand),
+    ...policyCheck(app.store, applyProposal(current, proposal), policy)
+      .filter((i) => i.level === "error")
+      .map((e) => `Store policy error${e.ruleId ? ` (${e.ruleId})` : ""}: ${e.text}`),
+  ];
+
+  try {
+    const first = await localizeListing(input);
+    let proposal = cleanLocalizedProposal(app.store, first.output);
+    let model = first.model;
+    let attempts = 1;
+    const feedback = problems(proposal);
+    if (feedback.length > 0) {
+      try {
+        const second = await localizeListing(input, feedback);
+        const retry = cleanLocalizedProposal(app.store, second.output);
+        attempts = 2;
+        if (problems(retry).length <= feedback.length) {
+          proposal = retry;
+          model = second.model;
+        }
+      } catch (err) {
+        if (!(err instanceof AiError)) throw err;
+      }
+    }
+    const notes = [...proposal.notes];
+    if (!market || market.autocomplete.length === 0) {
+      notes.push("No hubo autocompletado de la tienda para ese país: la adaptación usa solo el criterio de la IA. Revisa las keywords.");
+    }
+    return { proposal: { ...proposal, notes: notes.slice(0, 5), attempts }, model };
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
+    throw err;
+  }
+}
+
+export type ReleaseNotesState = { result?: ReleaseNotes; model?: string; error?: string } | null;
+
+/** «Notas de la versión»: Claude writes the «What's new» text of the next version for the editor's locale. Nothing is saved. */
+export async function generateReleaseNotes(_prev: ReleaseNotesState, formData: FormData): Promise<ReleaseNotesState> {
+  const appId = idSchema.parse(formData.get("appId"));
+  const version = z.string().trim().max(30).catch("").parse(formData.get("version") ?? "");
+  const changelog = z.string().trim().max(MAX_PASTED_CHANGELOG).safeParse(formData.get("changelog") ?? "");
+  if (!changelog.success) {
+    return { error: `El CHANGELOG pegado pasa de ${MAX_PASTED_CHANGELOG.toLocaleString("es-ES")} caracteres: pega solo la parte de esta versión.` };
+  }
+
+  const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  if (!app) return { error: "App no encontrada." };
+  const target = targetFrom(formData, app);
+  const [product, rows, mainRow] = await Promise.all([
+    getProductFacts(app.id),
+    getKeywordRows(app),
+    getListingDraft(appId, mainLocale(app.country), ""),
+  ]);
+  const features = product.features
+    .filter((f) => f.status === "next_release" && f.advertise)
+    .map((f) => ({ name: f.name, summary: f.summary }));
+  const latest = product.releases[0];
+  const latestRelease = latest ? { version: latest.version, notes: latest.notes } : null;
+  if (!hasReleaseMaterial({ features, latestRelease, changelog: changelog.data })) {
+    return { error: "No hay novedades de las que escribir: añade funciones «Próxima versión» en la ficha de producto o pega el CHANGELOG." };
+  }
+  const facts = factsForPrompt(product.facts, product.features, "next");
+  const { lang } = getCountry(app.country);
+  // Tracked keywords are in the main language: only suggested for listings in that language.
+  const keywords = sharesMainLanguage(app.country, target)
+    ? rows
+        .filter((r) => isRelevantKeyword(r, lang))
+        .sort((a, b) => (b.opportunity ?? -1) - (a.opportunity ?? -1))
+        .slice(0, 10)
+        .map((r) => r.term)
+    : [];
+  const { brands } = await detectBrands(app, rows, facts);
+  const input = {
+    store: app.store,
+    locale: target.locale,
+    brand: brandOf(mainRow?.draft.title || app.meta.title),
+    version: version || null,
+    features,
+    latestRelease,
+    changelog: changelog.data || null,
+    facts,
+    keywords,
+  };
+  const ctx = { lang: localeLanguage(target.locale), category: app.meta.category, brands };
+  // What to send back for one more try: the text was cut to fit, or a store rule is broken.
+  const errors = (r: ReleaseNotes) => [
+    ...(r.trimmed ? [`The text had more than ${r.limit} characters and was cut; write it shorter.`] : []),
+    ...r.issues.filter((i) => i.level !== "info").map((i) => `${i.ruleId ?? "length"}: ${i.text}`),
+  ];
+
+  try {
+    const first = await writeReleaseNotes(input);
+    let result = cleanReleaseNotes(app.store, first.output, ctx);
+    let model = first.model;
+    const feedback = errors(result);
+    if (feedback.length > 0) {
+      try {
+        const second = await writeReleaseNotes(input, feedback);
+        const retry = cleanReleaseNotes(app.store, second.output, ctx);
+        if (errors(retry).length <= feedback.length) {
+          result = retry;
+          model = second.model;
+        }
+      } catch (err) {
+        if (!(err instanceof AiError)) throw err;
+      }
+    }
+    return { result, model };
+  } catch (err) {
+    if (err instanceof AiError) return { error: err.message };
     throw err;
   }
 }

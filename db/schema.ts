@@ -45,7 +45,7 @@ export const apps = pgTable(
     /** Last fetched store listing. */
     meta: jsonb("meta").$type<AppMeta>().notNull(),
     metaFetchedAt: timestamp("meta_fetched_at", { withTimezone: true }).notNull().defaultNow(),
-    /** Work-in-progress listing from the metadata editor. */
+    /** Old work-in-progress listing of the editor. Read only by migration 0015; drafts now live in listing_drafts. */
     draft: jsonb("draft").$type<MetadataDraft>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -352,6 +352,29 @@ export const brandExceptions = pgTable(
     word: text("word").notNull(),
   },
   (t) => [primaryKey({ columns: [t.appId, t.word] })],
+);
+
+/**
+ * One listing draft per language (F7): the main listing of a locale, or a Google Play custom store
+ * listing for one country. Replaces apps.draft, which is kept (no longer written) until a later version.
+ * `country` is "" for the main listing of the locale, not NULL: a plain unique index then works (NULLs
+ * never collide in Postgres) and upserts can target it.
+ */
+export const listingDrafts = pgTable(
+  "listing_drafts",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    /** BCP 47: "es-ES", "en-US", "zh-Hans"… */
+    locale: text("locale").notNull(),
+    /** "" = main listing of the locale; a country code ("mx") = custom store listing for that country. */
+    country: text("country").notNull().default(""),
+    draft: jsonb("draft").$type<MetadataDraft>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("listing_drafts_app_locale_country_idx").on(t.appId, t.locale, t.country)],
 );
 
 export type App = typeof apps.$inferSelect;
