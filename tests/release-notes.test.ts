@@ -11,6 +11,7 @@ import {
   type ReleaseNotesInput,
   releaseNotesIssues,
   tidyReleaseNotes,
+  upcomingRelease,
 } from "@/lib/release-notes";
 import product from "./fixtures/recordatorio/product.json";
 
@@ -123,5 +124,30 @@ describe("releaseNotesIssues (policy lite)", () => {
 
   it("is quiet for clean notes", () => {
     expect(releaseNotesIssues("android", "• Ahora puedes escanear la caja del medicamento para añadirlo.", { lang: "es" })).toEqual([]);
+  });
+});
+
+describe("upcomingRelease", () => {
+  const releases = [
+    { version: "2.4.0", date: "2026-09-12" },
+    { version: "2.3.0", date: "2026-07-01" },
+    { version: "2.5.0", date: null },
+    { version: "1.0", date: null },
+  ];
+
+  it("picks the release after the published version, not the newest dated one", () => {
+    expect(upcomingRelease(releases, "2.4.0")?.version).toBe("2.5.0");
+    expect(upcomingRelease([...releases, { version: "2.10.0", date: "2026-12-01" }], "2.4.0")?.version).toBe("2.10.0");
+  });
+
+  it("never picks the published version and falls back to the undated one when the store version is unknown", () => {
+    expect(upcomingRelease(releases.slice(0, 2), "2.4.0")).toBeNull();
+    expect(upcomingRelease(releases.slice(0, 3), null)?.version).toBe("2.5.0");
+    expect(upcomingRelease(releases.slice(0, 2), null)).toBeNull();
+  });
+
+  it("prefers the version the user typed, unless it is the published one", () => {
+    expect(upcomingRelease(releases, "2.3.0", "2.4.0")?.version).toBe("2.4.0");
+    expect(upcomingRelease(releases, "2.4.0", "2.4.0")?.version).toBe("2.5.0");
   });
 });

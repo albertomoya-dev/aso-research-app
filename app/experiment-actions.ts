@@ -18,8 +18,11 @@ function fromForm(formData: FormData) {
 
 /** Creates an experiment (no experimentId in the form) or updates one. */
 export async function saveExperiment(_prev: ExperimentState, formData: FormData): Promise<ExperimentState> {
-  const appId = idSchema.parse(formData.get("appId"));
-  const experimentId = formData.get("experimentId");
+  const ids = z
+    .object({ appId: idSchema, experimentId: idSchema.optional() })
+    .safeParse({ appId: formData.get("appId"), experimentId: formData.get("experimentId") || undefined });
+  if (!ids.success) return { error: "Experimento no válido: recarga la página." };
+  const { appId, experimentId } = ids.data;
   const parsed = fromForm(formData);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const db = getDb();
@@ -27,7 +30,7 @@ export async function saveExperiment(_prev: ExperimentState, formData: FormData)
     await db
       .update(schema.experiments)
       .set(parsed.data)
-      .where(and(eq(schema.experiments.id, idSchema.parse(experimentId)), eq(schema.experiments.appId, appId)));
+      .where(and(eq(schema.experiments.id, experimentId), eq(schema.experiments.appId, appId)));
   } else {
     const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId), columns: { id: true } });
     if (!app) return { error: "App no encontrada." };
@@ -38,10 +41,12 @@ export async function saveExperiment(_prev: ExperimentState, formData: FormData)
 }
 
 export async function deleteExperiment(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
-  const id = idSchema.parse(formData.get("experimentId"));
+  const appId = idSchema.safeParse(formData.get("appId"));
+  const id = idSchema.safeParse(formData.get("experimentId"));
+  // A form without valid ids (tampered or stale) has nothing to delete.
+  if (!appId.success || !id.success) return;
   await getDb()
     .delete(schema.experiments)
-    .where(and(eq(schema.experiments.id, id), eq(schema.experiments.appId, appId)));
-  revalidatePath(`/apps/${appId}/cambios`);
+    .where(and(eq(schema.experiments.id, id.data), eq(schema.experiments.appId, appId.data)));
+  revalidatePath(`/apps/${appId.data}/cambios`);
 }

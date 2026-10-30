@@ -49,6 +49,16 @@ describe("Google Play title", () => {
     expect(hits("play.title.promo", "android", { title: "Pastillas en 10 segundos" })).toEqual([]);
   });
 
+  it("does not flag promo words that are part of the app's own brand", () => {
+    expect(hits("play.title.promo", "android", { title: "Top Recetas: cocina fácil" })).toEqual([]);
+    expect(hits("play.title.promo", "android", { title: "Nueva Acrópolis - Cursos" })).toEqual([]);
+    expect(hits("play.title.promo", "android", { title: "Mejor Postura recordatorio" }, { lang: "es", ownBrand: "Mejor Postura" })).toEqual([]);
+    expect(hits("ios.name.claims", "ios", { title: "Top Recetas: cocina", subtitle: "Top Recetas para cada día" })).toEqual([]);
+    // The rest of the text still counts, and so does a plain title without a separator.
+    expect(hits("play.title.promo", "android", { title: "Top Recetas: la mejor cocina" })[0].text).toContain("mejor");
+    expect(hits("play.title.promo", "android", { title: "Top recetas de cocina" })).toHaveLength(1);
+  });
+
   it("calls to action in the title or short description", () => {
     expect(hits("play.title.cta", "android", { title: "Pastillero: descárgala ya" })).toHaveLength(1);
     expect(hits("play.title.cta", "android", { shortDescription: "Download now and never miss a pill" })).toHaveLength(1);

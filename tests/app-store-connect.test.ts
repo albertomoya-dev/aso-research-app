@@ -13,6 +13,8 @@ import {
 import {
   analyticsRequestBody,
   ASC_API,
+  ascErrorMessage,
+  AscPartialSaveError,
   AscStateError,
   ascUrl,
   createAscClient,
@@ -172,6 +174,28 @@ describe("App Store Connect client", () => {
     expect(patches[0].body).toEqual({
       data: { type: "appStoreVersionLocalizations", id: "vl", attributes: { keywords: "pastillas,alarma", description: "Nuevo", whatsNew: "Escáner de códigos" } },
     });
+  });
+
+  it("reports which fields were saved when only the first PATCH goes through", async () => {
+    const { client } = fakeAsc({
+      ...routes,
+      "PATCH /v1/appStoreVersionLocalizations/vl": () => new Response(JSON.stringify({ errors: [{ detail: "Keywords too long" }] }), { status: 409 }),
+    });
+    const listing = await client.readListing("123", null, "es-ES");
+    const err = await client.saveListing(listing, { name: "Recordatorio Pro", keywords: "pastillas,alarma" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AscPartialSaveError);
+    expect((err as AscPartialSaveError).saved).toEqual(["name"]);
+    expect((err as AscPartialSaveError).failed).toEqual(["keywords"]);
+    expect(ascErrorMessage(err)).not.toBe("Error inesperado al hablar con App Store Connect.");
+    // When the first PATCH fails nothing was saved: the plain error comes back.
+    const first = fakeAsc({
+      ...routes,
+      "PATCH /v1/appInfoLocalizations/il": () => new Response(JSON.stringify({ errors: [{ detail: "Name taken" }] }), { status: 409 }),
+    });
+    const l2 = await first.client.readListing("123", null, "es-ES");
+    const plain = await first.client.saveListing(l2, { name: "X", keywords: "y" }).catch((e: unknown) => e);
+    expect(plain).not.toBeInstanceOf(AscPartialSaveError);
+    expect(first.calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
   });
 
   it("says when there is no version in preparation or the locale is missing", async () => {

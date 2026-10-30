@@ -24,6 +24,7 @@ import { type DroppedFile, filesFromDrop } from "@/lib/assets/drop-files";
 import {
   drawSlide,
   ensureFonts,
+  fitVisionPayload,
   loadImage,
   pageFontFamily,
   renderSlidePng,
@@ -440,7 +441,8 @@ export function ScreenshotStudio({
   function writeCopy() {
     setStatus(null);
     startWriting(async () => {
-      const screens = sendScreens ? await screensForClaude() : [];
+      // Checked here too: a body over the server action limit would fail before the action answers.
+      const screens = sendScreens ? fitVisionPayload(await screensForClaude()) : [];
       const result: CopyResult = await generateScreenshotCopy(
         appId,
         spec.slides.map((s) => ({

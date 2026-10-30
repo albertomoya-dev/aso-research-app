@@ -210,7 +210,12 @@ describe("renderSummaryEmail", () => {
             baselineDate: "2026-10-19",
             share: 12.5,
             shareBefore: 10,
-            alerts: [{ title: "Strava ha cambiado su ficha", detail: "Título", tone: "info", date: "2026-10-20" }],
+            alerts: [
+              { kind: "competitor_change", title: "Strava ha cambiado su ficha", detail: "Título", tone: "info", date: "2026-10-20" },
+              // Also "info", but not competitor changes: they stay out of that list.
+              { kind: "seasonal_peak", title: "«correr» entra en temporada alta", detail: "", tone: "info", date: "2026-10-21" },
+              { kind: "new_leader", title: "Nuevo #1 en 3 keywords", detail: "", tone: "info", date: "2026-10-22" },
+            ],
           },
         ],
       },
@@ -223,5 +228,7 @@ describe("renderSummaryEmail", () => {
     expect(html).toContain("▲ andar: &#62; 30 → #18 (entra en los primeros 30)");
     expect(html).toContain("12,5%");
     expect(html).toContain("Strava ha cambiado su ficha (Título)");
+    expect(html).not.toContain("temporada alta");
+    expect(html).not.toContain("Nuevo #1");
   });
 });

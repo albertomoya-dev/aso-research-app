@@ -15,6 +15,12 @@ export const MIN_ACTIVE_MONTHS = 6;
 export const SUSTAINED_WEEKS = 3;
 /** Below this store popularity (0–100) a peak in Google is not worth preparing the listing for. */
 export const MIN_POPULARITY = 10;
+/**
+ * How many standard errors a month's weekly mean must sit above the yearly mean to be a peak.
+ * Google Trends rescales a flat but noisy series so that random months clear PEAK_FACTOR easily;
+ * this keeps the noise of a month's few weeks from passing as a season.
+ */
+export const NOISE_K = 3;
 
 /** Interest per calendar month, 0–100. Null for the month still in progress when nothing older covers it. */
 export type MonthlyProfile = (number | null)[];
@@ -67,15 +73,37 @@ export function monthlyProfile(points: TrendPoint[]): MonthlyProfile | null {
 }
 
 /**
- * Months with at least 3 weeks above the peak threshold (PEAK_FACTOR × the yearly weekly mean).
- * A month with only 1–2 weeks of data needs all of them, and at least 2.
+ * Week-to-week noise: the pooled standard deviation of the weeks around their own month's mean.
+ * Unlike the plain deviation of the year, a real season (months far apart) does not inflate it.
+ */
+export function weeklyNoise(buckets: number[][]): number {
+  let squares = 0;
+  let freedom = 0;
+  for (const weeks of buckets) {
+    if (weeks.length < 2) continue;
+    const m = mean(weeks);
+    squares += weeks.reduce((a, v) => a + (v - m) ** 2, 0);
+    freedom += weeks.length - 1;
+  }
+  return freedom > 0 ? Math.sqrt(squares / freedom) : 0;
+}
+
+/**
+ * Months with at least 3 weeks above the peak threshold (PEAK_FACTOR × the yearly weekly mean)
+ * whose weekly mean also clears the yearly mean by NOISE_K standard errors (`weeklyNoise` / √weeks),
+ * so a flat noisy series has no peaks. A month with only 1–2 weeks of data needs all of them, and at least 2.
  */
 export function sustainedMonths(points: TrendPoint[]): boolean[] {
   const complete = completePoints(points);
-  const threshold = mean(complete.map((p) => p.value)) * PEAK_FACTOR;
-  return byMonth(complete).map((weeks) => {
+  const yearMean = mean(complete.map((p) => p.value));
+  const threshold = yearMean * PEAK_FACTOR;
+  const buckets = byMonth(complete);
+  const noise = weeklyNoise(buckets);
+  return buckets.map((weeks) => {
+    if (weeks.length === 0) return false;
     const above = weeks.filter((v) => v > 0 && v >= threshold).length;
-    return above >= Math.max(2, Math.min(SUSTAINED_WEEKS, weeks.length));
+    const clearOfNoise = mean(weeks) - yearMean >= (NOISE_K * noise) / Math.sqrt(weeks.length);
+    return clearOfNoise && above >= Math.max(2, Math.min(SUSTAINED_WEEKS, weeks.length));
   });
 }
 

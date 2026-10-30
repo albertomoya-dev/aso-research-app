@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { ascConfig } from "@/lib/app-store-connect/auth";
-import { ascErrorMessage, getAscClient } from "@/lib/app-store-connect/client";
+import { ascErrorMessage, AscPartialSaveError, getAscClient } from "@/lib/app-store-connect/client";
 import { planAscPublish } from "@/lib/app-store-connect/plan";
 import { isKnownLocale } from "@/lib/listing-drafts";
 import { recordPublication } from "@/lib/publication-queries";
-import { ascNextFields, buildPublishPreview, fieldList, type PublishFields, publishedFields } from "@/lib/publications";
+import { ascNextFields, buildPublishPreview, fieldList, type PublishFieldKey, type PublishFields, publishedFields } from "@/lib/publications";
 
 // Writes to App Store Connect are double-gated like Google Play: ASC_ALLOW_WRITE=1 on the server and the
 // explicit confirmation of the dialog (confirm=yes) on every request.
@@ -48,35 +48,69 @@ export async function publishToAsc(_prev: AscActionState, formData: FormData): P
   if (!client) return { error: "La conexión con App Store Connect no está configurada." };
 
   const base = { appId: app.id, store: "ios" as const, locale: input.locale, storeLocale: plan.locale.code, country: "" };
-  let tried: PublishFields = {};
+  const fail = async (message: string, fields: PublishFields) => {
+    const attempt = buildPublishPreview("ios", null, fields);
+    await recordPublication({ ...base, fields: publishedFields(attempt.changes), status: "failed", error: message }).catch(() => {});
+    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+    return { error: `App Store Connect no aceptó el envío. ${message}` };
+  };
+
+  let listing;
+  let preview;
   try {
     // Re-read now: the texts in App Store Connect may have changed since the preview.
-    const listing = await client.readListing(app.storeId, app.meta.bundleId, plan.locale.code);
+    listing = await client.readListing(app.storeId, app.meta.bundleId, plan.locale.code);
     const { fields } = ascNextFields(
       plan.draft.draft,
       listing.fields,
       { promotionalText: input.promotionalText, whatsNew: input.whatsNew },
       listing.appInfoLocalizationId != null,
     );
-    tried = fields;
-    const preview = buildPublishPreview("ios", listing.fields, fields);
-    if (preview.blockers.length) return { error: `No se puede enviar: ${preview.blockers.join(" ")}` };
-    if (preview.changes.length === 0) return { ok: true, message: "App Store Connect ya tenía estos textos: no se ha enviado nada." };
-    const changed = Object.fromEntries(preview.changes.map((c) => [c.field, c.after])) as PublishFields;
-    await client.saveListing(listing, changed);
-    await recordPublication({ ...base, fields: publishedFields(preview.changes), status: "saved", externalRef: listing.version.id });
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
-    return {
-      ok: true,
-      message: `Guardado en la versión ${listing.version.versionString} de App Store Connect: ${fieldList(preview.changes.map((c) => c.label))}. Envíala a revisión desde App Store Connect cuando esté lista.`,
-    };
+    preview = buildPublishPreview("ios", listing.fields, fields);
   } catch (err) {
-    const message = ascErrorMessage(err);
-    const attempt = buildPublishPreview("ios", null, tried);
-    await recordPublication({ ...base, fields: publishedFields(attempt.changes), status: "failed", error: message }).catch(() => {});
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
-    return { error: `App Store Connect no aceptó el envío. ${message}` };
+    return fail(ascErrorMessage(err), {});
   }
+  if (preview.blockers.length) return { error: `No se puede enviar: ${preview.blockers.join(" ")}` };
+  if (preview.changes.length === 0) return { ok: true, message: "App Store Connect ya tenía estos textos: no se ha enviado nada." };
+  const changed = Object.fromEntries(preview.changes.map((c) => [c.field, c.after])) as PublishFields;
+
+  let saved: PublishFieldKey[];
+  let failure: string | null = null;
+  try {
+    saved = (await client.saveListing(listing, changed)).saved;
+  } catch (err) {
+    // App info and version are two PATCHes: the first may have gone through.
+    if (!(err instanceof AscPartialSaveError)) return fail(ascErrorMessage(err), changed);
+    saved = err.saved;
+    failure = ascErrorMessage(err);
+  }
+
+  // App Store Connect has the saved fields: from here on a failure is only bookkeeping.
+  const savedChanges = preview.changes.filter((c) => saved.includes(c.field));
+  const failedChanges = preview.changes.filter((c) => !saved.includes(c.field));
+  let historySaved = true;
+  try {
+    if (savedChanges.length) {
+      await recordPublication({ ...base, fields: publishedFields(savedChanges), status: "saved", externalRef: listing.version.id });
+    }
+    if (failure && failedChanges.length) {
+      await recordPublication({ ...base, fields: publishedFields(failedChanges), status: "failed", error: failure, externalRef: listing.version.id });
+    }
+    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+  } catch {
+    historySaved = false;
+  }
+  const note = historySaved ? "" : " Publicado, pero no se pudo guardar el historial: no saldrá en «Publicaciones» ni como anotación.";
+  const where = `la versión ${listing.version.versionString} de App Store Connect`;
+  if (failure) {
+    return {
+      error: `Guardado a medias en ${where}: ${fieldList(savedChanges.map((c) => c.label))} sí; ${fieldList(failedChanges.map((c) => c.label))} no. ${failure}${note}`,
+    };
+  }
+  return {
+    ok: true,
+    message: `Guardado en ${where}: ${fieldList(savedChanges.map((c) => c.label))}. Envíala a revisión desde App Store Connect cuando esté lista.${note}`,
+  };
 }
 
 /** Asks Apple to start generating the analytics reports (ONGOING) for the app. A write: gated and confirmed. */

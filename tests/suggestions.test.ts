@@ -4,10 +4,12 @@ import {
   competitorBrands,
   filterSuggestions,
   MAX_SUGGESTIONS,
+  PROMPT_VERSION,
   relevanceFactor,
   seedWords,
   topCompetitors,
 } from "@/lib/suggestions";
+import { EMPTY_FACTS, productBrandTerms } from "@/lib/product-facts";
 
 const item = (keyword: string, extra: Partial<Record<string, unknown>> = {}) => ({
   keyword,
@@ -82,6 +84,25 @@ describe("competitorBrands with options (real case)", () => {
 
   it("respects the user's exceptions", () => {
     expect(competitorBrands(competitors, "Yo", { ...options, exceptions: ["MyTherapy"] })).not.toContain("mytherapy");
+  });
+
+  it("does not take competitors named in the differentiators or constraints as our own words", () => {
+    const facts = {
+      ...EMPTY_FACTS,
+      pitch: "Alarmas exactas para cada toma",
+      audience: "Pacientes crónicos",
+      differentiators: ["Más sencillo que MyTherapy y Medisafe"],
+      constraints: ["No compararse con Pills Time"],
+    };
+    const productTerms = productBrandTerms(facts, [{ name: "Control de tu tratamiento", summary: "Historial de tomas" }]);
+    expect(productTerms).not.toMatch(/MyTherapy|Medisafe|Pills Time/);
+    const brands = competitorBrands(competitors, "Moyalo Games", { ...options, productTerms });
+    expect(brands).toEqual(expect.arrayContaining(["mytherapy", "medisafe", "pills time"]));
+    expect(brands).not.toContain("control");
+  });
+
+  it("is versioned after the PRODUCT FACTS block changed", () => {
+    expect(PROMPT_VERSION).toBe("kw-3");
   });
 });
 

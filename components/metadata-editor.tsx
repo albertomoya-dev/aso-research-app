@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { DraftAge, DraftTarget } from "@/lib/listing-drafts";
-import type { ListingProposal } from "@/lib/listing-optimizer";
+import { importantLosses, isRegression, type ListingProposal } from "@/lib/listing-optimizer";
 import {
   appendToKeywordField,
   charCount,
@@ -107,7 +107,18 @@ export function MetadataEditor({
   // Same pure function as the server's quality lock, against what is in the editor right now.
   const proposedWeighted = proposedDraft ? weightedCoverage(store, proposedDraft, scoring) : null;
   const diff = proposedWeighted ? keywordDiff(weighted, proposedWeighted) : null;
-  const regressed = proposedWeighted != null && proposedWeighted.score < weighted.score;
+  const lostImportant = diff ? importantLosses(diff) : [];
+  const scoreDropped = proposedWeighted != null && proposedWeighted.score < weighted.score;
+  // Same rule as the server (lower score or an important keyword lost); the server's verdict on the whole proposal also counts.
+  const regressed = Boolean(proposal?.regression) || (proposedWeighted != null && diff != null && isRegression(weighted.score, proposedWeighted.score, diff));
+  // What the warning shows: the live figures, else the server's for the whole proposal.
+  const drop: [number, number] | null =
+    scoreDropped && proposedWeighted
+      ? [weighted.score, proposedWeighted.score]
+      : proposal?.scoreBefore != null && proposal.scoreAfter != null && proposal.scoreAfter < proposal.scoreBefore
+        ? [proposal.scoreBefore, proposal.scoreAfter]
+        : null;
+  const lostShown = lostImportant.length > 0 ? lostImportant : proposal?.diff ? importantLosses(proposal.diff) : [];
   const labels = Object.fromEntries(FIELDS[store].map((f) => [f.key, f.label])) as Record<FieldKey, string>;
   const covered = report.coverage.filter((c) => c.covered).length;
   const extra = appendToKeywordField(draft.keywordField, report.missingWords);
@@ -303,16 +314,18 @@ export function MetadataEditor({
             {proposedWeighted && scoring.length > 0 && (
               <p className="mt-1 text-[13px] text-muted">
                 Cobertura ponderada: {weighted.score} →{" "}
-                <span className={`font-mono font-semibold ${regressed ? "text-down" : proposedWeighted.score > weighted.score ? "text-up" : "text-ink"}`}>
+                <span className={`font-mono font-semibold ${scoreDropped ? "text-down" : proposedWeighted.score > weighted.score ? "text-up" : "text-ink"}`}>
                   {proposedWeighted.score}
                 </span>{" "}
                 de 100 · keywords cubiertas: {covered} → {proposed.coverage.filter((c) => c.covered).length} de {keywords.length}. Revisa el texto antes de
                 publicarlo.
               </p>
             )}
-            {regressed && proposedWeighted && (
+            {regressed && (
               <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-                Esta propuesta cubre peor tus keywords que el texto actual ({weighted.score} → {proposedWeighted.score}).
+                Esta propuesta cubre peor tus keywords que el texto actual
+                {drop ? ` (${drop[0]} → ${drop[1]})` : ""}.
+                {lostShown.length > 0 ? ` Deja de cubrir keywords importantes: ${lostShown.slice(0, 5).map((l) => l.term).join(", ")}.` : ""}
                 {proposal.attempts === 2 ? " La IA lo intentó dos veces y esta es la mejor de las dos." : ""} Aplica solo los campos que te convenzan.
               </p>
             )}
@@ -349,7 +362,7 @@ export function MetadataEditor({
             )}
             {pendingKeys.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className={regressed ? buttonSecondary : buttonPrimary} onClick={() => apply(pendingKeys)}>
+                <button type="button" className={buttonSecondary} onClick={() => apply(pendingKeys)}>
                   Aplicar todo ({pendingKeys.length})
                 </button>
                 <button type="button" className={`${buttonSecondary} text-muted`} onClick={() => markDone(pendingKeys)}>

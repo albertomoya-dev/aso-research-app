@@ -137,6 +137,14 @@ export function createPlayClient(opts: { getToken: () => Promise<string>; fetch?
     },
     patchListing: (pkg: string, editId: string, language: string, fields: PlayListingFields) =>
       call<PlayListing>(playUrl(pkg, ["edits", editId, "listings", language]), { method: "PATCH", body: listingPatchBody(language, fields) }),
+    /**
+     * edits.listings.update (PUT): "Creates or updates a localized store listing", whereas patch only
+     * "Patches a localized store listing" (Android Publisher v3 discovery document, revision 20261029,
+     * https://developers.google.com/android-publisher/api-ref/rest/v3/edits.listings, read on 2026-10-30).
+     * Used for a language that has no listing yet.
+     */
+    updateListing: (pkg: string, editId: string, language: string, fields: PlayListingFields) =>
+      call<PlayListing>(playUrl(pkg, ["edits", editId, "listings", language]), { method: "PUT", body: listingPatchBody(language, fields) }),
     validateEdit: (pkg: string, editId: string) => call(playUrl(pkg, ["edits", editId], "validate"), { method: "POST" }),
     /** ERROR_IF_IN_REVIEW: never cancel changes already in Google's review (the API default would). */
     commitEdit: (pkg: string, editId: string) =>
@@ -176,8 +184,8 @@ export function createPlayClient(opts: { getToken: () => Promise<string>; fetch?
       }
     },
     /**
-     * Publishes the three texts of one language: insert → read the current listing → patch → validate →
-     * commit. If any step fails the edit is deleted, so nothing half-done stays in Play Console. Returns
+     * Publishes the three texts of one language: insert → read the current listing → patch (update, which
+     * creates it, when the language has no listing yet) → validate → commit. If any step fails the edit is deleted, so nothing half-done stays in Play Console. Returns
      * the listing before and after (the commit sends it to Google's review, which can take hours).
      * When the live texts already match, nothing is committed and `unchanged` is true.
      */
@@ -190,7 +198,7 @@ export function createPlayClient(opts: { getToken: () => Promise<string>; fetch?
         if (before && before.title.trim() === body.title && before.shortDescription.trim() === body.shortDescription && before.fullDescription.trim() === body.fullDescription) {
           return { editId: edit.id, before, after: before, unchanged: true };
         }
-        const after = await api.patchListing(pkg, edit.id, language, fields);
+        const after = before ? await api.patchListing(pkg, edit.id, language, fields) : await api.updateListing(pkg, edit.id, language, fields);
         await api.validateEdit(pkg, edit.id);
         await api.commitEdit(pkg, edit.id);
         committed = true;

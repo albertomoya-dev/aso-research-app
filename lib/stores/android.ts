@@ -20,6 +20,11 @@ function wrap<T>(fn: () => Promise<T>): Promise<T> {
   );
 }
 
+/** The package's TypeError when the autocomplete response has no suggestion list. */
+export function isEmptySuggestError(error: unknown): boolean {
+  return error instanceof TypeError && /reading 'map'/.test(error.message);
+}
+
 export function toSummary(app: IAppItem): AppSummary {
   return {
     store: "android",
@@ -63,7 +68,15 @@ export const android: StoreAdapter = {
   },
 
   async suggest(prefix, { country, lang }) {
-    return wrap(() => client.suggest({ term: prefix, country, lang }));
+    return wrap(async () => {
+      try {
+        return await client.suggest({ term: prefix, country, lang });
+      } catch (error) {
+        // With no suggestions Google answers [[null, …]] and the package calls .map on null.
+        if (isEmptySuggestError(error)) return [];
+        throw error;
+      }
+    });
   },
 
   async getReviews(id, { country, lang, limit }) {

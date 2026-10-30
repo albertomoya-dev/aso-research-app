@@ -8,6 +8,7 @@ import {
   type ScreenshotTheme,
   wrapWords,
 } from "./screenshots";
+import { MAX_VISION_IMAGE_CHARS, MAX_VISION_IMAGES } from "./creative-ai";
 
 /**
  * Draws one store screenshot on a 2D canvas context. Browser only (needs a canvas);
@@ -881,21 +882,46 @@ export async function shrinkImage(
 
 /**
  * A small JPEG of what a slide shows (its crop when it has one), for Claude to look at. 768 px on the
- * long side keeps the visible text readable and the request small.
+ * long side keeps the visible text readable and the request small. A busy screen can still come out
+ * over MAX_VISION_IMAGE_CHARS (the server drops those), so it is re-encoded with less quality and then
+ * smaller until it fits; null when even the smallest try does not.
  */
-export function screenThumbnail(image: HTMLImageElement, crop: Crop | null | undefined, maxSide = 768): string {
+export function screenThumbnail(image: HTMLImageElement, crop: Crop | null | undefined, maxSide = 768): string | null {
   const sx = crop ? crop.x * image.naturalWidth : 0;
   const sy = crop ? crop.y * image.naturalHeight : 0;
   const sw = crop ? crop.w * image.naturalWidth : image.naturalWidth;
   const sh = crop ? crop.h * image.naturalHeight : image.naturalHeight;
-  const scale = Math.min(1, maxSide / Math.max(sw, sh));
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(sw * scale));
-  canvas.height = Math.max(1, Math.round(sh * scale));
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas no disponible");
-  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.7);
+  for (const side of [maxSide, Math.round(maxSide * 0.75), Math.round(maxSide * 0.5)]) {
+    const scale = Math.min(1, side / Math.max(sw, sh));
+    canvas.width = Math.max(1, Math.round(sw * scale));
+    canvas.height = Math.max(1, Math.round(sh * scale));
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.7, 0.55, 0.4]) {
+      const url = canvas.toDataURL("image/jpeg", quality);
+      if (url.length <= MAX_VISION_IMAGE_CHARS) return url;
+    }
+  }
+  return null;
+}
+
+/** Keeps the screens sent to Claude under the server action body limit (4 MB, next.config.ts) with room for the rest. */
+export const MAX_VISION_PAYLOAD_CHARS = 3_000_000;
+
+/**
+ * The screens as the action accepts them: at most MAX_VISION_IMAGES, none over MAX_VISION_IMAGE_CHARS
+ * and, together, under `budget` characters; screens that do not fit go as null (Claude then reads only
+ * that slide's text), so one big image never costs the others.
+ */
+export function fitVisionPayload(images: (string | null)[], budget = MAX_VISION_PAYLOAD_CHARS): (string | null)[] {
+  let left = budget;
+  return images.slice(0, MAX_VISION_IMAGES).map((url) => {
+    if (!url || url.length > MAX_VISION_IMAGE_CHARS || url.length > left) return null;
+    left -= url.length;
+    return url;
+  });
 }
 
 /** The real font stack of the page, so canvas text matches the UI (next/font renames Inter). */

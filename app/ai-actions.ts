@@ -35,11 +35,11 @@ import { researchMarket } from "@/lib/locale-market";
 import { cleanLocalizedProposal } from "@/lib/localize";
 import { draftFromMeta, type MetadataDraft, weightedCoverage } from "@/lib/metadata-check";
 import { policyCheck } from "@/lib/policy-check";
-import { FACTS_MODES, factsForPrompt } from "@/lib/product-facts";
-import { getProductFacts, productFactsPrompt } from "@/lib/product-queries";
+import { FACTS_MODES, factsForPrompt, productBrandTerms } from "@/lib/product-facts";
+import { getProductFacts } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { chunk, cleanRatings, isRelevantKeyword } from "@/lib/relevance";
-import { cleanReleaseNotes, hasReleaseMaterial, MAX_PASTED_CHANGELOG, type ReleaseNotes } from "@/lib/release-notes";
+import { cleanReleaseNotes, hasReleaseMaterial, MAX_PASTED_CHANGELOG, type ReleaseNotes, upcomingRelease } from "@/lib/release-notes";
 import { rateAppKeywords, rateNewKeywords, relevanceContextFor, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
@@ -52,7 +52,7 @@ const idSchema = z.coerce.number().int().positive();
 async function gatherContext(app: typeof schema.apps.$inferSelect) {
   const db = getDb();
   // Keyword research looks ahead, so features of the next version count too.
-  const [tracked, previous, snapshots, facts, exceptions] = await Promise.all([
+  const [tracked, previous, snapshots, product, exceptions] = await Promise.all([
     db
       .select({ term: schema.keywords.term })
       .from(schema.appKeywords)
@@ -68,9 +68,10 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
       .where(and(eq(schema.rankSnapshots.appId, app.id), gte(schema.rankSnapshots.date, shiftDate(today(), -7))))
       .orderBy(desc(schema.rankSnapshots.date))
       .limit(200),
-    productFactsPrompt(app.id, "next"),
+    getProductFacts(app.id),
     getBrandExceptions(app.id),
   ]);
+  const facts = factsForPrompt(product.facts, product.features, "next");
 
   // The 25 apps that show up most in the TOP 5 of our keywords this week.
   const competitors = topCompetitors(snapshots, app.storeId, 25).map((c) => ({ title: c.title, developer: c.developer }));
@@ -82,10 +83,11 @@ async function gatherContext(app: typeof schema.apps.$inferSelect) {
   const autocomplete = [...new Set(lists.flatMap((r) => (r.status === "fulfilled" ? r.value : [])))].slice(0, 60);
 
   // Generic words (our title, tracked keywords, product sheet) never count as another app's brand.
+  // Only our own words from the sheet: the differentiators name competitors ("más sencillo que MyTherapy").
   const brands = competitorBrands(competitors, app.meta.developer, {
     ownTitle: app.meta.title,
     trackedTerms: tracked.map((t) => t.term),
-    productTerms: facts ?? "",
+    productTerms: productBrandTerms(product.facts, product.features),
     exceptions,
     lang,
   });
@@ -278,10 +280,11 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
 
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };
-  const [rows, facts] = await Promise.all([getKeywordRows(app), productFactsPrompt(app.id, mode)]);
+  const [rows, product] = await Promise.all([getKeywordRows(app), getProductFacts(app.id)]);
+  const facts = factsForPrompt(product.facts, product.features, mode);
   const country = getCountry(app.country);
   const brand = brandOf(current.title || app.meta.title);
-  const { brands } = await detectBrands(app, rows, facts);
+  const { brands } = await detectBrands(app, rows, product);
   // Only keywords worth building on: no filler, no foreign intent, relevance 3+ (or unrated).
   const relevant = rows.filter((r) => isRelevantKeyword(r, country.lang));
   const input = {
@@ -448,14 +451,11 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
 
   const sourceLocale = mainLocale(app.country);
   const country = getCountry(app.country);
-  const [mainRow, rows, facts] = await Promise.all([
-    getListingDraft(appId, sourceLocale, ""),
-    getKeywordRows(app),
-    productFactsPrompt(app.id, mode),
-  ]);
+  const [mainRow, rows, product] = await Promise.all([getListingDraft(appId, sourceLocale, ""), getKeywordRows(app), getProductFacts(app.id)]);
+  const facts = factsForPrompt(product.facts, product.features, mode);
   const source = mainRow?.draft ?? draftFromMeta(app.meta);
   const brand = brandOf(source.title || app.meta.title);
-  const { brands } = await detectBrands(app, rows, facts);
+  const { brands } = await detectBrands(app, rows, product);
   const marketCode = marketCountryFor(target);
   const market = marketCode
     ? await researchMarket(
@@ -541,7 +541,8 @@ export async function generateReleaseNotes(_prev: ReleaseNotesState, formData: F
   const features = product.features
     .filter((f) => f.status === "next_release" && f.advertise)
     .map((f) => ({ name: f.name, summary: f.summary }));
-  const latest = product.releases[0];
+  // The release being written for, not the newest dated one (that one is usually already in the store).
+  const latest = upcomingRelease(product.releases, app.meta.version, version);
   const latestRelease = latest ? { version: latest.version, notes: latest.notes } : null;
   if (!hasReleaseMaterial({ features, latestRelease, changelog: changelog.data })) {
     return { error: "No hay novedades de las que escribir: añade funciones «Próxima versión» en la ficha de producto o pega el CHANGELOG." };
@@ -556,7 +557,7 @@ export async function generateReleaseNotes(_prev: ReleaseNotesState, formData: F
         .slice(0, 10)
         .map((r) => r.term)
     : [];
-  const { brands } = await detectBrands(app, rows, facts);
+  const { brands } = await detectBrands(app, rows, product);
   const input = {
     store: app.store,
     locale: target.locale,

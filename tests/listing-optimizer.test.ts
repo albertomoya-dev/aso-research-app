@@ -6,7 +6,9 @@ import {
   cleanKeywordField,
   cleanProposal,
   finalizeProposal,
+  isRegression,
   LISTING_PROMPT_VERSION,
+  LOST_OPPORTUNITY_THRESHOLD,
   LISTING_SYSTEM_PROMPT,
   type ListingOutput,
   MAX_PROMPT_KEYWORDS,
@@ -266,6 +268,17 @@ describe("quality lock (real case)", () => {
     const final = finalizeProposal(best, 2);
     expect(final).toMatchObject({ attempts: 2, regression: true, scoreBefore: best.assessment.scoreBefore, scoreAfter: best.assessment.scoreAfter });
     expect(final.diff?.lost.map((l) => l.term)).toContain("copia de seguridad");
+  });
+
+  it("flags a proposal that loses an important keyword even when the score does not drop", () => {
+    const lost = { term: "pastillero", value: LOST_OPPORTUNITY_THRESHOLD, from: "title" as const, to: null };
+    const diff = { gained: [], lost: [lost], moved: [] };
+    expect(isRegression(50, 55, diff)).toBe(true);
+    expect(isRegression(50, 55, { ...diff, lost: [{ ...lost, value: LOST_OPPORTUNITY_THRESHOLD - 1 }] })).toBe(false);
+    expect(isRegression(50, 49, { gained: [], lost: [], moved: [] })).toBe(true);
+    const proposal = proposalFrom(current);
+    const assessment = { scoreBefore: 50, scoreAfter: 55, diff, lostImportant: [lost], policyErrors: [], regressed: true };
+    expect(finalizeProposal({ proposal, assessment }, 1)).toMatchObject({ regression: true, scoreBefore: 50, scoreAfter: 55 });
   });
 
   it("prefers a proposal within the limits over a higher score", () => {

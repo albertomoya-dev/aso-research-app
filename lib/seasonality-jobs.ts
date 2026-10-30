@@ -1,13 +1,38 @@
 import { and, eq, gte } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { loadAlertPrefs, prefsFor } from "./alert-jobs";
+import { isAlertRelevant } from "./alerts";
 import { getCountry } from "./countries";
 import { shiftDate } from "./ranking";
-import { isRelevantKeyword } from "./relevance";
-import { analyzeSeasonality, canAnnouncePeak, MONTH_LONG, peakAlertDue } from "./seasonality";
+import type { KeywordIntent } from "./relevance";
+import { analyzeSeasonality, canAnnouncePeak, MONTH_LONG, PEAK_ALERT_WINDOW, peakAlertDue } from "./seasonality";
+import { isNoiseTerm } from "./stopwords";
 
-/** A peak alert for a keyword is not repeated within this many days (the warning window lasts a week). */
-const REPEAT_DAYS = 60;
+/** Past peak alerts are looked up this far back: longer than the week-long warning window. */
+const REPEAT_DAYS = 35;
+
+/**
+ * Month (YYYY-MM) of the peak a seasonal alert dated `alertDate` announced. Alerts are only written
+ * 21–27 days before a peak's first day, so that day falls in the month 27 days later.
+ */
+export function warnedPeakMonth(alertDate: string): string {
+  return shiftDate(alertDate, PEAK_ALERT_WINDOW.to).slice(0, 7);
+}
+
+/** One alert per app, keyword and peak start: a second peak of the same keyword is warned about too. */
+export const peakKey = (appId: number, keywordId: number | null, peakMonth: string) => `${appId}:${keywordId}:${peakMonth}`;
+
+/**
+ * Same noise rules as ranking alerts: no filler words, no foreign intent and, when rated, at least
+ * the app's minimum relevance (alert preferences). Unrated keywords pass.
+ */
+export function isSeasonalAlertRelevant(
+  row: { term: string; relevance: number | null; intent: KeywordIntent | null },
+  lang: string,
+  minRelevance: number,
+): boolean {
+  return !isNoiseTerm(row.term, lang) && isAlertRelevant(row, minRelevance);
+}
 
 /**
  * Warns in Novedades about 3 weeks before a sustained Google peak starts, for relevant keywords
@@ -44,19 +69,20 @@ export async function generateSeasonalAlerts(date: string): Promise<number> {
       ),
     loadAlertPrefs(),
     db
-      .select({ appId: schema.alerts.appId, keywordId: schema.alerts.keywordId })
+      .select({ appId: schema.alerts.appId, keywordId: schema.alerts.keywordId, date: schema.alerts.date })
       .from(schema.alerts)
       .where(and(eq(schema.alerts.kind, "seasonal_peak"), gte(schema.alerts.date, shiftDate(date, -REPEAT_DAYS)))),
   ]);
-  const alreadyWarned = new Set(recent.map((r) => `${r.appId}:${r.keywordId}`));
+  const alreadyWarned = new Set(recent.map((r) => peakKey(r.appId, r.keywordId, warnedPeakMonth(r.date))));
 
   const values = rows.flatMap((r) => {
-    if (!r.points || alreadyWarned.has(`${r.appId}:${r.keywordId}`)) return [];
-    if (!prefsFor(prefs, r.appId).kinds.includes("seasonal_peak")) return [];
-    if (!canAnnouncePeak(r.popularity) || !isRelevantKeyword(r, getCountry(r.country).lang)) return [];
+    if (!r.points) return [];
+    const appPrefs = prefsFor(prefs, r.appId);
+    if (!appPrefs.kinds.includes("seasonal_peak")) return [];
+    if (!canAnnouncePeak(r.popularity) || !isSeasonalAlertRelevant(r, getCountry(r.country).lang, appPrefs.minRelevance)) return [];
     const s = analyzeSeasonality(r.points);
     const due = s ? peakAlertDue(s.peaks, date) : null;
-    if (!due) return [];
+    if (!due || alreadyWarned.has(peakKey(r.appId, r.keywordId, due.start.slice(0, 7)))) return [];
     return [
       {
         appId: r.appId,

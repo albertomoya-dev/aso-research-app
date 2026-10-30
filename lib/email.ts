@@ -1,6 +1,6 @@
 import { describeMove, weekPosition } from "./alerts";
 import { formatDate, formatDay } from "./format";
-import type { AppWeek } from "./summary";
+import { type AppWeek, competitorChanges } from "./summary";
 
 export function emailConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY && process.env.ALERT_EMAIL);
@@ -25,8 +25,7 @@ export function renderSummaryEmail(summary: { since: string; until: string; apps
       ...week.gainers.map((g) => `<li style="color:#1e7b46">▲ ${move(g)}</li>`),
       ...week.losers.map((l) => `<li style="color:#b42318">▼ ${move(l)}</li>`),
     ].join("");
-    const changes = alerts
-      .filter((a) => a.tone === "info")
+    const changes = competitorChanges(alerts)
       .slice(0, 5)
       .map((a) => `<li>${esc(a.title)}${a.detail ? ` (${esc(a.detail)})` : ""}</li>`)
       .join("");

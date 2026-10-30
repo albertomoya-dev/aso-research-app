@@ -8,7 +8,7 @@ import { hasDatabase } from "@/db";
 import { emailConfigured } from "@/lib/email";
 import { describeMove, weekPosition } from "@/lib/alerts";
 import { formatDate, formatDay } from "@/lib/format";
-import { getWeeklySummaries } from "@/lib/summary";
+import { competitorChanges, getWeeklySummaries } from "@/lib/summary";
 
 export const metadata: Metadata = { title: "Resumen semanal" };
 export const dynamic = "force-dynamic";
@@ -29,14 +29,22 @@ export default async function SummaryPage() {
   if (!hasDatabase()) return null;
   const { since, until, apps } = await getWeeklySummaries();
   const email = emailConfigured();
+  const stores = new Set(apps.map((a) => a.app.store));
+  // Each store returns a different number of results: App Store up to 200, Google Play usually about 30.
+  const depthNote =
+    stores.size === 1
+      ? stores.has("android")
+        ? " (Google Play suele devolver unos 30)"
+        : " (App Store devuelve hasta 200)"
+      : " (hasta 200 en App Store; Google Play suele devolver unos 30)";
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Resumen semanal">
           Del {formatDate(since)} al {formatDate(until)}: última posición de cada keyword frente a la de hace una semana o, si la app
-          lleva menos tiempo, frente a la consulta más antigua. «&gt; 30» es fuera de los 30 resultados que devolvió la tienda: pasar de
-          ahí a #18 se cuenta como «entra en los primeros 30», no como un salto que no podemos medir.
+          lleva menos tiempo, frente a la consulta más antigua. «&gt; N» es fuera de los N resultados que devolvió la tienda{depthNote}:
+          pasar de ahí a #18 se cuenta como «entra en los primeros N», no como un salto que no podemos medir.
           {email ? (
             " Te llega por email cada lunes."
           ) : (
@@ -53,7 +61,7 @@ export default async function SummaryPage() {
 
       {apps.map(({ app, week, baselineDate, share, shareBefore, alerts }) => {
         const shareDelta = share != null && shareBefore != null ? share - shareBefore : null;
-        const competitorChanges = alerts.filter((a) => a.tone === "info").length;
+        const changes = competitorChanges(alerts).length;
         return (
           <Card key={app.id} aria-label={app.title} className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -93,7 +101,7 @@ export default async function SummaryPage() {
                   )
                 }
               />
-              <Stat label="Cambios de competidores" value={String(competitorChanges)} />
+              <Stat label="Cambios de competidores" value={String(changes)} />
             </div>
             {(week.gainers.length > 0 || week.losers.length > 0) && (
               <div className="mt-4 grid gap-4 sm:grid-cols-2">

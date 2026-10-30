@@ -12,6 +12,7 @@ import {
   signalQuality,
   sustainedMonths,
 } from "@/lib/seasonality";
+import { isSeasonalAlertRelevant, peakKey, warnedPeakMonth } from "@/lib/seasonality-jobs";
 import type { TrendPoint } from "@/lib/trends";
 
 /**
@@ -23,6 +24,29 @@ function weekly(byMonth: number[], start = Date.UTC(2025, 9, 5), count = 56): Tr
     const d = new Date(start + i * 7 * 86_400_000);
     return { date: d.toISOString().slice(0, 10), value: byMonth[d.getUTCMonth()] };
   });
+}
+
+/** Deterministic PRNG (mulberry32) so the noisy series are the same on every run. */
+function mulberry32(seed: number) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 52 weeks of normal noise around `mean`, rescaled like Google Trends (max = 100). */
+function flatNoisy(seed: number, mean: number, sd: number): TrendPoint[] {
+  const rand = mulberry32(seed);
+  const normal = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
+  const raw = Array.from({ length: 52 }, (_, i) => ({
+    date: new Date(Date.UTC(2025, 10, 2) + i * 7 * 86_400_000).toISOString().slice(0, 10),
+    value: Math.max(0, Math.round(mean + sd * normal())),
+  }));
+  const max = Math.max(...raw.map((p) => p.value));
+  return raw.map((p) => ({ ...p, value: Math.round((100 * p.value) / max) }));
 }
 
 describe("seasonality", () => {
@@ -83,6 +107,14 @@ describe("seasonality", () => {
     expect(peakMonth(christmas, 40)).toBe("diciembre");
   });
 
+  it("finds no peak in a flat but noisy series", () => {
+    // Weekly mean 30–40 with sd 20: before the noise check most of these showed a fake peak.
+    const flagged = Array.from({ length: 40 }, (_, seed) => flatNoisy(seed + 1, seed % 2 ? 30 : 40, 20)).filter(
+      (points) => (analyzeSeasonality(points)?.peaks.length ?? 0) > 0,
+    );
+    expect(flagged).toEqual([]);
+  });
+
   it("announces no peak when the store popularity is under 10 or unknown", () => {
     const christmas = weekly([30, 20, 20, 20, 20, 20, 20, 20, 20, 25, 60, 100]);
     expect(canAnnouncePeak(10)).toBe(true);
@@ -123,5 +155,29 @@ describe("seasonality", () => {
     // December is inside the peak: only its start (November) is announced.
     expect(peakAlertDue([10, 11], "2026-11-08")).toBeNull();
     expect(peakAlertDue([0], "2026-12-10")).toEqual({ month: 0, start: "2027-01-01", days: 22 });
+  });
+});
+
+describe("seasonal alert jobs", () => {
+  it("keys a past alert by the peak it announced", () => {
+    // Every day of the 21–27 day window before 1 November points at November.
+    for (const date of ["2026-10-05", "2026-10-08", "2026-10-11"]) {
+      expect(warnedPeakMonth(date)).toBe(peakAlertDue([10, 11], date)!.start.slice(0, 7));
+    }
+    // An alert for a March peak does not hide a May peak of the same keyword.
+    const march = peakKey(1, 7, warnedPeakMonth("2026-02-06"));
+    const may = peakKey(1, 7, peakAlertDue([2, 4], "2026-04-08")!.start.slice(0, 7));
+    expect(march).toBe("1:7:2026-03");
+    expect(may).toBe("1:7:2026-05");
+  });
+
+  it("honours the app's minimum relevance and the noise rules", () => {
+    const row = { term: "regalos navidad", relevance: 3, intent: "own" as const };
+    expect(isSeasonalAlertRelevant(row, "es", 3)).toBe(true);
+    expect(isSeasonalAlertRelevant(row, "es", 4)).toBe(false);
+    expect(isSeasonalAlertRelevant({ ...row, relevance: 2 }, "es", 2)).toBe(true);
+    expect(isSeasonalAlertRelevant({ ...row, relevance: null }, "es", 5)).toBe(true);
+    expect(isSeasonalAlertRelevant({ ...row, intent: "foreign" }, "es", 1)).toBe(false);
+    expect(isSeasonalAlertRelevant({ ...row, term: "para" }, "es", 1)).toBe(false);
   });
 });

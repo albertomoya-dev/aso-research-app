@@ -9,6 +9,7 @@ import { formatDay } from "@/lib/format";
 import { isKnownLocale } from "@/lib/listing-drafts";
 import { playConfig } from "@/lib/play-console/auth";
 import { getPlayClient, playErrorMessage } from "@/lib/play-console/client";
+import { CSV_TOO_BIG_MESSAGE, MAX_CSV_BYTES } from "@/lib/play-console/constants";
 import { CsvFormatError, parseSearchTermsCsv } from "@/lib/play-console/csv";
 import { planPlayPublish } from "@/lib/play-console/plan";
 import { productFactsPrompt } from "@/lib/product-queries";
@@ -22,6 +23,9 @@ import { PeriodRequiredError, statRowsFrom } from "@/lib/search-terms";
 // carries the explicit confirmation of the dialog (confirm=yes). Credentials never leave the server.
 
 export type PlayActionState = { ok?: boolean; message?: string; error?: string } | null;
+
+/** Added to the message when the store took the change but the publication history could not be written. */
+const HISTORY_NOT_SAVED = "Publicado, pero no se pudo guardar el historial: no saldrá en «Publicaciones» ni como anotación.";
 
 async function loadAndroidApp(appId: number) {
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
@@ -57,16 +61,9 @@ export async function publishToPlay(_prev: PlayActionState, formData: FormData):
   const client = getPlayClient();
   if (!client) return { error: "La conexión con Google Play no está configurada." };
   const base = { appId: app.id, store: "android" as const, locale: input.locale, storeLocale: plan.language.code, country: "" };
+  let result;
   try {
-    const result = await client.publishListing(app.storeId, plan.language.code, plan.fields);
-    if (result.unchanged) return { ok: true, message: "La ficha de Google Play ya tenía este texto: no se ha enviado nada." };
-    const preview = buildPublishPreview("android", result.before, plan.fields);
-    await recordPublication({ ...base, fields: publishedFields(preview.changes), status: "committed", externalRef: result.editId });
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
-    return {
-      ok: true,
-      message: `Enviado a Google Play: ${fieldList(preview.changes.map((c) => c.label))}. Google revisa los cambios antes de publicarlos; puede tardar desde minutos hasta unos días.`,
-    };
+    result = await client.publishListing(app.storeId, plan.language.code, plan.fields);
   } catch (err) {
     const message = playErrorMessage(err);
     // The attempt is recorded too: what was tried, and why it failed.
@@ -75,6 +72,18 @@ export async function publishToPlay(_prev: PlayActionState, formData: FormData):
     revalidatePath(`/apps/${app.id}/metadata`, "layout");
     return { error: `Google Play no aceptó la publicación. ${message} No se ha cambiado nada en la ficha.` };
   }
+  if (result.unchanged) return { ok: true, message: "La ficha de Google Play ya tenía este texto: no se ha enviado nada." };
+
+  // The edit is committed: from here on a failure is only bookkeeping, never a failed publication.
+  const preview = buildPublishPreview("android", result.before, plan.fields);
+  const sent = `Enviado a Google Play: ${fieldList(preview.changes.map((c) => c.label))}. Google revisa los cambios antes de publicarlos; puede tardar desde minutos hasta unos días.`;
+  try {
+    await recordPublication({ ...base, fields: publishedFields(preview.changes), status: "committed", externalRef: result.editId });
+    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+  } catch {
+    return { ok: true, message: `${sent} ${HISTORY_NOT_SAVED}` };
+  }
+  return { ok: true, message: sent };
 }
 
 export type ReplyDraftState = { text?: string; notes?: string[]; cut?: boolean; error?: string; nonce?: number } | null;
@@ -122,8 +131,6 @@ export async function replyToReview(_prev: PlayActionState, formData: FormData):
   return { ok: true, message: "Respuesta publicada en Google Play." };
 }
 
-/** CSV uploads are capped below the 4 MB server action limit (next.config.ts). */
-const MAX_CSV_BYTES = 3_500_000;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Imports a search terms CSV exported from Play Console. Reading a file is not a write to the store: no extra gate. */
@@ -133,7 +140,7 @@ export async function importSearchTerms(_prev: PlayActionState, formData: FormDa
   if (!app) return { error: "Los términos de búsqueda de Play Console solo se pueden importar en apps de Google Play." };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Elige el archivo CSV." };
-  if (file.size > MAX_CSV_BYTES) return { error: "El archivo pasa de 3,5 MB: descarga un periodo más corto." };
+  if (file.size > MAX_CSV_BYTES) return { error: CSV_TOO_BIG_MESSAGE };
   const start = isoDate.safeParse(formData.get("periodStart"));
   const end = isoDate.safeParse(formData.get("periodEnd"));
   try {

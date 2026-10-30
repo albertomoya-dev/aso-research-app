@@ -94,8 +94,13 @@ export async function generateScreenshotCopy(
   images: (string | null)[] = [],
 ): Promise<CopyResult> {
   const count = Math.max(1, Math.min(10, current.length));
-  // Small screens made in the browser; anything that is not a small image is dropped by parseVisionImage.
-  const screens = z.array(z.string().max(MAX_VISION_IMAGE_CHARS).nullable()).max(MAX_VISION_IMAGES).catch([]).parse(images);
+  // Small screens made in the browser, checked one by one: an oversized or malformed one becomes null
+  // (that slide goes by its text) without dropping the others. parseVisionImage checks the format.
+  const screens = z
+    .array(z.string().max(MAX_VISION_IMAGE_CHARS).nullable().catch(null))
+    .catch([])
+    .parse(images)
+    .slice(0, MAX_VISION_IMAGES);
   try {
     const input = await creativeInput(idSchema.parse(appId), z.string().trim().max(200).catch("").parse(focus));
     const { output, model } = await writeScreenshotCopy({ ...input, count, current: current.slice(0, count) }, screens);

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { IAppItemFullDetail } from "google-play-scraper";
 import gplayApp from "./fixtures/gplay-app.json";
 import itunesLookup from "./fixtures/itunes-lookup.json";
-import { toMeta as androidMeta, toSummary as androidSummary } from "@/lib/stores/android";
+import { isEmptySuggestError, toMeta as androidMeta, toSummary as androidSummary } from "@/lib/stores/android";
 import { looksLikeAppId } from "@/lib/stores";
 import { toMeta as iosMeta, type ItunesApp } from "@/lib/stores/ios";
 import { withRetry } from "@/lib/stores/retry";
@@ -88,5 +88,18 @@ describe("withRetry", () => {
     const fn = vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
     await expect(withRetry(fn, 3, 1)).rejects.toThrow("not found");
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Android autocomplete", () => {
+  it("treats the package's null-list crash as no suggestions", () => {
+    let crash: unknown;
+    try {
+      (null as unknown as string[]).map((s) => s);
+    } catch (error) {
+      crash = error;
+    }
+    expect(isEmptySuggestError(crash)).toBe(true);
+    expect(isEmptySuggestError(new Error("Response code 429"))).toBe(false);
   });
 });

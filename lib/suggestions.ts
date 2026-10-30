@@ -5,7 +5,7 @@ import { genericWordsFor, stopwordsFor } from "./stopwords";
 import { fold } from "./text";
 
 /** Bump when the instructions or the output shape change, so old suggestions can be told apart. */
-export const PROMPT_VERSION = "kw-2";
+export const PROMPT_VERSION = "kw-3";
 export const MAX_SUGGESTIONS = 40;
 
 export const INTENTS = ["category", "feature", "problem", "audience", "competitor-alternative", "long-tail"] as const;
@@ -118,7 +118,7 @@ export type BrandOptions = {
   ownTitle?: string;
   /** Keywords the user tracks: a tracked word or phrase is never a brand. */
   trackedTerms?: string[];
-  /** Text of the product sheet (PRODUCT FACTS): its words are never a brand. */
+  /** Our own words from the product sheet (`productBrandTerms`: pitch, audience, features): never a brand. */
   productTerms?: string;
   /** Words the user marked as «no es una marca». */
   exceptions?: string[];

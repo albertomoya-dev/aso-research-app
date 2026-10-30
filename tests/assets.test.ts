@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { cleanScreenshotCopy, toIconSpec } from "@/lib/assets/creative-ai";
 import { checkIcon, contrastRatio, defaultIconSpec, iconSpecSchema, initials } from "@/lib/assets/icon";
 import { applyTemplate, DECORS, defaultScreenshotSpec, DEVICE_PRESETS, getTemplate, parseRuns, screenshotSpecSchema, stripMarks, TEMPLATES, wrapWords } from "@/lib/assets/screenshots";
+import { MAX_VISION_IMAGE_CHARS, MAX_VISION_IMAGES } from "@/lib/assets/creative-ai";
+import { filesFromDrop } from "@/lib/assets/drop-files";
+import { fitVisionPayload } from "@/lib/assets/screenshot-render";
 import { buildZip, crc32, listZip } from "@/lib/assets/zip";
 
 describe("parseRuns", () => {
@@ -220,5 +223,31 @@ describe("deviceOffsetY", () => {
     expect(screenshotSpecSchema.parse(old).deviceOffsetY).toBe(0);
     expect(screenshotSpecSchema.safeParse({ ...spec, deviceOffsetY: 0.8 }).success).toBe(false);
     expect(applyTemplate({ ...spec, deviceOffsetY: 0.2 }, TEMPLATES[1]).deviceOffsetY).toBe(0);
+  });
+});
+
+describe("fitVisionPayload", () => {
+  it("drops only the screens that do not fit, never all of them", () => {
+    const small = `data:image/jpeg;base64,${"A".repeat(1000)}`;
+    const big = `data:image/jpeg;base64,${"A".repeat(MAX_VISION_IMAGE_CHARS)}`;
+    expect(fitVisionPayload([small, big, null, small])).toEqual([small, null, null, small]);
+    expect(fitVisionPayload(new Array(MAX_VISION_IMAGES + 3).fill(small))).toHaveLength(MAX_VISION_IMAGES);
+    // Over the total budget, the last screens go without image.
+    expect(fitVisionPayload([small, small, small], small.length * 2)).toEqual([small, small, null]);
+  });
+});
+
+describe("filesFromDrop", () => {
+  it("falls back to the files read before the browser emptied the drop", async () => {
+    const file = new File(["x"], "1.png", { type: "image/png" });
+    let emptied = false;
+    const entry = { isFile: true, isDirectory: false, fullPath: "/1.png", file: (_ok: unknown, fail: (e: Error) => void) => ((emptied = true), fail(new Error("gone"))) };
+    const dt = {
+      items: [{ kind: "file", webkitGetAsEntry: () => entry }],
+      get files() {
+        return emptied ? [] : [file];
+      },
+    } as unknown as DataTransfer;
+    expect(await filesFromDrop(dt)).toEqual([{ file, name: "1.png", path: "1.png" }]);
   });
 });

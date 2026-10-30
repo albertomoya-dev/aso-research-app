@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { compareVersions } from "./health";
 import { charCount, type Issue, type MetadataDraft } from "./metadata-check";
 import { POLICY_RULES, policyCheck } from "./policy-check";
 import type { Store } from "./stores/types";
@@ -76,6 +77,24 @@ export function buildReleaseNotesPrompt(input: ReleaseNotesInput, feedback?: str
   ]
     .filter((line) => line !== null)
     .join("\n");
+}
+
+/**
+ * The declared release the notes are for: the one the user typed, else the newest one after the
+ * version in the store (or, when that is unknown, the newest one without a date). Never the version
+ * already published: its notes are old news.
+ */
+export function upcomingRelease<T extends { version: string; date: string | null }>(
+  releases: T[],
+  publishedVersion: string | null | undefined,
+  wanted?: string | null,
+): T | null {
+  const published = publishedVersion?.trim() || null;
+  const notPublished = releases.filter((r) => !published || compareVersions(r.version, published) !== 0);
+  const typed = wanted?.trim() ? notPublished.find((r) => r.version.trim() === wanted.trim()) : undefined;
+  if (typed) return typed;
+  const candidates = notPublished.filter((r) => (published ? compareVersions(r.version, published) > 0 : !r.date));
+  return candidates.sort((a, b) => compareVersions(b.version, a.version))[0] ?? null;
 }
 
 /** True when there is something to write about: features, the latest release notes or a pasted CHANGELOG. */

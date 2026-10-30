@@ -107,6 +107,17 @@ export type AscListing = {
 /** A problem that is not an API error: no version in preparation, the locale is not added… Spanish message. */
 export class AscStateError extends Error {}
 
+/** The first PATCH of saveListing went through and the second did not: `saved` fields are in App Store Connect. */
+export class AscPartialSaveError extends Error {
+  constructor(
+    readonly saved: PublishFieldKey[],
+    readonly failed: PublishFieldKey[],
+    override readonly cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+  }
+}
+
 export type AscClient = ReturnType<typeof createAscClient>;
 
 export function createAscClient(opts: { getToken: () => Promise<string>; fetch?: FetchLike }) {
@@ -210,18 +221,28 @@ export function createAscClient(opts: { getToken: () => Promise<string>; fetch?:
     /**
      * Saves the changed fields in the version in preparation: one PATCH for name/subtitle (app info) and
      * one for the rest (version), only when each has changes. Name and subtitle are skipped when the app
-     * info cannot be edited (the caller shows that in the preview).
+     * info cannot be edited (the caller shows that in the preview). When the second PATCH fails after the
+     * first one saved its fields, throws AscPartialSaveError with both lists.
      */
     async saveListing(listing: AscListing, changed: PublishFields): Promise<{ saved: PublishFieldKey[] }> {
       const { info, version } = splitAscFields(changed);
-      const saved: PublishFieldKey[] = [];
+      const steps: { keys: PublishFieldKey[]; run: () => Promise<unknown> }[] = [];
       if (Object.keys(info).length && listing.appInfoLocalizationId) {
-        await api.updateAppInfoLocalization(listing.appInfoLocalizationId, info);
-        saved.push(...(Object.keys(info) as PublishFieldKey[]));
+        const id = listing.appInfoLocalizationId;
+        steps.push({ keys: Object.keys(info) as PublishFieldKey[], run: () => api.updateAppInfoLocalization(id, info) });
       }
       if (Object.keys(version).length) {
-        await api.updateVersionLocalization(listing.versionLocalizationId, version);
-        saved.push(...(Object.keys(version) as PublishFieldKey[]));
+        steps.push({ keys: Object.keys(version) as PublishFieldKey[], run: () => api.updateVersionLocalization(listing.versionLocalizationId, version) });
+      }
+      const saved: PublishFieldKey[] = [];
+      for (const [i, step] of steps.entries()) {
+        try {
+          await step.run();
+        } catch (err) {
+          if (saved.length === 0) throw err;
+          throw new AscPartialSaveError(saved, steps.slice(i).flatMap((s) => s.keys), err);
+        }
+        saved.push(...step.keys);
       }
       return { saved };
     },
@@ -246,6 +267,7 @@ export function getAscClient(env: Record<string, string | undefined> = process.e
 }
 
 export function ascErrorMessage(err: unknown): string {
+  if (err instanceof AscPartialSaveError) return ascErrorMessage(err.cause);
   if (err instanceof StoreApiError || err instanceof AscStateError || err instanceof AscConfigError) return err.message;
   return "Error inesperado al hablar con App Store Connect.";
 }

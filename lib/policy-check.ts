@@ -159,8 +159,15 @@ function termsFor(list: TermList, lang?: string): string[] {
   const langs = lang && LANGS.includes(lang as Lang) ? unique([lang, "en"]) : LANGS;
   return unique(langs.flatMap((l) => list[l as Lang]));
 }
-const find = (lists: TermList[], text: string, ctx: PolicyContext, extra?: (t: string) => string[]) =>
-  unique([...matcher(lists.flatMap((l) => termsFor(l, ctx.lang)))(text), ...(extra?.(text) ?? [])]);
+/**
+ * Promo terms in the text, without the app's own brand: «Top Recetas: cocina fácil» or a brand with
+ * «Free» in it is not a claim. Only a brand we can be sure of counts: the given one or the title
+ * before a separator, never the first word of a plain title («Mejor recordatorio»).
+ */
+const find = (lists: TermList[], text: string, ctx: RuleContext, extra?: (t: string) => string[]) => {
+  const t = withoutOwnBrand(text, ctx);
+  return unique([...matcher(lists.flatMap((l) => termsFor(l, ctx.lang)))(t), ...(extra?.(t) ?? [])]);
+};
 
 // Emojis and emoticons. ©, ® and ™ are pictographic in Unicode but legitimate in brand names.
 const EMOTICON = /(?<!\S)(?:[:;=][-']?[)(\]\[DPpOo3|/\\]|<3|\^_?\^|xD|XD|T_T|:'\()(?!\S)/g;
@@ -181,6 +188,14 @@ function ownBrand(ctx: RuleContext): string {
   return (parts.length > 1 ? parts[0] : ctx.draft.title.trim().split(/\s+/)[0]) ?? "";
 }
 const brandWords = (ctx: RuleContext) => new Set(words(ownBrand(ctx)));
+
+/** The text folded, with the declared brand (or the title before a separator) blanked out. */
+function withoutOwnBrand(text: string, ctx: RuleContext): string {
+  const parts = ctx.draft.title.split(SEPARATOR);
+  const brand = fold(ctx.ownBrand || (parts.length > 1 ? parts[0] : "")).trim();
+  if (!brand) return text;
+  return fold(text).replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(brand)}(?![\\p{L}\\p{N}])`, "gu"), " ");
+}
 
 /** Runs of capitals outside the brand: two or more words in a row, or one word of 6+ letters. */
 function sustainedCaps(text: string, ctx: RuleContext): string[] {

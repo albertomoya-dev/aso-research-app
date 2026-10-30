@@ -1,8 +1,13 @@
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { pickBaseline, summarizeWeek, type WeekSummary } from "./alerts";
+import { type AlertKind, pickBaseline, summarizeWeek, type WeekSummary } from "./alerts";
 import { shiftDate, today } from "./ranking";
 import { latestPerKeyword, visibilityShare } from "./visibility";
+
+/** Alerts about competitors' listings: the «Cambios de competidores» of the summary (not seasonal peaks or new #1s). */
+export function competitorChanges<T extends { kind: AlertKind }>(alerts: T[]): T[] {
+  return alerts.filter((a) => a.kind === "competitor_change");
+}
 
 export type AppWeek = {
   app: { id: number; title: string; icon: string; store: "ios" | "android"; country: string };
@@ -12,7 +17,7 @@ export type AppWeek = {
   /** Own share of the TOP 5 now and on the baseline date, 0–100; null without data. */
   share: number | null;
   shareBefore: number | null;
-  alerts: { title: string; detail: string; tone: string; date: string }[];
+  alerts: { kind: AlertKind; title: string; detail: string; tone: string; date: string }[];
 };
 
 /**
@@ -100,7 +105,7 @@ export async function getWeeklySummaries(): Promise<{ since: string; until: stri
       shareBefore: shareOf(before),
       alerts: alerts
         .filter((a) => a.appId === app.id)
-        .map((a) => ({ title: a.title, detail: a.detail, tone: a.tone, date: a.date })),
+        .map((a) => ({ kind: a.kind, title: a.title, detail: a.detail, tone: a.tone, date: a.date })),
     };
   });
   return { since, until, apps: result };

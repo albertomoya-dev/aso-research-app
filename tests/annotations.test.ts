@@ -3,6 +3,8 @@ import { affectedKeywords, changedWords, listingAnnotation, MAX_ANNOTATION_LABEL
 import { experimentInputSchema } from "@/lib/experiments";
 import { annotationImpact, summarizeImpacts } from "@/lib/impact";
 import { diffListings, type Listing } from "@/lib/listing-diff";
+import { changesNotPublished } from "@/lib/own-listings";
+import { snapshotWindows } from "@/lib/annotation-queries";
 import { shiftDate } from "@/lib/ranking";
 
 const v2: Listing = {
@@ -140,5 +142,59 @@ describe("experimentInputSchema", () => {
     expect(bad.error?.issues[0].message).toMatch(/fin/);
     expect(experimentInputSchema.safeParse({ name: "  " }).success).toBe(false);
     expect(experimentInputSchema.safeParse({ name: "x", status: "won" }).success).toBe(false);
+  });
+});
+
+describe("changesNotPublished", () => {
+  const v3: Listing = { ...v2, title: "Pastillas: recordatorio y alarma", description: "Nuevo texto con alarmas.", version: "3.0" };
+  const changes = diffListings(v2, v3);
+  const now = new Date("2026-10-30T10:00:00Z");
+  const pub = (over: Partial<Parameters<typeof changesNotPublished>[1][number]> = {}) => ({
+    status: "committed" as const,
+    locale: "es-ES",
+    fields: [{ field: "title" as const, label: "Título", before: v2.title, after: v3.title }],
+    publishedAt: new Date("2026-10-25T10:00:00Z"),
+    ...over,
+  });
+
+  it("drops the text changes a recent publication already explains", () => {
+    const left = changesNotPublished(changes, [pub()], "es", now).map((c) => c.field);
+    expect(left).not.toContain("title");
+    expect(left).toContain("description");
+    expect(left).toContain("version");
+    // Google Play's fullDescription is the listing description: nothing but the version is left.
+    const both = pub({ fields: [...pub().fields, { field: "fullDescription", label: "Descripción", before: "", after: "" }] });
+    expect(changesNotPublished(changes, [both], "es", now).map((c) => c.field)).toEqual(["version"]);
+    expect(listingAnnotation(changesNotPublished(changes, [both], "es", now))!.label).toBe("Nueva versión 3.0");
+  });
+
+  it("keeps everything for failed, old or other-language publications", () => {
+    const all = changes.map((c) => c.field);
+    expect(changesNotPublished(changes, [pub({ status: "failed" })], "es", now).map((c) => c.field)).toEqual(all);
+    expect(changesNotPublished(changes, [pub({ publishedAt: new Date("2026-10-10T10:00:00Z") })], "es", now).map((c) => c.field)).toEqual(all);
+    expect(changesNotPublished(changes, [pub({ locale: "en-US" })], "es", now).map((c) => c.field)).toEqual(all);
+  });
+
+  it("leaves nothing to annotate when the publication covers every change", () => {
+    const titleOnly = diffListings(v2, { ...v2, title: v3.title });
+    expect(listingAnnotation(changesNotPublished(titleOnly, [pub()], "es", now))).toBeNull();
+  });
+});
+
+describe("snapshotWindows", () => {
+  it("reads only the days around each annotation, merging the ones that overlap", () => {
+    const windows = snapshotWindows([
+      { date: "2026-10-20", keywordIds: null },
+      { date: "2026-10-01", keywordIds: null },
+      { date: "2026-10-10", keywordIds: null },
+      { date: "2026-06-01", keywordIds: [3, 1] },
+      { date: "2026-06-10", keywordIds: [2] },
+      { date: "2026-03-01", keywordIds: [] },
+    ]);
+    expect(windows).toEqual([
+      { from: "2026-09-17", to: "2026-11-03", keywordIds: null },
+      { from: "2026-05-18", to: "2026-06-24", keywordIds: [1, 2, 3] },
+    ]);
+    expect(snapshotWindows([{ date: "2026-01-31", keywordIds: null }, { date: "2026-03-31", keywordIds: null }], 14)).toHaveLength(2);
   });
 });

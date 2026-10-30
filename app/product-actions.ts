@@ -7,6 +7,7 @@ import { getDb, schema } from "@/db";
 import { AiError, importChangelog } from "@/lib/claude";
 import {
   type ChangelogProposal,
+  changelogApplySchema,
   cleanChangelogProposal,
   factsFormSchema,
   featureInputSchema,
@@ -157,11 +158,6 @@ export async function proposeChangelog(_prev: ChangelogState, formData: FormData
   }
 }
 
-const applySchema = z.object({
-  features: z.array(featureInputSchema.extend({ existingId: idSchema.nullable() })).max(100),
-  releases: z.array(releaseInputSchema).max(50),
-});
-
 export type ApplyState = { features?: number; releases?: number; error?: string } | null;
 
 /** Saves only the items the owner ticked in the import review. */
@@ -173,7 +169,7 @@ export async function applyChangelog(_prev: ApplyState, formData: FormData): Pro
   } catch {
     return { error: "No se pudo leer la selección." };
   }
-  const parsed = applySchema.safeParse(payload);
+  const parsed = changelogApplySchema.safeParse(payload);
   if (!parsed.success) return { error: "La selección no tiene un formato válido." };
   const { features, releases } = parsed.data;
   if (features.length === 0 && releases.length === 0) return { error: "Marca al menos una función o versión." };
@@ -181,14 +177,15 @@ export async function applyChangelog(_prev: ApplyState, formData: FormData): Pro
 
   const db = getDb();
   let sort = await nextSort(appId);
-  for (const { existingId, ...f } of features) {
+  for (const { existingId, advertise, ...f } of features) {
     if (existingId) {
+      // An update never touches `advertise`: hiding a feature from the listing is the owner's call.
       await db
         .update(schema.productFeatures)
         .set(f)
         .where(and(eq(schema.productFeatures.id, existingId), eq(schema.productFeatures.appId, appId)));
     } else {
-      await db.insert(schema.productFeatures).values({ appId, ...f, sort: sort++ });
+      await db.insert(schema.productFeatures).values({ appId, ...f, advertise, sort: sort++ });
     }
   }
   // A version already in the history is updated, not duplicated.

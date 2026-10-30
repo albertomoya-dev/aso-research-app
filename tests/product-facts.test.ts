@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildChangelogPrompt,
   type ChangelogOutput,
+  changelogApplySchema,
   cleanChangelogProposal,
   EMPTY_FACTS,
   factsFormSchema,
@@ -108,7 +109,7 @@ describe("form input", () => {
 describe("CHANGELOG import", () => {
   const existing = [
     { id: 1, name: "Alarmas exactas", summary: "Suenan con la app cerrada", status: "shipped" as const, sinceVersion: "1.0" },
-    { id: 2, name: "Protección contra doble toma", summary: "Avisa en 4 horas", status: "shipped" as const, sinceVersion: "2.0" },
+    { id: 2, name: "Protección contra doble toma", summary: "Avisa en 4 horas", status: "shipped" as const, sinceVersion: "2.0", advertise: false },
   ];
   const output = (o: Partial<ChangelogOutput>): ChangelogOutput => ({ features: [], releases: [], notes: [], ...o });
   const item = (name: string, o: Partial<ChangelogOutput["features"][number]> = {}) => ({
@@ -148,12 +149,28 @@ describe("CHANGELOG import", () => {
     );
     expect(proposal.features).toEqual([
       { name: "Escanear el código de barras", summary: "", status: "next_release", sinceVersion: "3.0", advertise: true, existingId: null },
-      { name: "Protección contra doble toma", summary: "Avisa en 4 horas", status: "retired", sinceVersion: "2.0", advertise: true, existingId: 2 },
+      { name: "Protección contra doble toma", summary: "Avisa en 4 horas", status: "retired", sinceVersion: "2.0", advertise: false, existingId: 2 },
     ]);
     expect(proposal.releases).toEqual([
       { version: "3.0", date: "2026-11-02", notes: "Escáner" },
       { version: "2.4.0", date: null, notes: "" },
     ]);
     expect(proposal.notes).toEqual(["Revisa la 3.0"]);
+  });
+
+  it("sends back a proposal with unknown versions and dates that the save step accepts", () => {
+    const proposal = cleanChangelogProposal(
+      output({
+        features: [item("Escanear el código de barras", { status: "next_release" }), item("Doble toma", { status: "retired", updates: "Protección contra doble toma" })],
+        releases: [{ version: "3.0", date: "", notes: "Escáner" }],
+      }),
+      existing,
+    );
+    expect(proposal.features[0].sinceVersion).toBeNull();
+    expect(proposal.releases[0].date).toBeNull();
+    const parsed = changelogApplySchema.safeParse(JSON.parse(JSON.stringify({ features: proposal.features, releases: proposal.releases })));
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.features).toEqual(proposal.features);
+    expect(parsed.data?.releases).toEqual(proposal.releases);
   });
 });

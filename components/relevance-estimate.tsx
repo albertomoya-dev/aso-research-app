@@ -3,8 +3,7 @@
 import { useState, useTransition } from "react";
 import { estimateRelevance } from "@/app/ai-actions";
 import { normalizeKeyword } from "@/lib/keywords";
-import { LOW_RELEVANCE } from "@/lib/relevance";
-import { isNoiseTerm } from "@/lib/stopwords";
+import { isFiller, LOW_RELEVANCE } from "@/lib/relevance";
 import { buttonSecondary } from "./ui";
 
 /** Most candidates estimated per click: two requests to Claude. */
@@ -46,7 +45,7 @@ export function EstimateButton({ count, pending, onClick }: { count: number; pen
 
 /** «Relevancia 4», «Palabra vacía» or nothing, next to a candidate keyword. */
 export function RelevanceHint({ term, rating, lang }: { term: string; rating: number | undefined; lang: string }) {
-  if (isNoiseTerm(term, lang)) return <span className="ml-2 text-xs text-muted">palabra vacía</span>;
+  if (isFiller(term, rating, lang)) return <span className="ml-2 text-xs text-muted">palabra vacía</span>;
   if (rating === undefined) return null;
   return (
     <span className={`ml-2 text-xs ${rating <= LOW_RELEVANCE ? "text-warn-fg" : "text-muted"}`} title="Estimación de la IA, de 1 a 5">

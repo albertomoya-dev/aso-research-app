@@ -153,4 +153,17 @@ describe("noise filter with the real case", () => {
     expect(preselect("pastillero digital", 2, "es")).toBe(false);
     expect(preselect("ahora", undefined, "es")).toBe(false);
   });
+
+  it("lets a user rating of 3 or more and an AI rating of 4 or more beat the generic-word list", () => {
+    expect(noiseReason({ term: "tiempo", relevance: 5, intent: null, relevanceSource: "user" }, "es")).toBeNull();
+    expect(noiseReason({ term: "email", relevance: 3, intent: "own", relevanceSource: "user" }, "es")).toBeNull();
+    expect(noiseReason({ term: "ahora", relevance: 3, intent: "own", relevanceSource: "user" }, "es")).toBeNull();
+    expect(noiseReason({ term: "tiempo", relevance: 4, intent: "own", relevanceSource: "ai" }, "es")).toBeNull();
+    expect(noiseReason({ term: "tiempo", relevance: 3, intent: "own", relevanceSource: "ai" }, "es")).toBe("filler");
+    expect(noiseReason({ term: "ahora", relevance: 5, intent: "own", relevanceSource: "ai" }, "es")).toBe("filler");
+    expect(noiseReason({ term: "tiempo", relevance: null, intent: null }, "es")).toBe("filler");
+    expect(isRelevantKeyword({ term: "el tiempo", relevance: null, intent: null }, "es")).toBe(true);
+    expect(preselect("tiempo", 4, "es")).toBe(true);
+    expect(preselect("tiempo", undefined, "es")).toBe(false);
+  });
 });

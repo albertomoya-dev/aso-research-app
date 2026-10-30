@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { genericWordsFor, isNoiseTerm, isStopword, stopwordsFor } from "@/lib/stopwords";
+import { genericWordsFor, isNoiseTerm, isStopword, noiseKind, stopwordsFor } from "@/lib/stopwords";
 import { fold } from "@/lib/text";
 
 describe("fold", () => {
@@ -47,6 +47,15 @@ describe("isStopword / isNoiseTerm", () => {
 
   it("lets through any phrase with one real word", () => {
     for (const t of ["recordatorio pastillas", "copia de seguridad de datos", "app pastillas", "control de medicación", "alarma"]) {
+      expect(isNoiseTerm(t, "es"), t).toBe(false);
+    }
+  });
+
+  it("counts generic words only when they stand alone", () => {
+    expect(noiseKind("tiempo", "es")).toBe("generic");
+    expect(noiseKind("email", "es")).toBe("generic");
+    expect(noiseKind("ahora mismo", "es")).toBe("stopword");
+    for (const t of ["el tiempo", "tiempo hoy", "lista de la compra", "menu semanal"]) {
       expect(isNoiseTerm(t, "es"), t).toBe(false);
     }
   });

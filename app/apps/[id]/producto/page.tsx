@@ -48,7 +48,7 @@ export default async function ProductPage({ params }: Props) {
       <PageHeader title="Ficha de producto">
         Lo que hace tu app, contado por ti. La ficha publicada en la tienda siempre va por detrás del producto, así que la IA (optimizador de
         ficha, ideas de keywords, textos de creativos y análisis de reseñas) usa esta ficha como fuente de verdad: solo anuncia las funciones
-        publicadas, y las de la próxima versión cuando preparas la ficha para ella. Las planeadas y las retiradas nunca llegan a la IA.
+        publicadas, y las de la próxima versión cuando preparas la ficha para ella. Las planeadas y las retiradas no se anuncian nunca: la IA solo recibe sus nombres para no mencionarlas.
       </PageHeader>
 
       {!hasProductFacts(facts, features) && (

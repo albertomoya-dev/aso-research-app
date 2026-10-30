@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { normalizeKeyword } from "./keywords";
-import { isNoiseTerm } from "./stopwords";
+import { noiseKind } from "./stopwords";
 import type { Store } from "./stores/types";
 
 /** Bump when the instructions or the output shape change. */
@@ -145,7 +145,13 @@ export function mergeRatings(rows: StoredRelevance[], ratings: Rating[]): Releva
 
 // ---------- Hygiene ----------
 
-export type HygieneRow = { term: string; relevance: number | null; intent: KeywordIntent | null };
+export type HygieneRow = {
+  term: string;
+  relevance: number | null;
+  intent: KeywordIntent | null;
+  /** Who set the relevance; a user's 3 or more always keeps the keyword. */
+  relevanceSource?: RelevanceSource | null;
+};
 
 export type NoiseReason = "filler" | "foreign" | "low";
 
@@ -155,12 +161,24 @@ export const NOISE_REASON_LABEL: Record<NoiseReason, string> = {
   low: "Relevancia baja",
 };
 
+/** Relevance from which a rating beats the generic-word list ("tiempo" for a weather app). */
+const STRONG_RELEVANCE = 4;
+
+/** Filler by the word lists, unless a rating of 4 or more says a generic word is a real keyword here. */
+export function isFiller(term: string, relevance: number | null | undefined, lang: string): boolean {
+  const kind = noiseKind(term, lang);
+  if (kind === "generic") return !(relevance != null && relevance >= STRONG_RELEVANCE);
+  return kind !== null;
+}
+
 /**
  * Why a keyword is probably not worth tracking, or null when it looks fine: a filler or generic
- * word, a search where people want another kind of app, or relevance 2 or less.
+ * word, a search where people want another kind of app, or relevance 2 or less. The user's own
+ * rating of 3 or more always wins: they know their app better than any word list.
  */
 export function noiseReason(row: HygieneRow, lang: string): NoiseReason | null {
-  if (isNoiseTerm(row.term, lang)) return "filler";
+  if (row.relevanceSource === "user" && row.relevance != null && row.relevance >= 3) return null;
+  if (isFiller(row.term, row.relevance, lang)) return "filler";
   if (row.intent === "foreign") return "foreign";
   if (row.relevance != null && row.relevance <= LOW_RELEVANCE) return "low";
   return null;
@@ -181,5 +199,5 @@ export function isRelevantKeyword(row: HygieneRow, lang: string): boolean {
 
 /** Should a candidate (TOP 10, Descubrir) start ticked? Not when it is filler or rated 2 or less. */
 export function preselect(term: string, relevance: number | null | undefined, lang: string): boolean {
-  return !isNoiseTerm(term, lang) && !(relevance != null && relevance <= LOW_RELEVANCE);
+  return !isFiller(term, relevance, lang) && !(relevance != null && relevance <= LOW_RELEVANCE);
 }

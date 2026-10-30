@@ -201,7 +201,7 @@ export type ListingProposal = {
   scoreAfter?: number;
   /** Keywords gained, lost and moved against the text sent. */
   diff?: KeywordDiff;
-  /** Still covers worse than the text sent, even after the retry: shown with a red warning. */
+  /** Still worse than the text sent after the retry (lower score or an important keyword lost, see `isRegression`): shown with a red warning. */
   regression?: boolean;
   /** Calls to the model (2 when the first answer was retried). */
   attempts?: number;
@@ -263,6 +263,13 @@ export type ProposalAssessment = {
   regressed: boolean;
 };
 
+/** Lost keywords worth a warning: those with opportunity ≥ LOST_OPPORTUNITY_THRESHOLD, most valuable first. */
+export const importantLosses = (diff: KeywordDiff): DiffItem[] => diff.lost.filter((l) => l.value >= LOST_OPPORTUNITY_THRESHOLD);
+
+/** Worse than the current text: lower weighted score or an important keyword lost. Shared by the server and the editor. */
+export const isRegression = (scoreBefore: number, scoreAfter: number, diff: KeywordDiff): boolean =>
+  scoreAfter < scoreBefore || importantLosses(diff).length > 0;
+
 /** The listing as it would be with the whole proposal applied. */
 export const applyProposal = (current: MetadataDraft, proposal: ListingProposal): MetadataDraft => ({ ...current, ...proposal.fields });
 
@@ -278,7 +285,7 @@ export function assessProposal(
   const before = weightedCoverage(store, current, keywords);
   const after = weightedCoverage(store, proposed, keywords);
   const diff = keywordDiff(before, after);
-  const lostImportant = diff.lost.filter((l) => l.value >= LOST_OPPORTUNITY_THRESHOLD);
+  const lostImportant = importantLosses(diff);
   const policyErrors = policyCheck(store, proposed, policy).filter((i) => i.level === "error");
   return {
     scoreBefore: before.score,
@@ -286,7 +293,7 @@ export function assessProposal(
     diff,
     lostImportant,
     policyErrors,
-    regressed: after.score < before.score || lostImportant.length > 0,
+    regressed: isRegression(before.score, after.score, diff),
   };
 }
 
@@ -317,7 +324,7 @@ export function pickBest(attempts: Attempt[]): Attempt {
   });
 }
 
-/** The proposal to show, with the quality lock fields filled in. Regression: still below the current score. */
+/** The proposal to show, with the quality lock fields filled in. Regression: still below the current score or losing an important keyword. */
 export function finalizeProposal(best: Attempt, attempts: number): ListingProposal {
   const { assessment } = best;
   return {
@@ -325,7 +332,7 @@ export function finalizeProposal(best: Attempt, attempts: number): ListingPropos
     scoreBefore: assessment.scoreBefore,
     scoreAfter: assessment.scoreAfter,
     diff: assessment.diff,
-    regression: assessment.scoreAfter < assessment.scoreBefore,
+    regression: assessment.regressed,
     attempts,
   };
 }

@@ -170,6 +170,24 @@ describe("Play client", () => {
     expect(result).toMatchObject({ editId: "e1", unchanged: false, before: { title: "Recordatorio" } });
   });
 
+  it("creates the listing with update (PUT) when the language has none yet", async () => {
+    const { calls, client } = fakePlay({
+      "POST /applications/[^/]+/edits": () => json({ id: "e5" }),
+      "PUT /applications/[^/]+/edits/e5/listings/fr-FR": (c) => json(c.body),
+      "POST /applications/[^/]+/edits/e5:validate": () => json({ id: "e5" }),
+      "POST /applications/[^/]+/edits/e5:commit": () => json({ id: "e5" }),
+    });
+    const result = await client.publishListing(pkg, "fr-FR", { title: "Rappel", shortDescription: "Pilules", fullDescription: "Texte" });
+    expect(calls.map((c) => `${c.method} ${c.url.split("/edits")[1] ?? ""}`)).toEqual([
+      "POST ",
+      "GET /e5/listings/fr-FR",
+      "PUT /e5/listings/fr-FR",
+      "POST /e5:validate",
+      "POST /e5:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW",
+    ]);
+    expect(result).toMatchObject({ before: null, unchanged: false });
+  });
+
   it("deletes the edit when a step fails, so nothing half-done stays in Play Console", async () => {
     const { calls, client } = fakePlay({
       "POST /applications/[^/]+/edits": () => json({ id: "e2" }),

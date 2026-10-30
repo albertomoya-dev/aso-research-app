@@ -70,6 +70,8 @@ La profundidad real depende de la tienda: App Store devuelve hasta 200 resultado
 
 En App Store la posición es aproximada: la API pública no siempre ordena igual que la app de la tienda.
 
+La consulta diaria va en este orden: posiciones → avisos → picos de temporada → competidores → email de los lunes → ficha propia (la última, solo mientras quede tiempo de los 300 s). Si un paso falla, los demás siguen y su error aparece en la respuesta JSON.
+
 En la tabla de keywords, la columna **TOP 5** marca tu app con un borde lavanda y los competidores que vigilas (pestaña Competidores) con uno naranja; la leyenda está encima de la tabla y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. La tabla es ancha: en el móvil o en una ventana estrecha hace scroll dentro de su tarjeta, nunca la página, y la casilla y la keyword se quedan fijas a la izquierda para no perder de vista qué fila estás leyendo. Las pestañas de cada app también hacen scroll en horizontal cuando no caben.
 
 ## Popularidad, dificultad y oportunidad
@@ -87,11 +89,11 @@ La pantalla **Descubrir keywords** consulta el autocompletado con una palabra se
 
 Una lista con cientos de keywords mezcla frases que de verdad traen usuarios con ruido: palabras vacías de las descripciones («además», «puedes», «etc», «com»), búsquedas donde la gente quiere otra cosa («tomas omitidas» da *Thomas y sus amigos*) y palabras sueltas demasiado amplias («móvil», «alarma»). Ese ruido infla la oportunidad, llena Novedades de avisos y mete apps como «Reloj» entre tus competidores.
 
-- **Palabras vacías** (`lib/stopwords.ts`): listas por idioma (es, en, pt, fr, de, it) de artículos, preposiciones, conectores, adverbios, verbos auxiliares y modales con sus formas habituales y restos web (com, www, etc). Además, palabras genéricas de cualquier descripción («datos», «configurar», «experiencia»): nunca son keyword solas, pero sí dentro de una frase («copia de datos»). *Keywords del TOP 10* ya no las propone.
+- **Palabras vacías** (`lib/stopwords.ts`): listas por idioma (es, en, pt, fr, de, it) de artículos, preposiciones, conectores, adverbios, verbos auxiliares y modales con sus formas habituales y restos web (com, www, etc). Además, palabras genéricas de cualquier descripción («datos», «configurar», «experiencia»): nunca son keyword solas, pero sí dentro de una frase («copia de datos», «el tiempo», «tiempo hoy»). Si la relevancia es 4 o más (o la has puesto tú a 3 o más), una palabra genérica deja de contar como vacía: «tiempo» es la keyword de una app del tiempo. *Keywords del TOP 10* ya no las propone.
 - **Relevancia para todas**: al añadir keywords, Claude valora de 1 a 5 cuánto encaja cada una con tu app, usando la ficha de producto (o la ficha publicada si no la hay), en lotes de 100 por petición. Si tarda más de 20 segundos, sigue en segundo plano y aparece al recargar; si falla, las keywords se añaden igual. **Recalcular relevancia con IA** vuelve a valorar todas menos las que has valorado tú.
 - **Tu relevancia manda**: en la tabla de keywords cada fila tiene un selector de 1 a 5 que indica si la puso la IA o tú. La que pones tú no la cambia nunca la IA (columna `relevance_source`).
 - **Intención ajena**: las tiendas no dan la categoría de las apps en los resultados de búsqueda, así que no se puede comparar categorías. Con cada keyword se le pasan a Claude los títulos de las 5 primeras apps de hoy y se le pide marcar `foreign` cuando al menos 4 son otro tipo de app (juegos, dibujos, mensajería, relojes). Es una estimación del modelo, no un dato de la tienda; si no estás de acuerdo, súbele la relevancia a 3 o más y deja de contar como ajena.
-- **Filtro «Probablemente irrelevantes»** (`?f=noise`): relevancia 2 o menos, intención ajena o palabra vacía. Puedes marcar varias y **Quitar seleccionadas**: pide confirmación y deja **Deshacer** durante 15 segundos, que recupera las keywords con su origen y su relevancia. El histórico de posiciones no se borra al quitar una keyword.
+- **Filtro «Probablemente irrelevantes»** (`?f=noise`): relevancia 2 o menos, intención ajena o palabra vacía. Una keyword a la que tú has dado relevancia 3 o más nunca entra en el filtro. Puedes marcar varias y **Quitar seleccionadas**: pide confirmación y deja **Deshacer** durante 15 segundos, que recupera las keywords con su origen y su relevancia. El histórico de posiciones no se borra al quitar una keyword.
 - **Presupuesto**: por encima de 150 keywords seguidas la tabla avisa de que alertas y cuota pierden precisión.
 - En **Keywords del TOP 10** y **Descubrir**, «Seleccionar todas» deja fuera las palabras vacías y las de relevancia 2 o menos. **Estimar relevancia con IA** valora las candidatas sin guardar nada (una petición por cada 100, hasta 200 por clic).
 - El origen de cada keyword distingue **TOP 10 de la competencia** y **Descubrir** de las añadidas a mano.
@@ -227,7 +229,8 @@ La clave solo se usa en el servidor: Rankeo firma con ella un JWT (RS256, con `n
 
 En el editor de ficha, **Publicar en Google Play** (botón secundario) abre una vista previa con lo que hay **ahora mismo** en la consola (leído en una edición temporal que se borra) frente al **borrador guardado**, campo a campo: título, descripción corta y descripción. Solo se publica lo guardado, no lo que estés escribiendo.
 
-- Al confirmar: `edits.insert` → `edits.listings.patch` → `edits.validate` → `edits.commit`. Si un paso falla, se borra la edición y no queda nada a medias. Se usa `patch` y no `update` para no borrar el vídeo promocional, que Rankeo no edita. Si la consola ya tiene ese texto, no se envía nada.
+- Al confirmar: `edits.insert` → `edits.listings.patch` → `edits.validate` → `edits.commit`. Si un paso falla, se borra la edición y no queda nada a medias. Se usa `patch` y no `update` para no borrar el vídeo promocional, que Rankeo no edita; si ese idioma aún no tiene ficha, se crea con `update` (PUT), que es el método que la crea. Si la consola ya tiene ese texto, no se envía nada.
+- Si Google acepta la publicación pero no se puede guardar el historial, se muestra como publicada y se avisa de que falta el registro.
 - El envío usa `changesInReviewBehavior=ERROR_IF_IN_REVIEW`: si tienes cambios en revisión en Google, se rechaza en lugar de cancelarlos (la API, por defecto, los cancelaría).
 - Google revisa los cambios antes de mostrarlos en la tienda: puede tardar desde minutos hasta días.
 - No se publica si el borrador cambió desde que abriste la vista previa, si un texto pasa del límite o si el título queda vacío.
@@ -252,6 +255,7 @@ En la portada de la app (solo Google Play), **Términos de búsqueda reales** im
 - Se guarda en `search_term_stats` (una fila por término y día, o por término y periodo). Reimportar el mismo periodo sustituye sus datos.
 - En la tabla de keywords, las que coinciden llevan la etiqueta **Oficial** con visitantes e instalaciones de los últimos 30 días importados (o del periodo de la última exportación, si es más largo); en el detalle de la keyword salen como dos cifras aparte de la popularidad estimada. Debajo del formulario, las búsquedas que te traen visitas y aún no sigues.
 - La API de Google Play no da estos datos: solo están en la consola y en los informes de Cloud Storage.
+- Los archivos de más de 3,5 MB se rechazan en el navegador, antes de enviarlos.
 
 ### Qué está verificado y qué no
 
@@ -278,7 +282,7 @@ En el editor de una app del App Store, **Enviar a App Store Connect** (secundari
 - Se re-lee App Store Connect al confirmar y solo se envían los campos que cambian (un `PATCH` para nombre y subtítulo y otro para el resto). No se envía si el borrador cambió desde la vista previa o si un texto pasa del límite.
 - **Idiomas**: Apple usa sus códigos ([locale shortcodes](https://developer.apple.com/documentation/appstoreconnectapi/managing-metadata-in-your-app-by-using-locale-shortcodes), leídos el 30 oct 2026), unos con región (`es-MX`, `en-GB`) y otros sin ella (`it`, `ja`, `ko`): `it-IT` va a `it`, cualquier árabe a `ar-SA`, `zh-TW` a `zh-Hant`. Las variantes que Apple no tiene (`es-AR`, `en-NZ`, `de-AT`…) no se envían: esos países ven otra localización y se sugieren las del mismo idioma. Si la versión no tiene aún ese idioma, hay que añadirlo antes en App Store Connect.
 - La app se busca por su Apple ID (el `storeId` de Rankeo) y, si la clave no la ve, por el bundle id.
-- Cada intento queda en `publications` igual que en Google Play, con estado «Guardada en App Store Connect» o «Falló».
+- Cada intento queda en `publications` igual que en Google Play, con estado «Guardada en App Store Connect» o «Falló». Si el primer `PATCH` entra y el segundo falla, se guarda qué campos llegaron y cuáles no («Guardado a medias»).
 
 ### Informes de analítica
 
@@ -302,7 +306,7 @@ La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 La pestaña **Cambios** junta todo lo que ha cambiado en la ficha y lo que provocó en las posiciones:
 
 - **Anotaciones automáticas.** La consulta diaria lee también la ficha de cada app seguida (lo mismo hace «Actualizar ficha») y la guarda en `app_snapshots` solo cuando cambia algo: título, descripción corta, descripción, versión, precio, categoría, icono o capturas (igual que con los competidores, `lib/listing-diff.ts`). Cada cambio crea una anotación de origen «Automática» con un texto corto («Ficha: título y descripción cambiaron (v3.0)») y el detalle de las palabras añadidas y quitadas. La primera lectura solo guarda la ficha de partida, sin anotación. Si la consulta diaria se acerca a su límite de 300 s, deja las fichas que falten para el día siguiente.
-- **Publicaciones.** Al enviar un borrador a Google Play o guardarlo en App Store Connect desde Rankeo, se crea una anotación de origen «Publicación» ese mismo día. Cuando la tienda lo muestre (Google revisa antes de publicar), la consulta diaria añadirá la automática.
+- **Publicaciones.** Al enviar un borrador a Google Play o guardarlo en App Store Connect desde Rankeo, se crea una anotación de origen «Publicación» ese mismo día. Cuando la tienda muestre el cambio, la consulta diaria no repite la anotación de los textos publicados desde Rankeo en los últimos 14 días (mismo idioma); sí anota lo demás que cambie, como la versión o el icono.
 - **Impacto por keyword.** Para cada anotación se compara la posición media de los 14 días anteriores con la de los 14 posteriores (el día del cambio no cuenta) en las keywords afectadas: las que contienen una palabra añadida o quitada, sin distinguir acentos. Los días en que la app no salía entre los resultados no entran en la media, porque no sabemos en qué puesto estaba; se cuentan aparte, igual que los días sin consulta, para que se vea en cuántos datos se apoya cada media. Si antes no salía nunca y después sí, se marca «Entra en resultados» (y al revés, «Sale»). Para las anotaciones sin palabras (manuales, icono, versión) se muestran las 10 keywords que más se movieron. Es una correlación: la competencia y la tienda también mueven las posiciones.
 - **Experimentos de ficha.** Una plantilla para planificar una prueba A/B (nombre, hipótesis, variante, métrica, fechas y estado) y apuntar después el resultado y lo aprendido (tabla `experiments`). La prueba se crea y se sigue en Play Console (Experimentos de ficha de Play Store) o en App Store Connect (Prueba de la página de producto); Rankeo no lee esos resultados.
 
@@ -330,11 +334,11 @@ La distribución de estrellas y la media se calculan con las reseñas leídas, n
 La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen. Todo sale de `lib/seasonality.ts`, también el «Pico de interés en …» de la página de cada keyword. Para no anunciar temporadas que no existen:
 
 - **Señal mínima.** Una serie con más de la mitad de las semanas a 0, o con interés en menos de 6 meses, no tiene datos suficientes: su fila sale en gris, «Sin datos suficientes», en lugar de un mapa de calor engañoso (una semana a 100 entre 51 ceros pintaría un pico enorme).
-- **Pico sostenido.** Un mes es pico si su media supera en un 25 % la media del año **y** tiene al menos 3 semanas por encima de ese umbral. Una semana viral no es una temporada.
+- **Pico sostenido.** Un mes es pico si su media supera en un 25 % la media del año **y** tiene al menos 3 semanas por encima de ese umbral. Además, tiene que destacar sobre el ruido semanal: su media debe superar la del año en al menos 3 errores estándar (la desviación de cada semana respecto a la media de su mes, dividida entre la raíz del número de semanas del mes). Una semana viral no es una temporada, y una serie plana con mucho ruido tampoco.
 - **Mes en curso.** El último mes descargado aún no ha terminado, así que no cuenta; si hay datos del mismo mes del año anterior, se usan esos, y si no, la casilla sale vacía.
 - **Popularidad mínima.** No se anuncia ningún pico si la popularidad en la tienda es menor de 10 (o aún no se ha medido): que la gente lo busque en Google no significa que lo busque en la tienda. La lista «Picos que empiezan pronto» y el calendario solo incluyen además keywords relevantes.
 - **Calendario de picos.** Los 12 meses con las keywords que están en temporada alta en cada uno, marcando el mes en que empieza.
-- **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos).
+- **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
 
 En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país se sigue por separado, con sus posiciones y su histórico.
 

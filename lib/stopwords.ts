@@ -104,14 +104,23 @@ export function isStopword(word: string, lang: string): boolean {
   return stopwordsFor(lang).has(fold(word.trim()));
 }
 
+export type NoiseKind = "stopword" | "generic";
+
 /**
- * True when the keyword is only filler: a single stopword or generic word, a number, or a phrase made
- * only of those ("puedes", "datos", "etc", "com", "ahora mismo"). Phrases with one real word pass.
+ * Why the keyword is filler, or null when it is not: "stopword" for a number or a phrase made only of
+ * function words ("puedes", "etc", "com", "ahora mismo"); "generic" for a single generic word ("datos").
+ * Generic words only count alone: "el tiempo" or "tiempo hoy" keep a real search behind them.
  */
-export function isNoiseTerm(term: string, lang: string): boolean {
+export function noiseKind(term: string, lang: string): NoiseKind | null {
   const words = fold(term).split(/[^\p{L}\p{N}'’]+/u).filter(Boolean);
-  if (words.length === 0) return true;
+  if (words.length === 0) return "stopword";
   const stop = stopwordsFor(lang);
-  const generic = genericWordsFor(lang);
-  return words.every((w) => stop.has(w) || generic.has(w) || /^\d+$/.test(w) || [...w].length < 2);
+  if (words.every((w) => stop.has(w) || /^\d+$/.test(w) || [...w].length < 2)) return "stopword";
+  if (words.length === 1 && genericWordsFor(lang).has(words[0])) return "generic";
+  return null;
+}
+
+/** True when the keyword is only filler (see `noiseKind`). Phrases with one real word pass. */
+export function isNoiseTerm(term: string, lang: string): boolean {
+  return noiseKind(term, lang) !== null;
 }

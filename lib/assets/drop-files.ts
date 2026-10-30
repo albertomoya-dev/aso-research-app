@@ -34,6 +34,8 @@ async function walk(entry: FileSystemEntry, depth: number): Promise<DroppedFile[
 
 /** Files from a drop event. Falls back to dataTransfer.files when folders cannot be read. */
 export async function filesFromDrop(dt: DataTransfer): Promise<DroppedFile[]> {
+  // Captured before any await: the browser empties the DataTransfer once the drop handler yields.
+  const plain = [...dt.files].map((file) => ({ file, name: file.name, path: file.name }));
   const entries = [...dt.items]
     .filter((i) => i.kind === "file")
     .map((i) => (typeof i.webkitGetAsEntry === "function" ? i.webkitGetAsEntry() : null));
@@ -44,5 +46,5 @@ export async function filesFromDrop(dt: DataTransfer): Promise<DroppedFile[]> {
       // Fall through to the plain file list.
     }
   }
-  return [...dt.files].map((file) => ({ file, name: file.name, path: file.name }));
+  return plain;
 }

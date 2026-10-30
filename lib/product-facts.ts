@@ -95,6 +95,17 @@ export function factsForPrompt(facts: ProductFacts | null, features: ProductFeat
     .join("\n");
 }
 
+/**
+ * Our own words for the brand detector: pitch, audience and feature names and summaries. Never the
+ * differentiators or constraints, which name competitors ("más sencillo que MyTherapy").
+ */
+export function productBrandTerms(facts: ProductFacts | null, features: Pick<ProductFeature, "name" | "summary">[]): string {
+  return [facts?.pitch ?? "", facts?.audience ?? "", ...features.flatMap((f) => [f.name, f.summary])]
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .join(". ");
+}
+
 // ---------- Form input ----------
 
 /** One item per line, trimmed, no blanks or repeats. */
@@ -118,10 +129,12 @@ export const factsFormSchema = z.object({
   languages: z.string().max(500).transform((t) => splitList(t)),
 });
 
+// Nullable too: a proposal comes back from the client with null for "unknown" and is parsed again on save.
 const versionSchema = z
   .string()
   .trim()
   .max(30)
+  .nullable()
   .transform((v) => v || null);
 
 export const featureInputSchema = z.object({
@@ -136,7 +149,8 @@ export type FeatureInput = z.infer<typeof featureInputSchema>;
 const isoDate = z
   .string()
   .trim()
-  .transform((d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? d : null));
+  .nullable()
+  .transform((d) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? d : null));
 
 export const releaseInputSchema = z.object({
   version: z.string().trim().min(1, "Indica el número de versión.").max(30),
@@ -205,12 +219,18 @@ export type ProposedFeature = FeatureInput & {
 };
 export type ChangelogProposal = { features: ProposedFeature[]; releases: ReleaseInput[]; notes: string[] };
 
+/** What the import review sends back: the ticked items of a `ChangelogProposal`, as JSON. */
+export const changelogApplySchema = z.object({
+  features: z.array(featureInputSchema.extend({ existingId: z.number().int().positive().nullable() })).max(100),
+  releases: z.array(releaseInputSchema).max(50),
+});
+
 const foldName = (s: string) => fold(s).replace(/\s+/g, " ").trim();
 
 /** Validates the model's items, matches them to existing features and drops repeats and no-op updates. */
 export function cleanChangelogProposal(
   output: ChangelogOutput,
-  existing: { id: number; name: string; summary: string; status: FeatureStatus; sinceVersion: string | null }[],
+  existing: { id: number; name: string; summary: string; status: FeatureStatus; sinceVersion: string | null; advertise?: boolean }[],
 ): ChangelogProposal {
   const byName = new Map(existing.map((f) => [foldName(f.name), f]));
   const seen = new Set<string>();
@@ -233,6 +253,8 @@ export function cleanChangelogProposal(
       name: match?.name ?? f.name,
       summary: f.summary || match?.summary || "",
       sinceVersion: f.sinceVersion ?? match?.sinceVersion ?? null,
+      // The owner's choice to hide a feature from the listing survives the import.
+      advertise: match?.advertise ?? true,
       existingId: match?.id ?? null,
     });
   }

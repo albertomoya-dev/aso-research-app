@@ -21,7 +21,9 @@ const inputSchema = z.object({
 });
 
 export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormData): Promise<AnalyzeState> {
-  const { appId, target, country: countryCode } = inputSchema.parse(Object.fromEntries(formData));
+  const input = inputSchema.safeParse(Object.fromEntries(formData));
+  if (!input.success) return { error: "Datos no válidos: elige una app y un país de la lista." };
+  const { appId, target, country: countryCode } = input.data;
   const db = getDb();
   const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return { error: "App no encontrada." };

@@ -64,25 +64,32 @@ export async function encodeAudioTrack(
       failure = e;
     },
   });
-  encoder.configure({ ...encoderConfig(codec, channels), sampleRate: buffer.sampleRate });
-  for (const { start, length } of chunkRanges(plan.frames)) {
-    if (failure) throw failure;
-    // f32-planar: every channel's samples one after the other.
-    const planar = new Float32Array(length * channels);
-    for (let c = 0; c < channels; c++) planar.set(data[c].subarray(start, start + length), c * length);
-    const audio = new AudioData({
-      format: "f32-planar",
-      sampleRate: buffer.sampleRate,
-      numberOfFrames: length,
-      numberOfChannels: channels,
-      timestamp: Math.round((start * 1_000_000) / buffer.sampleRate),
-      data: planar,
-    });
-    encoder.encode(audio);
-    audio.close();
+  try {
+    encoder.configure({ ...encoderConfig(codec, channels), sampleRate: buffer.sampleRate });
+    for (const { start, length } of chunkRanges(plan.frames)) {
+      if (failure) throw failure;
+      // f32-planar: every channel's samples one after the other.
+      const planar = new Float32Array(length * channels);
+      for (let c = 0; c < channels; c++) planar.set(data[c].subarray(start, start + length), c * length);
+      const audio = new AudioData({
+        format: "f32-planar",
+        sampleRate: buffer.sampleRate,
+        numberOfFrames: length,
+        numberOfChannels: channels,
+        timestamp: Math.round((start * 1_000_000) / buffer.sampleRate),
+        data: planar,
+      });
+      try {
+        encoder.encode(audio);
+      } finally {
+        audio.close();
+      }
+    }
+    await encoder.flush();
+  } finally {
+    // Also on errors: an open encoder keeps its codec resources until the page is closed.
+    if (encoder.state !== "closed") encoder.close();
   }
-  await encoder.flush();
-  encoder.close();
   if (failure) throw failure;
   return plan;
 }

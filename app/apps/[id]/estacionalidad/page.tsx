@@ -82,7 +82,7 @@ export default async function SeasonalityPage({ params }: Props) {
           <Card aria-label="Picos que se acercan" className="px-5 py-4">
             <h2 className="text-[15px] font-semibold">Picos que empiezan pronto</h2>
             <p className="mt-1 text-[13px] text-muted">
-              Solo keywords relevantes, con al menos 3 semanas altas en el mes y popularidad de {MIN_POPULARITY} o más en la tienda. Las tiendas
+              Solo keywords relevantes, con al menos 3 semanas altas en el mes (más allá del ruido semanal) y popularidad de {MIN_POPULARITY} o más en la tienda. Las tiendas
               tardan en reindexar: cambia la ficha o las keywords unas 2 a 4 semanas antes de que empiece el pico.
             </p>
             {upcoming.length === 0 ? (
