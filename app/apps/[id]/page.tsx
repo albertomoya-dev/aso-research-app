@@ -10,7 +10,7 @@ import { KeywordForm } from "@/components/keyword-form";
 import { OfficialBadge, officialPeriod, OfficialStatsCard } from "@/components/official-stats";
 import { BulkRemoveBar, KeywordSelection, RowCheckbox, SelectAllCheckbox } from "@/components/keyword-selection";
 import { Position, PositionChange, Sparkline } from "@/components/rank";
-import { RecalculateRelevance, RelevanceSelect } from "@/components/relevance-select";
+import { RecalculateRelevance, RefreshWhilePending, RelevanceSelect } from "@/components/relevance-select";
 import { Difficulty, OpportunityBadge, PopularityBar } from "@/components/scores";
 import { StoreBadge } from "@/components/store-badge";
 import { SubmitButton } from "@/components/submit-button";
@@ -23,9 +23,21 @@ import { isKeywordSort, KEYWORD_SORTS, sortKeywordRows, type KeywordSort, type S
 import { SOURCE_LABEL } from "@/lib/keywords";
 import { getKeywordRows, type KeywordRow } from "@/lib/queries";
 import { rankStatus } from "@/lib/ranking";
-import { isLikelyIrrelevant, KEYWORD_BUDGET, noiseReason } from "@/lib/relevance";
+import {
+  countProgress,
+  isLikelyIrrelevant,
+  KEYWORD_BUDGET,
+  noiseReason,
+  RELEVANCE_PROGRESS_LABEL,
+  relevanceProgress,
+} from "@/lib/relevance";
 import { hasAnthropicKey } from "@/lib/claude";
 import { getOfficialStats } from "@/lib/search-term-queries";
+import { popularityHint } from "@/lib/popularity";
+
+// Adding keywords (a Server Action of this page) rates them with the AI and may keep doing it after
+// the response (`after`): this is the time it gets.
+export const maxDuration = 120;
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ f?: string; s?: string; d?: string }> };
 
@@ -66,6 +78,10 @@ export default async function AppPage({ params, searchParams }: Props) {
   const visible = sortKeywordRows(rows.filter((r) => filter.test(r, lang)), sort, dir);
   const unratedByUser = rows.filter((r) => r.relevanceSource !== "user").length;
   const unrated = rows.filter((r) => r.relevance == null).length;
+  const aiEnabled = hasAnthropicKey();
+  const progress = new Map(rows.map((r) => [r.id, relevanceProgress(r, aiEnabled)]));
+  const progressCount = countProgress([...progress.values()]);
+  const waiting = progressCount.failed + progressCount.queued;
   const href = (params: { f?: string; s?: string; d?: string }) => {
     const q = new URLSearchParams({ f: filter.id, s: sort, d: dir, ...params });
     if (q.get("f") === "all") q.delete("f");
@@ -133,8 +149,29 @@ export default async function AppPage({ params, searchParams }: Props) {
               <h2 className="text-[17px] font-semibold">Keywords ({rows.length})</h2>
               {unrated > 0 && <span className="text-[13px] text-muted">{unrated} sin valorar</span>}
             </div>
-            {hasAnthropicKey() && rows.length > 0 && <RecalculateRelevance appId={app.id} pendingCount={unratedByUser} />}
+            {aiEnabled && rows.length > 0 && <RecalculateRelevance appId={app.id} pendingCount={unratedByUser} />}
           </div>
+          {progressCount.calculating > 0 && (
+            <p role="status" className="border-b border-line px-5 py-3 text-[13px] text-muted">
+              La IA está calculando la relevancia de{" "}
+              {progressCount.calculating === 1 ? "1 keyword añadida" : `${progressCount.calculating} keywords añadidas`} hace poco.
+              <RefreshWhilePending />
+            </p>
+          )}
+          {waiting > 0 && (
+            <p role="note" className="border-b border-line bg-warn-bg px-5 py-3 text-[13px] text-warn-fg">
+              {waiting === 1 ? "1 keyword sigue sin relevancia" : `${waiting} keywords siguen sin relevancia`}
+              {progressCount.failed > 0 && ` (en ${progressCount.failed} la IA falló o no las valoró)`}. Mientras tanto cuentan como 0,7 en la
+              oportunidad. La consulta diaria las vuelve a intentar; para no esperar, pulsa «Recalcular relevancia con IA».
+            </p>
+          )}
+          {progressCount.off > 0 && (
+            <p role="note" className="border-b border-line bg-warn-bg px-5 py-3 text-[13px] text-warn-fg">
+              {progressCount.off === 1 ? "1 keyword no tiene relevancia" : `${progressCount.off} keywords no tienen relevancia`}: falta
+              ANTHROPIC_API_KEY para que la estime la IA. Cuentan como 0,7 en la oportunidad; puedes valorarlas a mano en la columna
+              Relevancia.
+            </p>
+          )}
           {rows.length > KEYWORD_BUDGET && (
             <p role="note" className="border-b border-line bg-warn-bg px-5 py-3 text-[13px] text-warn-fg">
               Sigues {rows.length} keywords. Por encima de {KEYWORD_BUDGET}, las alertas y la cuota de visibilidad pierden precisión porque se
@@ -230,7 +267,9 @@ export default async function AppPage({ params, searchParams }: Props) {
                       <td className="px-3 py-3"><PositionChange change={k.changeDay} /></td>
                       <td className="px-3 py-3"><PositionChange change={k.changeWeek} /></td>
                       <td className="px-3 py-3"><Sparkline points={k.history} /></td>
-                      <td className="px-3 py-3"><PopularityBar value={k.popularity} /></td>
+                      <td className="px-3 py-3" title={popularityHint(k.popularity)}>
+                        <PopularityBar value={k.popularity} />
+                      </td>
                       <td className="px-3 py-3"><Difficulty value={k.difficulty} /></td>
                       <td className="px-3 py-3"><OpportunityBadge value={k.opportunity} /></td>
                       <td className="px-3 py-3">
@@ -241,6 +280,10 @@ export default async function AppPage({ params, searchParams }: Props) {
                           value={k.relevance}
                           source={k.relevanceSource}
                           reason={noiseReason(k, lang)}
+                          status={(() => {
+                            const p = progress.get(k.id);
+                            return p && p !== "set" ? RELEVANCE_PROGRESS_LABEL[p] : undefined;
+                          })()}
                         />
                       </td>
                       <td className="px-3 py-3">
@@ -284,7 +327,7 @@ export default async function AppPage({ params, searchParams }: Props) {
             {app.store === "ios" && " En App Store es aproximada: la API pública no siempre ordena igual que la app de la tienda."} «&gt; N»
             significa que la app no aparece entre los N resultados que devuelve la tienda para esa búsqueda (cada búsqueda
             devuelve un número distinto: hasta 200 en App Store; Google Play suele devolver unos 30). Popularidad
-            (0–100): estimada con el autocompletado de la tienda, se actualiza cada semana. Dificultad (0–100): fuerza del TOP 10.
+            (0–100): estimada con el autocompletado de la tienda, se actualiza cada semana; 0 es que la tienda no la sugiere ni escribiéndola entera y «–», que aún no se ha medido. Dificultad (0–100): fuerza del TOP 10.
             Oportunidad: popularidad descontada por la dificultad y multiplicada por la relevancia (de 0,6 con relevancia 1 a 1 con
             relevancia 5; una keyword sin valorar cuenta como 0,7). Relevancia (1–5): la estima la IA con tu ficha de producto o la fijas tú;
             la IA nunca cambia la que has puesto tú.

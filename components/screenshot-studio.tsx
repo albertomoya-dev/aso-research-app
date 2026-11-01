@@ -51,7 +51,7 @@ import {
   THEME_PRESETS,
 } from "@/lib/assets/screenshots";
 import { detectScreen } from "@/lib/assets/screen-detect";
-import { paletteFromImages } from "@/lib/assets/palette";
+import { paletteFromImages, themeFromPalette } from "@/lib/assets/palette";
 import { buildZip } from "@/lib/assets/zip";
 import { CropEditor } from "./crop-editor";
 import type { Store } from "@/lib/stores/types";
@@ -73,9 +73,12 @@ type Props = {
   detectSlides: string[];
   /** The app's icon (proxied URL), used with the screenshots to read the brand colours. */
   appIcon: string | null;
+  /** When the design was last saved, already formatted on the server (see formatSavedAt). */
   savedAt: string | null;
   /** Version and last update of the published listing: uploaded screenshots older than it get a warning. */
   published: PublishedRef;
+  /** `published.updatedAt` formatted on the server (see formatDayEs), for the warning. */
+  publishedDate: string | null;
   /** Relevant tracked keywords, best first, suggested for the keyword of each screen. */
   keywordOptions: string[];
 };
@@ -96,6 +99,7 @@ export function ScreenshotStudio({
   appIcon,
   savedAt,
   published,
+  publishedDate,
   keywordOptions,
 }: Props) {
   const [spec, setSpec] = useState<ScreenshotSpec>(initial);
@@ -113,6 +117,7 @@ export function ScreenshotStudio({
   const [bgFocus, setBgFocus] = useState("");
   const [appPalette, setAppPalette] = useState<string[]>([]);
   const [usePalette, setUsePalette] = useState(true);
+  const paletteTheme = useMemo(() => themeFromPalette(appPalette), [appPalette]);
   const [bgPrompts, setBgPrompts] = useState<
     { name: string; prompt: string; rationale: string }[]
   >([]);
@@ -706,7 +711,7 @@ export function ScreenshotStudio({
           </p>
         )}
         {stale.length > 0 && (
-          <p className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn-fg">{staleMessage(stale, published)}</p>
+          <p className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn-fg">{staleMessage(stale, published.version, publishedDate)}</p>
         )}
         <div className="lg:sticky lg:-top-7 lg:z-10 lg:-mt-7 lg:bg-panel lg:pt-7">
           <Card className="px-5 py-4">
@@ -1314,6 +1319,25 @@ export function ScreenshotStudio({
                 </button>
               </li>
             ))}
+            {paletteTheme && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => updateTheme(paletteTheme)}
+                  title="Fondo, degradado, titular, subtítulo y acento a partir del icono y las capturas, con el titular siempre legible (contraste AA)"
+                  className="flex items-center gap-1.5 rounded-md border border-line-strong px-2 py-1 text-xs text-ink-soft hover:border-muted"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="inline-block size-4 rounded-sm border border-line"
+                    style={{
+                      background: `linear-gradient(${paletteTheme.background}, ${paletteTheme.background2})`,
+                    }}
+                  />
+                  Colores de la app
+                </button>
+              </li>
+            )}
           </ul>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <ColorField
@@ -1428,7 +1452,7 @@ export function ScreenshotStudio({
                     checked={usePalette}
                     onChange={(e) => setUsePalette(e.target.checked)}
                   />
-                  Usar los colores de la app
+                  Usar los colores de la app en el fondo con IA
                   <span className="flex gap-1" aria-hidden>
                     {appPalette.map((c) => (
                       <span
@@ -1590,8 +1614,7 @@ export function ScreenshotStudio({
               </span>
             ) : savedAt ? (
               <span className="text-muted">
-                Guardado por última vez el{" "}
-                {new Date(savedAt).toLocaleString("es-ES")}.
+                Guardado por última vez el {savedAt}.
               </span>
             ) : (
               <span className="text-muted">Aún no guardado.</span>
@@ -1610,14 +1633,14 @@ export function ScreenshotStudio({
 }
 
 /** «Las capturas de las pantallas 2, 3 son anteriores a la ficha publicada (versión 3.0, actualizada el 12/10/2026)…» */
-function staleMessage(stale: number[], published: PublishedRef): string {
+function staleMessage(stale: number[], version: string | null, updatedAt: string | null): string {
   const which =
     stale.length === 1
       ? `La captura de la pantalla ${stale[0] + 1} es anterior`
       : `Las capturas de las pantallas ${stale.map((i) => i + 1).join(", ")} son anteriores`;
   const ref = [
-    published.version ? `versión ${published.version}` : "",
-    published.updatedAt ? `actualizada el ${new Date(published.updatedAt).toLocaleDateString("es-ES")}` : "",
+    version ? `versión ${version}` : "",
+    updatedAt ? `actualizada el ${updatedAt}` : "",
   ]
     .filter(Boolean)
     .join(", ");

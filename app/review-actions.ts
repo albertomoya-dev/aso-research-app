@@ -6,8 +6,9 @@ import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, analyzeReviews } from "@/lib/claude";
 import { getCountry, isCountry } from "@/lib/countries";
-import { productFactsPrompt } from "@/lib/product-queries";
-import { EMPTY_REVIEW_ANALYSIS, MAX_REVIEWS, NO_REVIEWS_MODEL, ratingStats, REVIEW_PROMPT_VERSION } from "@/lib/review-analysis";
+import { factsForPrompt } from "@/lib/product-facts";
+import { getProductFacts } from "@/lib/product-queries";
+import { EMPTY_REVIEW_ANALYSIS, MAX_REVIEWS, NO_REVIEWS_MODEL, fixOpportunityStatus, ourFactsForReviews, ratingStats, REVIEW_PROMPT_VERSION } from "@/lib/review-analysis";
 import { resolveReviewTarget } from "@/lib/review-queries";
 import { getAdapter } from "@/lib/stores";
 import { STORE_LABEL } from "@/lib/stores/types";
@@ -47,9 +48,11 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
     return { ok: true };
   }
 
-  // Users review the published version. For our app the facts describe the reviewed app; for a
-  // competitor they describe ours, to find the complaints we already solve.
-  const facts = await productFactsPrompt(appId, "published");
+  // Users review the published version, so our own app is judged by its published facts. For a
+  // competitor the facts describe ours: published (what the tips may claim) plus the next version,
+  // marked apart, so the model can say which complaints the next release solves.
+  const { facts: productFacts, features } = await getProductFacts(appId);
+  const facts = own ? factsForPrompt(productFacts, features, "published") : ourFactsForReviews(productFacts, features);
 
   try {
     const { output, model } = await analyzeReviews({
@@ -60,9 +63,11 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
       reviews,
       facts: own ? facts : null,
       ourFacts: own ? null : facts,
+      // Even without facts, the model must know the tips are for our app, not the competitor.
+      ourAppTitle: own ? null : app.title,
       version: own ? app.meta.version : null,
     });
-    await db.insert(schema.reviewAnalyses).values({ ...row, result: { ...output, opportunities: own ? [] : output.opportunities }, model });
+    await db.insert(schema.reviewAnalyses).values({ ...row, result: { ...output, opportunities: own ? [] : fixOpportunityStatus(output.opportunities ?? [], features) }, model });
   } catch (error) {
     if (error instanceof AiError) return { error: error.message };
     throw error;

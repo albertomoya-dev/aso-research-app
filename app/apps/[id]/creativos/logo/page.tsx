@@ -6,6 +6,7 @@ import { LogoStudio } from "@/components/logo-studio";
 import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
+import { formatDayEs } from "@/lib/assets/screenshots";
 import { IMAGE_PROVIDER_LABEL, imageProvider } from "@/lib/assets/image-provider";
 import { hasAnthropicKey } from "@/lib/claude";
 
@@ -49,7 +50,7 @@ export default async function LogoPage({ params }: Props) {
       <LogoStudio
         appId={app.id}
         appTitle={app.title}
-        images={rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))}
+        images={rows.map(({ createdAt, ...r }) => ({ ...r, createdDay: formatDayEs(createdAt) ?? "" }))}
         providerLabel={provider ? IMAGE_PROVIDER_LABEL[provider] : null}
         aiEnabled={hasAnthropicKey()}
       />

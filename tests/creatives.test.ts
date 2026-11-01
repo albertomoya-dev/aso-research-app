@@ -9,7 +9,7 @@ import {
   parseVisionImage,
 } from "@/lib/assets/creative-ai";
 import { contrastRatio, DEFAULT_ICON_COLORS, defaultIconSpec, iconColorsFromPalette, shade } from "@/lib/assets/icon";
-import { blankSlide, defaultScreenshotSpec, screenshotSpecSchema, type Slide } from "@/lib/assets/screenshots";
+import { blankSlide, defaultScreenshotSpec, formatDayEs, formatSavedAt, screenshotSpecSchema, type Slide } from "@/lib/assets/screenshots";
 import type { AppMeta } from "@/lib/stores/types";
 
 const slide = (id: string, patch: Partial<Slide> = {}): Slide => ({ ...blankSlide(), id, ...patch });
@@ -213,5 +213,15 @@ describe("screenshot captions with vision", () => {
     expect(blocks.map((b) => b.type)).toEqual(["text", "text", "image"]);
     expect(blocks[1]).toEqual({ type: "text", text: "Screenshot of slide 2:" });
     expect(blocks[0].type === "text" && blocks[0].text).toContain("Relevant tracked keywords");
+  });
+});
+
+describe("studio dates formatted on the server (H21)", () => {
+  it("formats in Spain time whatever the server's time zone", () => {
+    expect(formatSavedAt(new Date("2026-11-01T10:20:00Z"))).toBe("1/11/2026, 11:20");
+    expect(formatSavedAt("2026-07-01T23:30:00Z")).toBe("2/7/2026, 01:30");
+    expect(formatDayEs("2026-10-12")).toBe("12/10/2026");
+    expect(formatSavedAt(null)).toBeNull();
+    expect(formatDayEs("no es una fecha")).toBeNull();
   });
 });

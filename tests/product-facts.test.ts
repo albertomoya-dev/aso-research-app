@@ -4,11 +4,13 @@ import {
   type ChangelogOutput,
   changelogApplySchema,
   cleanChangelogProposal,
+  declaredBrand,
   EMPTY_FACTS,
   factsFormSchema,
   factsForPrompt,
   featuresFor,
   hasProductFacts,
+  productBrandTerms,
   type ProductFeature,
   splitList,
   splitLines,
@@ -101,8 +103,18 @@ describe("form input", () => {
   it("splits lists and drops blanks, bullets and repeats", () => {
     expect(splitLines("- uno\n\n• dos\nuno\r\n  tres ")).toEqual(["uno", "dos", "tres"]);
     expect(splitList("español, inglés,\nespañol")).toEqual(["español", "inglés"]);
-    const parsed = factsFormSchema.parse({ pitch: " Hola ", audience: "", differentiators: "a\nb", constraints: "", tone: "", languages: "es, en" });
-    expect(parsed).toEqual({ pitch: "Hola", audience: "", differentiators: ["a", "b"], constraints: [], tone: "", languages: ["es", "en"] });
+    const parsed = factsFormSchema.parse({ brand: " Runly ", pitch: " Hola ", audience: "", differentiators: "a\nb", constraints: "", tone: "", languages: "es, en" });
+    expect(parsed).toEqual({ brand: "Runly", pitch: "Hola", audience: "", differentiators: ["a", "b"], constraints: [], tone: "", languages: ["es", "en"] });
+    // A brand longer than a title cannot be kept at its start.
+    expect(factsFormSchema.safeParse({ brand: "x".repeat(31), pitch: "", audience: "", differentiators: "", constraints: "", tone: "", languages: "" }).success).toBe(false);
+  });
+
+  it("the declared brand is the only brand (H12)", () => {
+    expect(declaredBrand({ brand: "  Runly   Pro " })).toBe("Runly Pro");
+    // Sheets saved before the field existed, or no sheet at all: no brand, so nothing is forced in the title.
+    expect(declaredBrand({})).toBe("");
+    expect(declaredBrand(null)).toBe("");
+    expect(productBrandTerms({ ...EMPTY_FACTS, brand: "Runly" }, [])).toContain("Runly");
   });
 });
 

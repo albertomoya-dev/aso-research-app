@@ -18,6 +18,7 @@ import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import { ANNOTATION_WINDOW, getKeywordDetail } from "@/lib/queries";
 import { officialPeriod } from "@/components/official-stats";
 import { getOfficialStats } from "@/lib/search-term-queries";
+import { popularityHint } from "@/lib/popularity";
 import { averagePosition, positionChange, RANK_DEPTH, shiftDate, today } from "@/lib/ranking";
 import { completePoints, MIN_POPULARITY, peakMonth, signalQuality } from "@/lib/seasonality";
 
@@ -91,7 +92,7 @@ export default async function KeywordPage(props: Props) {
             <PositionChange change={positionChange(latest?.position, weekAgo?.position)} />
           </Stat>
           <Stat label="Popularidad (estimada)">
-            {metrics.popularity ?? "–"}
+            <span title={popularityHint(metrics.popularity)}>{metrics.popularity ?? "–"}</span>
           </Stat>
           {official && officialTerm && (
             <>
@@ -180,6 +181,8 @@ export default async function KeywordPage(props: Props) {
           entre sí, pero sí para ver la estacionalidad.
           {metrics.prefixLength != null &&
             ` En ${app.store === "ios" ? "App Store" : "Google Play"} aparece en el autocompletado al escribir ${metrics.prefixLength} ${metrics.prefixLength === 1 ? "letra" : "letras"}.`}
+          {metrics.popularity === 0 &&
+            ` ${app.store === "ios" ? "App Store" : "Google Play"} no la sugiere en el autocompletado ni escribiéndola entera: se busca poco.`}
         </p>
         {trend?.points && trend.points.length > 0 ? (
           <>

@@ -127,6 +127,13 @@
       "when": 1793374280098,
       "tag": "0017_auto_annotations",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793528341920,
+      "tag": "0018_product_brand",
+      "breakpoints": true
     }
   ]
 }

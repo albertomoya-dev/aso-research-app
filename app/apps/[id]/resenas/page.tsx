@@ -16,7 +16,7 @@ import { normalizeKeyword } from "@/lib/keywords";
 import { playConfig } from "@/lib/play-console/auth";
 import { featuresFor } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
-import { aggregateCategoryAsks } from "@/lib/review-analysis";
+import { aggregateCategoryAsks, fixOpportunityStatus, type MatchConfidence, withCurrentOpportunityStatus } from "@/lib/review-analysis";
 import { findInTop5, loadReviewTargets } from "@/lib/review-queries";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ t?: string; c?: string }> };
@@ -30,6 +30,12 @@ const SENTIMENT = {
   negative: { label: "Negativo", className: "bg-danger-soft text-danger" },
   mixed: { label: "Mixto", className: "bg-warn-bg text-warn-fg" },
 } as const;
+
+const CONFIDENCE: Record<MatchConfidence, string> = {
+  ia: "Según la IA",
+  alta: "Confianza alta",
+  media: "Confianza media",
+};
 
 function List({ title, items }: { title: string; items: string[] }) {
   return (
@@ -108,14 +114,23 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
     ? [...new Set(shown.result.keywordIdeas.map((k) => normalizeKeyword(k.keyword)))].filter((k) => k && !tracked.has(k))
     : [];
   const enabled = hasAnthropicKey();
-  const opportunities = shown && !own ? (shown.result.opportunities ?? []) : [];
+  // Statuses are checked again against today's features: a feature may have shipped or been retired since.
+  const opportunities = shown && !own ? fixOpportunityStatus(shown.result.opportunities ?? [], product.features) : [];
   const suggestions = suggested.filter((s) => s.storeId !== target.storeId);
 
   // Latest analysis with reviews of each competitor in this country.
-  const perCompetitor = [...Map.groupBy(competitorAnalyses.filter((a) => a.stats.count > 0), (a) => a.targetStoreId).values()].map((rows) => rows[0]);
-  const asks = aggregateCategoryAsks(perCompetitor, featuresFor(product.features, "published"));
-  const covered = asks.filter((a) => a.coveredBy);
-  const future = asks.filter((a) => !a.coveredBy);
+  const perCompetitor = withCurrentOpportunityStatus(
+    [...Map.groupBy(competitorAnalyses.filter((a) => a.stats.count > 0), (a) => a.targetStoreId).values()].map((rows) => rows[0]),
+    product.features,
+  );
+  const asks = aggregateCategoryAsks(
+    perCompetitor,
+    featuresFor(product.features, "published"),
+    featuresFor(product.features, "next").filter((f) => f.status === "next_release"),
+  );
+  const covered = asks.flatMap((a) => (a.coveredBy ? [{ ...a, match: a.coveredBy }] : []));
+  const upcoming = asks.flatMap((a) => (!a.coveredBy && a.nextBy ? [{ ...a, match: a.nextBy }] : []));
+  const future = asks.filter((a) => !a.coveredBy && !a.nextBy);
 
   return (
     <div className="flex flex-col gap-6">
@@ -273,7 +288,7 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
             <Card aria-label="Oportunidades para tu ficha" className="px-5 py-4">
               <h2 className="text-[15px] font-semibold">Lo que tu app ya resuelve</h2>
               <p className="mt-1 text-[13px] text-muted">
-                Quejas y peticiones de los usuarios de {target.title} que tu app ya cubre según la ficha de producto. Es material para el texto y las
+                Quejas y peticiones de los usuarios de {target.title} que tu app ya cubre, o cubrirá en la próxima versión, según la ficha de producto. Es material para el texto y las
                 capturas de tu ficha.
               </p>
               {opportunities.length === 0 ? (
@@ -289,7 +304,10 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
                   {opportunities.map((o) => (
                     <li key={`${o.need}-${o.feature}`} className="border-b border-line py-2.5 text-sm last:border-0">
                       <span className="font-medium">{o.need}</span>
-                      <span className="text-ink-soft"> → lo resuelve «{o.feature}»</span>
+                      <span className="text-ink-soft">
+                        {" "}
+                        → {o.status === "next" ? "lo resolverá la próxima versión con" : "lo resuelve"} «{o.feature}»
+                      </span>
                       <span className="mt-0.5 block text-[13px] text-muted italic">«{o.quote}»</span>
                     </li>
                   ))}
@@ -334,10 +352,10 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
           <h2 className="text-[15px] font-semibold">Lo que piden los usuarios de la categoría</h2>
           <p className="mt-1 text-[13px] text-muted">
             Quejas y peticiones de los últimos análisis de {perCompetitor.length === 1 ? "1 competidor" : `${perCompetitor.length} competidores`} en{" "}
-            {country.name}. Se marcan como cubiertas cuando coinciden con una función publicada de tu ficha de producto (por palabras, sin IA:
-            revísalo antes de usarlo).
+            {country.name}. Se cruzan con las funciones publicadas y las de la próxima versión de tu ficha de producto por palabras (sin IA,
+            salvo las marcadas «según la IA»): revísalo antes de usarlo.
           </p>
-          <div className="mt-3 grid gap-6 md:grid-cols-2">
+          <div className="mt-3 grid gap-6 md:grid-cols-3">
             <div>
               <h3 className="text-[13px] font-semibold text-ink-soft">Ya lo resuelves: cuéntalo en la ficha</h3>
               {covered.length === 0 ? (
@@ -348,8 +366,27 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
                 <ul className="mt-1.5 flex flex-col">
                   {covered.map((a) => (
                     <li key={a.text} className="border-b border-line py-2 text-sm last:border-0">
-                      {a.text} <span className="text-ink-soft">→ «{a.coveredBy}»</span>
-                      <span className="block text-xs text-muted">{a.apps.join(", ")}</span>
+                      {a.text} <span className="text-ink-soft">→ «{a.match.name}»</span>
+                      <span className="block text-xs text-muted">
+                        {CONFIDENCE[a.match.confidence]} · {a.apps.join(", ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <h3 className="text-[13px] font-semibold text-ink-soft">Lo resuelve la próxima versión: cuéntalo en la ficha nueva</h3>
+              {upcoming.length === 0 ? (
+                <p className="mt-1.5 text-sm text-muted">Nada coincide con las funciones de la próxima versión.</p>
+              ) : (
+                <ul className="mt-1.5 flex flex-col">
+                  {upcoming.map((a) => (
+                    <li key={a.text} className="border-b border-line py-2 text-sm last:border-0">
+                      {a.text} <span className="text-ink-soft">→ «{a.match.name}»</span>
+                      <span className="block text-xs text-muted">
+                        {CONFIDENCE[a.match.confidence]} · {a.apps.join(", ")}
+                      </span>
                     </li>
                   ))}
                 </ul>

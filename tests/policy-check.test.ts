@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { MetadataDraft } from "@/lib/metadata-check";
-import { isHealthCategory, POLICY_RULES, policyCheck, type PolicyContext, REVIEWED_AT } from "@/lib/policy-check";
+import { isHealthCategory, POLICY_LINKS, POLICY_RULES, policyCheck, type PolicyContext, REVIEWED_AT } from "@/lib/policy-check";
 import type { Store } from "@/lib/stores/types";
+import keywordsFixture from "./fixtures/recordatorio/keywords.json";
 import listingV2 from "./fixtures/recordatorio/listing-v2.json";
 import observed from "./fixtures/recordatorio/proposal-observed.json";
 
@@ -196,5 +197,65 @@ describe("real case: the observed proposal (Anexo B)", () => {
   it("the published listing v2 only gets the health declaration reminder", () => {
     const v2 = policyCheck("android", listingV2.draft, { ...ctx, category: listingV2.category });
     expect(v2.map((i) => i.ruleId)).toEqual(["play.health.declaration"]);
+  });
+});
+
+describe("keyword stuffing without repeats (H16)", () => {
+  // The closing paragraph of the optimizer's en-US proposal (app 4): ten keyword variants in two sentences.
+  const stuffed =
+    "One app for the whole routine: a daily pill reminder for one tablet, a med reminder for several treatments, a meds reminder for short courses and a clear medication tracker for your history. A pill reminder app and meds tracker that also works as a simple pill tracker and medicine reminder, without ads.";
+  const enKeywords = ["pill reminder", "daily pill reminder", "med reminder", "meds reminder", "medication tracker", "pill reminder app", "meds tracker", "pill tracker", "medicine reminder", "medication reminder"];
+  const intro =
+    "Never miss a dose again. Add your treatments in seconds, choose the times and get an alarm that rings even when the phone is locked. Confirm each dose from the notification and check your history whenever you need it.";
+
+  it("flags the paragraph, with the Google Play metadata policy link", () => {
+    const issues = hits("play.description.keyword-share", "android", { description: `${intro}\n\n${stuffed}` }, { lang: "en", keywords: enKeywords });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].level).toBe("warn");
+    expect(issues[0].link).toBe(POLICY_LINKS.playMetadata);
+    expect(issues[0].text).toContain("«One app for the whole routine");
+    // No phrase repeats more than 3 times: the old density rule says nothing.
+    expect(hits("play.description.density", "android", { description: `${intro}\n\n${stuffed}` }, { lang: "en", keywords: enKeywords })).toEqual([]);
+  });
+
+  it("finds a stuffed stretch inside one long paragraph too", () => {
+    const issues = hits("play.description.keyword-share", "android", { description: `${intro} ${stuffed} ${intro}` }, { lang: "en", keywords: enKeywords });
+    expect(issues).toHaveLength(1);
+  });
+
+  it("does not flag the Spanish description accepted as good, with all the tracked keywords of the real case", () => {
+    const keywords = keywordsFixture.keywords.map((k) => k.term);
+    expect(hits("play.description.keyword-share", "android", { description: listingV2.draft.description }, { lang: "es", keywords })).toEqual([]);
+    expect(hits("play.description.keyword-list", "android", { description: listingV2.draft.description }, { lang: "es", keywords })).toEqual([]);
+    expect(hits("play.description.keyword-share", "android", { description: intro }, { lang: "en", keywords: enKeywords })).toEqual([]);
+  });
+
+  // Review finding 11: positions came from fold(text) but paragraphs from the raw text; with decomposed
+  // accents (NFD) fold() is shorter and the quoted stretch was shifted.
+  it("quotes the right stretch when the text has decomposed accents (NFD)", () => {
+    const nfd = "Añade tus medicación, revisión, régimen, pauta única y días de toma: también sábados, después de comer o según te indicó el médico. ".normalize("NFD");
+    expect(nfd.length).toBeGreaterThan(nfd.normalize("NFC").length + 10);
+    const quoteOf = (description: string) => {
+      const [issue] = hits("play.description.keyword-share", "android", { description }, { lang: "en", keywords: enKeywords });
+      expect(issue).toBeDefined();
+      const quote = issue.text.slice(issue.text.indexOf("«") + 1, issue.text.indexOf("»")).replace(/…$/, "");
+      const at = description.indexOf(quote);
+      expect(at).toBeGreaterThanOrEqual(0);
+      // The quote starts at the beginning of a word, not in the middle of one.
+      expect(at === 0 || !/[\p{L}\p{N}]/u.test(description[at - 1])).toBe(true);
+      return quote;
+    };
+    // Window inside one long paragraph, after an NFD stretch.
+    quoteOf(`${nfd}${nfd}${intro} ${stuffed} ${intro}`);
+    // A stuffed paragraph after an NFD one.
+    expect(quoteOf(`${nfd}${nfd}\n\n${stuffed}`)).toMatch(/^One app for the whole routine/);
+  });
+
+  it("flags a comma-separated run of tracked keywords, even ending in a period", () => {
+    const list = "Pill reminder, med reminder, medication tracker, pill tracker and medicine reminder.";
+    expect(hits("play.description.keyword-list", "android", { description: `${intro}\n\n${list}` }, { lang: "en", keywords: enKeywords })).toHaveLength(1);
+    // A list of features in a sentence is fine.
+    const features = "Alarms, history, notes and reports.";
+    expect(hits("play.description.keyword-list", "android", { description: features }, { lang: "en", keywords: enKeywords })).toEqual([]);
   });
 });

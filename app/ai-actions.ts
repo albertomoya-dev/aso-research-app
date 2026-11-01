@@ -32,10 +32,10 @@ import {
   storeLangFor,
 } from "@/lib/listing-drafts";
 import { researchMarket } from "@/lib/locale-market";
-import { cleanLocalizedProposal } from "@/lib/localize";
+import { localizeWithChecks } from "@/lib/localize";
 import { draftFromMeta, type MetadataDraft, weightedCoverage } from "@/lib/metadata-check";
 import { policyCheck } from "@/lib/policy-check";
-import { FACTS_MODES, factsForPrompt, productBrandTerms } from "@/lib/product-facts";
+import { declaredBrand, FACTS_MODES, factsForPrompt, productBrandTerms } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { chunk, cleanRatings, isRelevantKeyword } from "@/lib/relevance";
@@ -283,7 +283,8 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
   const [rows, product] = await Promise.all([getKeywordRows(app), getProductFacts(app.id)]);
   const facts = factsForPrompt(product.facts, product.features, mode);
   const country = getCountry(app.country);
-  const brand = brandOf(current.title || app.meta.title);
+  // Only the brand the owner declared: a title made of keywords has none to keep.
+  const brand = declaredBrand(product.facts);
   const { brands } = await detectBrands(app, rows, product);
   // Only keywords worth building on: no filler, no foreign intent, relevance 3+ (or unrated).
   const relevant = rows.filter((r) => isRelevantKeyword(r, country.lang));
@@ -292,6 +293,7 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
     countryName: country.name,
     lang: country.lang,
     developer: app.meta.developer,
+    brand,
     category: app.meta.category,
     current,
     keywords: relevant,
@@ -302,7 +304,7 @@ export async function optimizeListing(_prev: OptimizeState, formData: FormData):
     focus: focus || undefined,
   };
   const tracked = rows.map((r) => r.term);
-  const policy = { lang: country.lang, category: app.meta.category, keywords: tracked, brands, ownBrand: brand };
+  const policy = { lang: country.lang, category: app.meta.category, keywords: tracked, brands, ownBrand: brand || undefined };
   const attempt = (output: Parameters<typeof cleanProposal>[1]): Attempt => {
     const proposal = cleanProposal(app.store, output, tracked);
     return { proposal, assessment: assessProposal(app.store, current, proposal, relevant, policy) };
@@ -432,8 +434,11 @@ export async function estimateRelevance(appId: number, terms: string[]): Promise
 
 /**
  * «Adaptar a <idioma>»: Claude writes the listing for the editor's locale from the main listing (its
- * saved draft, or the published one), using that market's autocomplete and top app titles. Nothing is
- * saved: the editor shows it as a proposal, field by field, like the optimizer's.
+ * saved draft, or the published one), using that market's autocomplete, top app titles and, when the app
+ * is followed in that country, its keywords there. A proposal not written in the target language is
+ * retried once and then refused (`localizeWithChecks`); source words left in a short field are retried
+ * once too, and only shown as `warnings` if they persist. Nothing is saved: the editor shows it as a
+ * proposal, field by field, like the optimizer's.
  */
 export async function localizeListingAction(_prev: OptimizeState, formData: FormData): Promise<OptimizeState> {
   const appId = idSchema.parse(formData.get("appId"));
@@ -451,12 +456,18 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
 
   const sourceLocale = mainLocale(app.country);
   const country = getCountry(app.country);
-  const [mainRow, rows, product] = await Promise.all([getListingDraft(appId, sourceLocale, ""), getKeywordRows(app), getProductFacts(app.id)]);
+  const marketCode = marketCountryFor(target);
+  const [mainRow, rows, product, sibling] = await Promise.all([
+    getListingDraft(appId, sourceLocale, ""),
+    getKeywordRows(app),
+    getProductFacts(app.id),
+    marketCode && marketCode !== app.country ? findSibling(app, marketCode) : null,
+  ]);
   const facts = factsForPrompt(product.facts, product.features, mode);
   const source = mainRow?.draft ?? draftFromMeta(app.meta);
-  const brand = brandOf(source.title || app.meta.title);
+  // Only the declared brand stays untranslated: «Recordatorio pastillas» in a keyword title is not one.
+  const brand = declaredBrand(product.facts);
   const { brands } = await detectBrands(app, rows, product);
-  const marketCode = marketCountryFor(target);
   const market = marketCode
     ? await researchMarket(
         app,
@@ -464,6 +475,14 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
         { title: source.title || app.meta.title, category: app.meta.category },
       )
     : null;
+  // The app followed in the target country: its keywords are what people search there, if in the same language.
+  const marketKeywords =
+    sibling && localeLanguage(mainLocale(sibling.country)) === localeLanguage(target.locale)
+      ? (await getKeywordRows(sibling))
+          .filter((r) => isRelevantKeyword(r, getCountry(sibling.country).lang))
+          .sort((a, b) => (b.opportunity ?? -1) - (a.opportunity ?? -1))
+          .map((r) => r.term)
+      : [];
   const input = {
     store: app.store,
     sourceLocale,
@@ -471,17 +490,19 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
     marketCountryName: marketCode ? getCountry(marketCode).name : null,
     brand,
     source,
+    // In another language these go to the prompt as concepts to cover, not as keywords (lib/localize.ts).
     sourceKeywords: rows.filter((r) => isRelevantKeyword(r, country.lang)).map((r) => ({ term: r.term, opportunity: r.opportunity })),
     autocomplete: market?.autocomplete ?? [],
     topTitles: market?.topTitles ?? [],
+    marketKeywords,
     existing: market?.existing ?? null,
     category: market?.category ?? app.meta.category,
     facts,
     avoidBrands: brands,
     focus: focus || undefined,
   };
-  const policy = { lang: localeLanguage(target.locale), category: app.meta.category, brands, ownBrand: brand };
-  // Rule breaks of a proposal: over the limit, brand dropped, store policy errors (lib/policy-check.ts).
+  const policy = { lang: localeLanguage(target.locale), category: app.meta.category, brands, ownBrand: brand || undefined };
+  // Rule breaks of a proposal: over the limit, declared brand dropped, store policy errors (lib/policy-check.ts).
   const problems = (proposal: ListingProposal) => [
     ...proposalFeedback(app.store, proposal, brand),
     ...policyCheck(app.store, applyProposal(current, proposal), policy)
@@ -490,33 +511,49 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
   ];
 
   try {
-    const first = await localizeListing(input);
-    let proposal = cleanLocalizedProposal(app.store, first.output);
-    let model = first.model;
-    let attempts = 1;
-    const feedback = problems(proposal);
-    if (feedback.length > 0) {
-      try {
-        const second = await localizeListing(input, feedback);
-        const retry = cleanLocalizedProposal(app.store, second.output);
-        attempts = 2;
-        if (problems(retry).length <= feedback.length) {
-          proposal = retry;
-          model = second.model;
+    let calls = 0;
+    const outcome = await localizeWithChecks({
+      store: app.store,
+      sourceLocale,
+      targetLocale: target.locale,
+      source,
+      brand,
+      sourceKeywords: input.sourceKeywords.map((k) => k.term),
+      // Words people use in the target market are never «left from the source language».
+      marketTerms: [...input.autocomplete, ...input.topTitles, ...marketKeywords],
+      productText: facts,
+      problems,
+      generate: async (feedback) => {
+        // The first call's errors reach the user; a failed retry only means keeping the first answer.
+        if (calls++ === 0) return localizeListing(input, feedback);
+        try {
+          return await localizeListing(input, feedback);
+        } catch (err) {
+          if (err instanceof AiError) return null;
+          throw err;
         }
-      } catch (err) {
-        if (!(err instanceof AiError)) throw err;
-      }
-    }
+      },
+    });
+    if ("error" in outcome) return { error: outcome.error };
+    const { proposal, model, attempts, warnings } = outcome;
     const notes = [...proposal.notes];
-    if (!market || market.autocomplete.length === 0) {
+    if (marketKeywords.length === 0 && (!market || market.autocomplete.length === 0)) {
       notes.push("No hubo autocompletado de la tienda para ese país: la adaptación usa solo el criterio de la IA. Revisa las keywords.");
     }
-    return { proposal: { ...proposal, notes: notes.slice(0, 5), attempts }, model };
+    return { proposal: { ...proposal, notes: notes.slice(0, 5), attempts, warnings }, model };
   } catch (err) {
     if (err instanceof AiError) return { error: err.message };
     throw err;
   }
+}
+
+/** The same app followed in another country's store, if it is. */
+function findSibling(app: { store: "ios" | "android"; storeId: string }, country: string) {
+  return getDb()
+    .query.apps.findFirst({
+      where: and(eq(schema.apps.store, app.store), eq(schema.apps.storeId, app.storeId), eq(schema.apps.country, country)),
+    })
+    .then((row) => row ?? null);
 }
 
 export type ReleaseNotesState = { result?: ReleaseNotes; model?: string; error?: string } | null;
@@ -561,7 +598,8 @@ export async function generateReleaseNotes(_prev: ReleaseNotesState, formData: F
   const input = {
     store: app.store,
     locale: target.locale,
-    brand: brandOf(mainRow?.draft.title || app.meta.title),
+    // Only names the app in the prompt; no brand rule depends on it.
+    brand: declaredBrand(product.facts) || brandOf(mainRow?.draft.title || app.meta.title),
     version: version || null,
     features,
     latestRelease,

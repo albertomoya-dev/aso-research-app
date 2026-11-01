@@ -341,6 +341,8 @@ export const productFacts = pgTable("product_facts", {
   appId: integer("app_id")
     .primaryKey()
     .references(() => apps.id, { onDelete: "cascade" }),
+  /** The app's brand as the owner declares it ("Runly"); "" when the title is only keywords. Brand rules use only this. */
+  brand: text("brand").notNull().default(""),
   /** One line: what it is and who it is for. */
   pitch: text("pitch").notNull().default(""),
   audience: text("audience").notNull().default(""),

@@ -7,6 +7,17 @@ import type { Store } from "./stores/types";
 export const RELEVANCE_PROMPT_VERSION = "rel-1";
 /** Keywords per request: cheap enough and the answer stays well under the output limit. */
 export const RELEVANCE_BATCH_SIZE = 100;
+/**
+ * Keywords per request when rating keywords just added or left unrated: small batches answer
+ * fast, run side by side and each one is stored as soon as it comes back.
+ */
+export const NEW_KEYWORDS_BATCH_SIZE = 10;
+/**
+ * A keyword added this recently and still without relevance is shown as «calculando…». The job that
+ * rates keywords just added waits 20 s and then runs after the response, bounded by the route's
+ * 120 s, so after 3 min nothing is calculating any more: the keyword is «pendiente» for the daily job.
+ */
+export const RELEVANCE_PENDING_MS = 3 * 60_000;
 /** Above this many keywords per app, alerts and visibility share lose precision. */
 export const KEYWORD_BUDGET = 150;
 /** Relevance at or below this counts as "probably irrelevant". */
@@ -141,6 +152,47 @@ export function mergeRatings(rows: StoredRelevance[], ratings: Rating[]): Releva
     if (rating) updates.push({ id: row.id, relevance: rating.relevance, intent: rating.intent, relevanceSource: "ai" });
   }
   return updates;
+}
+
+// ---------- Pending relevance ----------
+
+/** Keywords nobody has rated yet: the AI may rate them without asking. */
+export function isUnrated(row: Pick<StoredRelevance, "relevance" | "relevanceSource">): boolean {
+  return row.relevance == null && row.relevanceSource == null;
+}
+
+/**
+ * Where a keyword's relevance stands. «set»: it has one (or the user cleared it on purpose).
+ * Without one: «off» when there is no API key, «failed» when the AI was asked and gave nothing
+ * (rateAppKeywords stamps relevance_checked_at on the batches that fail and on the keywords the
+ * model leaves out of its answer), «calculating» for the
+ * first minutes after adding it, «queued» otherwise (the daily job will try again).
+ */
+export type RelevanceProgress = "set" | "calculating" | "failed" | "queued" | "off";
+
+export function relevanceProgress(
+  row: Pick<StoredRelevance, "relevance" | "relevanceSource"> & { relevanceCheckedAt: Date | null; createdAt: Date },
+  aiEnabled: boolean,
+  now = Date.now(),
+): RelevanceProgress {
+  if (!isUnrated(row)) return "set";
+  if (!aiEnabled) return "off";
+  if (row.relevanceCheckedAt) return "failed";
+  return now - row.createdAt.getTime() < RELEVANCE_PENDING_MS ? "calculating" : "queued";
+}
+
+export const RELEVANCE_PROGRESS_LABEL: Record<Exclude<RelevanceProgress, "set">, string> = {
+  calculating: "Relevancia: calculando…",
+  failed: "Sin relevancia: la IA falló o no la valoró",
+  queued: "Sin relevancia: pendiente de la IA",
+  off: "Sin relevancia: falta ANTHROPIC_API_KEY",
+};
+
+/** How many keywords are in each state, for the banner over the table. */
+export function countProgress(states: RelevanceProgress[]): Record<RelevanceProgress, number> {
+  const counts: Record<RelevanceProgress, number> = { set: 0, calculating: 0, failed: 0, queued: 0, off: 0 };
+  for (const s of states) counts[s]++;
+  return counts;
 }
 
 // ---------- Hygiene ----------

@@ -27,6 +27,10 @@ type Props = {
   appId: number;
   store: Store;
   initial: MetadataDraft;
+  /** Text with no saved draft (`baseDraftFor`): what the editor shows again after «Borrar borrador». Never another language. */
+  base: MetadataDraft;
+  /** «Aún no hay ficha en inglés…» for a listing in another language with no draft (`missingListingNotice`). */
+  missingNotice: string | null;
   /** Published listing to compare with; null for a language the store listing is not in. */
   published: MetadataDraft | null;
   hasDraft: boolean;
@@ -44,20 +48,26 @@ type Props = {
   keywordNote?: string;
   /** Tracked keywords; `relevant` ones (not noise, relevance 3+ or unrated) count in the weighted score, like in the optimizer. */
   keywords: { term: string; opportunity: number | null; relevant: boolean }[];
-  /** Store language and category, for the policy checks. */
-  policy: { lang: string; category: string | null };
-  /** Competitor brands found by the detector, and the words the user marked as «no es una marca». */
+  /** Store language, category and declared brand, for the policy checks. */
+  policy: { lang: string; category: string | null; ownBrand?: string };
+  /** Competitor brands found by the detector (all of them, for the checks; and split for the list), and the words the user marked as «no es una marca». */
   brands: string[];
+  brandGroups: { titles: string[]; developers: string[] };
   brandExceptions: string[];
   aiEnabled: boolean;
-  /** State of the product sheet: whether it is empty and how many features are coming in the next version. */
-  product: { empty: boolean; nextCount: number };
+  /**
+   * State of the product sheet: whether it is empty, how many features are coming in the next version and,
+   * when no brand is declared but the title looks like «Marca: palabras», that first part (`brandOf`).
+   */
+  product: { empty: boolean; nextCount: number; brandHint?: string | null };
 };
 
 export function MetadataEditor({
   appId,
   store,
   initial,
+  base,
+  missingNotice,
   published,
   hasDraft,
   target,
@@ -70,6 +80,7 @@ export function MetadataEditor({
   keywords,
   policy,
   brands,
+  brandGroups,
   brandExceptions,
   aiEnabled,
   product,
@@ -90,6 +101,12 @@ export function MetadataEditor({
   const report = useMemo(() => checkMetadata(store, draft, terms, policyContext), [store, draft, terms, policyContext]);
   const weighted = useMemo(() => weightedCoverage(store, draft, scoring), [store, draft, scoring]);
   const set = (key: FieldKey, value: string) => setDraft((d) => ({ ...d, [key]: value }));
+  // The page re-renders after the delete, but this state would keep the old text: go back to the base,
+  // which is never text in another language (H22).
+  const discard = async (formData: FormData) => {
+    await discardDraft(formData);
+    setDraft(base);
+  };
 
   const proposal = ai?.proposal;
   const done = handled.proposal === proposal ? handled.keys : [];
@@ -130,6 +147,11 @@ export function MetadataEditor({
           <input type="hidden" name="appId" value={appId} />
           <input type="hidden" name="locale" value={target.locale} />
           <input type="hidden" name="country" value={target.country} />
+          {missingNotice && (
+            <p role="status" className="rounded-lg bg-surface-muted px-3 py-2 text-[13px] text-ink-soft">
+              {missingNotice}
+            </p>
+          )}
           {age && (
             <p role={age.stale ? "status" : undefined} className={`rounded-lg px-3 py-2 text-[13px] ${age.stale ? "bg-warn-bg text-warn-fg" : "bg-surface-muted text-muted"}`}>
               {age.text}
@@ -182,6 +204,15 @@ export function MetadataEditor({
                     planeadas ni las retiradas.
                   </span>
                 </fieldset>
+              )}
+              {product.brandHint && (
+                <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+                  ¿Tu título empieza por una marca («{product.brandHint}»)?{" "}
+                  <Link href={`/apps/${appId}/producto`} className="font-medium underline">
+                    Declárala en Producto
+                  </Link>{" "}
+                  para que la IA la conserve.
+                </p>
               )}
               <div className="flex flex-wrap gap-2">
                 <input
@@ -288,7 +319,7 @@ export function MetadataEditor({
               </button>
             )}
             {hasDraft && (
-              <button type="submit" formAction={discardDraft} className={`${buttonSecondary} text-danger`}>
+              <button type="submit" formAction={discard} className={`${buttonSecondary} text-danger`}>
                 Borrar borrador
               </button>
             )}
@@ -347,6 +378,11 @@ export function MetadataEditor({
                 Se pasa del límite: {proposal.over.map((k) => labels[k]?.toLowerCase()).join(", ")}. Recórtalo tras aplicarlo.
               </p>
             )}
+            {proposal.warnings?.map((w) => (
+              <p key={w} className="mt-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-fg">
+                {w}
+              </p>
+            ))}
             {proposal.notes.length > 0 && (
               <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-ink-soft">
                 {proposal.notes.map((n) => (
@@ -383,7 +419,7 @@ export function MetadataEditor({
           )}
         </Card>
 
-        <BrandList appId={appId} brands={brands} exceptions={brandExceptions} />
+        <BrandList appId={appId} brands={brandGroups.titles} developers={brandGroups.developers} exceptions={brandExceptions} />
 
         <Card aria-label="Cobertura de keywords" className="overflow-hidden">
           <div className="border-b border-line px-5 py-4">

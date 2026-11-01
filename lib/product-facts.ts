@@ -19,6 +19,8 @@ export const FACTS_MODES = ["published", "next"] as const;
 export type FactsMode = (typeof FACTS_MODES)[number];
 
 export type ProductFacts = {
+  /** The app's brand, declared by the owner; "" (or missing, in sheets saved before it existed) when the title is only keywords. */
+  brand?: string;
   pitch: string;
   audience: string;
   differentiators: string[];
@@ -35,11 +37,23 @@ export type ProductFeature = {
   advertise: boolean;
 };
 
-export const EMPTY_FACTS: ProductFacts = { pitch: "", audience: "", differentiators: [], constraints: [], tone: "", languages: [] };
+export const EMPTY_FACTS: ProductFacts = { brand: "", pitch: "", audience: "", differentiators: [], constraints: [], tone: "", languages: [] };
 
 /** Features the listing may describe for that version: shipped always, next_release only for the next one, never planned or retired. */
 export function featuresFor<T extends ProductFeature>(features: T[], mode: FactsMode): T[] {
   return features.filter((f) => f.advertise && (f.status === "shipped" || (mode === "next" && f.status === "next_release")));
+}
+
+/** Max length of the declared brand: it has to fit in a 30-character title. */
+export const MAX_BRAND_CHARS = 30;
+
+/**
+ * The brand the owner declared, or "". Brand rules (keep it at the start of the title, never translate
+ * it) use only this: guessing it from the title takes keyword titles («Recordatorio pastillas: alarma»)
+ * for brands.
+ */
+export function declaredBrand(facts: Pick<ProductFacts, "brand"> | null | undefined): string {
+  return (facts?.brand ?? "").replace(/\s+/g, " ").trim();
 }
 
 /** True when the owner wrote anything at all: a field or a feature in any status. */
@@ -96,11 +110,11 @@ export function factsForPrompt(facts: ProductFacts | null, features: ProductFeat
 }
 
 /**
- * Our own words for the brand detector: pitch, audience and feature names and summaries. Never the
+ * Our own words for the brand detector: declared brand, pitch, audience and feature names and summaries. Never the
  * differentiators or constraints, which name competitors ("más sencillo que MyTherapy").
  */
 export function productBrandTerms(facts: ProductFacts | null, features: Pick<ProductFeature, "name" | "summary">[]): string {
-  return [facts?.pitch ?? "", facts?.audience ?? "", ...features.flatMap((f) => [f.name, f.summary])]
+  return [facts?.brand ?? "", facts?.pitch ?? "", facts?.audience ?? "", ...features.flatMap((f) => [f.name, f.summary])]
     .map((t) => t.trim())
     .filter(Boolean)
     .join(". ");
@@ -121,6 +135,7 @@ export function splitList(text: string, max = 20): string[] {
 const shortText = (max: number) => z.string().trim().max(max);
 
 export const factsFormSchema = z.object({
+  brand: shortText(MAX_BRAND_CHARS),
   pitch: shortText(300),
   audience: shortText(300),
   differentiators: z.string().max(3000).transform((t) => splitLines(t)),

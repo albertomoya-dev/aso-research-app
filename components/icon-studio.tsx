@@ -332,7 +332,7 @@ export function IconStudio({ appId, appTitle, initial, currentIcon, currentIconP
             {status ? (
               <span className={status.kind === "error" ? "text-danger" : "text-ink-soft"}>{status.text}</span>
             ) : savedAt ? (
-              <span className="text-muted">Guardado por última vez el {new Date(savedAt).toLocaleString("es-ES")}.</span>
+              <span className="text-muted">Guardado por última vez el {savedAt}.</span>
             ) : (
               <span className="text-muted">Aún no guardado.</span>
             )}

@@ -8,6 +8,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { buttonSecondary, Card, inputClass, PageHeader } from "@/components/ui";
 import { loadApp } from "@/lib/apps";
 import { hasAnthropicKey } from "@/lib/claude";
+import { brandOf } from "@/lib/listing-optimizer";
 import {
   EMPTY_FACTS,
   FEATURE_STATUS_LABEL,
@@ -61,7 +62,7 @@ export default async function ProductPage({ params }: Props) {
       <Card aria-label="Resumen del producto" className="px-5 py-5">
         <h2 className="text-[15px] font-semibold">Resumen del producto</h2>
         <p className="mt-1 mb-4 text-[13px] text-muted">Todo es opcional. Cuanto más concreto, menos tiene que suponer la IA.</p>
-        <ProductFactsForm appId={app.id} facts={facts ?? EMPTY_FACTS} />
+        <ProductFactsForm appId={app.id} facts={facts ?? EMPTY_FACTS} brandSuggestion={brandOf(app.meta.title)} />
       </Card>
 
       <Card aria-label="Funciones" className="overflow-hidden">

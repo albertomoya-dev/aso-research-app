@@ -6,7 +6,8 @@ import { downloadBlob, slug } from "@/lib/assets/download";
 import { loadImage } from "@/lib/assets/screenshot-render";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
-export type GeneratedLogo = { id: number; prompt: string; provider: string; model: string; createdAt: string };
+/** `createdDay` comes formatted from the server so the date reads the same on both sides of hydration. */
+export type GeneratedLogo = { id: number; prompt: string; provider: string; model: string; createdDay: string };
 
 type Props = {
   appId: number;
@@ -93,7 +94,7 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
                     {image.prompt}
                   </p>
                   <p className="font-mono text-[11px] text-muted">
-                    {image.model} · {new Date(image.createdAt).toLocaleDateString("es-ES")}
+                    {image.model} · {image.createdDay}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     <button type="button" onClick={() => download(image, 1024, "ios")} className={buttonSecondary}>

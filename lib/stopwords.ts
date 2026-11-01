@@ -124,3 +124,30 @@ export function noiseKind(term: string, lang: string): NoiseKind | null {
 export function isNoiseTerm(term: string, lang: string): boolean {
   return noiseKind(term, lang) !== null;
 }
+
+/** Languages with their own function-word list: the ones `languageStopwords` and the language detector know. */
+export const STOPWORD_LANGS = Object.keys(STOPWORDS);
+
+/** Function words of one language only, folded: no English or web words mixed in (unlike `stopwordsFor`). */
+export function languageStopwords(lang: string): Set<string> {
+  return cached(`only:${lang}`, () => split(STOPWORDS[lang] ?? ""));
+}
+
+/**
+ * Words of app titles that never make a brand on their own: what the app is ("tracker", "reminder"),
+ * who it is for ("lady", "kids"), plan words ("pro", "lite") and the medication vocabulary of the first
+ * apps tracked, in English and Spanish. Folded; the brand detector matches them by stem, so plurals and
+ * close forms count too («pills», «recordatorios»).
+ */
+const TITLE_WORDS = `app apps free pro lite plus premium lady ladies women woman girl girls men man baby kids kid family my mis mi tu your
+  pill pills reminder reminders medicine medicines medication medications med meds dose doses dosage tablet tablets drug drugs health care
+  tracker trackers tracking log logger diary journal planner calendar schedule alarm alarms alert alerts timer clock counter monitor
+  manager organizer assistant helper guide widget box daily simple smart easy
+  recordatorio recordatorios pastilla pastillas pastillero medicina medicinas medicamento medicamentos alarma alarmas aviso avisos salud
+  diario agenda calendario control registro registros toma tomas dosis horario medicacion medicaciones tratamiento tratamientos
+  botiquin receta recetas farmaco farmacos recordar inteligente`;
+
+/** Common app-title words (see TITLE_WORDS), folded. */
+export function titleCommonWords(): Set<string> {
+  return cached("title-common", () => split(TITLE_WORDS));
+}

@@ -17,7 +17,7 @@ import type { Store } from "./stores/types";
 import { relevanceFactor } from "./suggestions";
 
 /** Bump when the instructions or the output shape change. */
-export const LISTING_PROMPT_VERSION = "lst-3";
+export const LISTING_PROMPT_VERSION = "lst-4";
 /**
  * Relevant keywords sent to the model, best first. 150 lines are about 6,000 input tokens: enough for
  * every keyword worth targeting in a well-kept list (lib/relevance KEYWORD_BUDGET is also 150).
@@ -45,7 +45,7 @@ export const LISTING_SYSTEM_PROMPT = `You are an App Store Optimization (ASO) sp
 
 General rules:
 - Write the listing in the store's language, natural and correct, for people in that country. Never stuff keywords into unreadable lists.
-- Keep the app's brand name at the start of the title, exactly as it is now.
+- Brand: when the prompt gives a declared brand, keep it at the start of the title exactly as given. When it says there is none, the title is not a brand: do not keep any of its words just because they come first; lead with the most valuable keyword phrase.
 - Never use brand names of other apps or companies.
 - When the prompt includes PRODUCT FACTS: only describe features listed in PRODUCT FACTS with status shipped (or next_release when the user says the listing is for the next version; the list you get is already filtered for that). The current listing is only a reference for tone and wording; it may be outdated, so drop any feature it mentions that PRODUCT FACTS does not list. Follow every constraint in PRODUCT FACTS.
 - Without PRODUCT FACTS: do not promise features the current description does not mention. You may reword and reorder, but do not invent.
@@ -62,6 +62,7 @@ Google Play (indexed fields: title, short description, description):
 - title: max 30 characters. Brand plus the most valuable keyword phrase.
 - shortDescription: max 80 characters. A benefit-led sentence with the next most valuable keywords.
 - description: max 4000 characters. Include the target keyword phrases naturally: the most important ones in the first 167 characters and repeated ${MAX_DESCRIPTION_REPEATS - 1} to ${MAX_DESCRIPTION_REPEATS} times across the text, never more than ${MAX_DESCRIPTION_REPEATS} times each (overlapping phrases count: "pill reminder" inside "daily pill reminder" is one more use). Use short paragraphs and bullet lines.
+- Spread the keyword phrases across the text. Never pack many keyword variants into one paragraph or sentence, and never close the description with a summary paragraph that lists keyword variants ("a pill reminder, med reminder and meds tracker…"): Google Play treats that as keyword spam.
 - Return empty subtitle and keywordField.
 
 Do not lose coverage:
@@ -93,6 +94,8 @@ export type ListingPromptInput = {
   countryName: string;
   lang: string;
   developer: string;
+  /** Brand declared in the product sheet; "" or missing when the owner declared none (the title is then free). */
+  brand?: string;
   category: string | null;
   current: MetadataDraft;
   keywords: PromptKeyword[];
@@ -143,6 +146,9 @@ export function buildListingPrompt(input: ListingPromptInput, feedback?: string[
   return [
     `Store: ${input.store === "ios" ? "Apple App Store" : "Google Play"}, country: ${input.countryName}, language code: ${input.lang}.`,
     `Developer: ${input.developer}. Category: ${input.category ?? "–"}.`,
+    input.brand?.trim()
+      ? `Declared brand (keep it at the start of the title, exactly as given): ${input.brand.trim()}`
+      : "Declared brand: none. The current title is not a brand; you may rewrite all of it.",
     "",
     input.facts,
     input.facts ? "" : null,
@@ -205,6 +211,8 @@ export type ListingProposal = {
   regression?: boolean;
   /** Calls to the model (2 when the first answer was retried). */
   attempts?: number;
+  /** Doubts about the proposal the user should check (localized listings: words left from the source language), in Spanish. */
+  warnings?: string[];
 };
 
 /** Keeps the store's fields, tidies whitespace, fixes the keyword field and lists what is still over the limit. */
@@ -228,7 +236,7 @@ export function cleanProposal(store: Store, output: ListingOutput, tracked: stri
   };
 }
 
-/** Rule breaks to send back to the model for one more try. */
+/** Rule breaks to send back to the model for one more try. `brand` is the declared brand only: "" asks nothing of the title. */
 export function proposalFeedback(store: Store, proposal: ListingProposal, brand: string): string[] {
   const specs = FIELDS[store];
   const feedback = proposal.over.map((key) => {
@@ -243,7 +251,11 @@ export function proposalFeedback(store: Store, proposal: ListingProposal, brand:
   return feedback;
 }
 
-/** The brand part of a title: "Runly: Correr y GPS" → "Runly"; without a separator, the first word. */
+/**
+ * A guess at the brand part of a title: "Runly: Correr y GPS" → "Runly"; without a separator, the first
+ * word. Only a suggestion for the product sheet («Marca»): many Google Play titles are only keywords
+ * («Recordatorio pastillas: alarma»), so brand rules use the declared brand, never this.
+ */
 export function brandOf(title: string): string {
   const parts = title.split(/\s*(?::|\s[-–—|·]\s)\s*/);
   return (parts.length > 1 ? parts[0] : title.trim().split(/\s+/)[0] ?? "").trim();
@@ -257,7 +269,7 @@ export type ProposalAssessment = {
   diff: KeywordDiff;
   /** Lost keywords with opportunity ≥ LOST_OPPORTUNITY_THRESHOLD. */
   lostImportant: DiffItem[];
-  /** Policy errors in the proposed listing. */
+  /** Policy errors in the proposed listing, plus keyword stuffing (LOCK_WARNINGS): only a warning for the user, but the AI must not write it. */
   policyErrors: Issue[];
   /** Worse than the current text: lower score or an important keyword lost. */
   regressed: boolean;
@@ -273,6 +285,9 @@ export const isRegression = (scoreBefore: number, scoreAfter: number, diff: Keyw
 /** The listing as it would be with the whole proposal applied. */
 export const applyProposal = (current: MetadataDraft, proposal: ListingProposal): MetadataDraft => ({ ...current, ...proposal.fields });
 
+/** Policy warnings the quality lock treats as errors: the optimizer retries instead of proposing keyword stuffing (H16). */
+export const LOCK_WARNINGS = new Set(["play.description.keyword-share"]);
+
 /** Compares a proposal with the current text: weighted coverage, keyword diff and policy errors. */
 export function assessProposal(
   store: Store,
@@ -286,7 +301,7 @@ export function assessProposal(
   const after = weightedCoverage(store, proposed, keywords);
   const diff = keywordDiff(before, after);
   const lostImportant = importantLosses(diff);
-  const policyErrors = policyCheck(store, proposed, policy).filter((i) => i.level === "error");
+  const policyErrors = policyCheck(store, proposed, policy).filter((i) => i.level === "error" || LOCK_WARNINGS.has(i.ruleId ?? ""));
   return {
     scoreBefore: before.score,
     scoreAfter: after.score,

@@ -69,11 +69,34 @@ function getClient() {
   return client;
 }
 
+/**
+ * Per-call overrides of the client defaults (100 s timeout, 2 retries). Jobs with a hard time budget
+ * (the daily cron) pass a shorter timeout and no retries so a slow answer cannot outlive the budget.
+ */
+export type AskOptions = {
+  /** Milliseconds before the request is abandoned. */
+  timeoutMs?: number;
+  /** Retries on 429, 5xx and connection errors. */
+  maxRetries?: number;
+  /**
+   * Aborts the request (the daily cron's hard cap). An abort whose reason is a TimeoutError
+   * (`AbortSignal.timeout`) reads as «tardó demasiado»; any other, as a cancelled request.
+   */
+  signal?: AbortSignal;
+};
+
+/** Whether `signal` was aborted by a timeout (`AbortSignal.timeout`, the cron's hard cap) rather than cancelled. Exported for tests. */
+export function abortedByTimeout(signal: AbortSignal | undefined): boolean {
+  const reason: unknown = signal?.aborted ? signal.reason : undefined;
+  return reason instanceof Error && reason.name === "TimeoutError";
+}
+
 /** One structured-output request; `prompt` is text, or text and images (vision). Returns the parsed output and the model that actually answered. */
 async function askClaude<T extends z.ZodType>(
   schema: T,
   system: string,
   prompt: string | BetaContentBlockParam[],
+  options: AskOptions = {},
 ): Promise<{ output: z.infer<T>; model: string }> {
   if (!hasAnthropicKey()) throw new AiError("Falta ANTHROPIC_API_KEY en las variables de entorno.");
   try {
@@ -86,6 +109,10 @@ async function askClaude<T extends z.ZodType>(
       output_config: { effort: "medium", format: betaZodOutputFormat(schema) },
       system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: prompt }],
+    }, {
+      ...(options.timeoutMs != null && { timeout: options.timeoutMs }),
+      ...(options.maxRetries != null && { maxRetries: options.maxRetries }),
+      ...(options.signal && { signal: options.signal }),
     });
     if (response.stop_reason === "refusal") throw new AiError("El modelo no quiso responder a esta petición.");
     if (response.stop_reason === "max_tokens") throw new AiError("La respuesta se cortó. Prueba con menos datos.");
@@ -95,7 +122,10 @@ async function askClaude<T extends z.ZodType>(
     if (err instanceof AiError) throw err;
     if (err instanceof Anthropic.AuthenticationError) throw new AiError("La clave de Anthropic no es válida.");
     if (err instanceof Anthropic.RateLimitError) throw new AiError("Límite de uso de la API alcanzado. Inténtalo en un minuto.");
-    if (err instanceof Anthropic.APIConnectionTimeoutError) throw new AiError("Claude tardó demasiado en responder. Inténtalo de nuevo.");
+    if (err instanceof Anthropic.APIConnectionTimeoutError || (err instanceof Anthropic.APIUserAbortError && abortedByTimeout(options.signal))) {
+      throw new AiError("Claude tardó demasiado en responder. Inténtalo de nuevo.");
+    }
+    if (err instanceof Anthropic.APIUserAbortError) throw new AiError("Se canceló la petición a Claude.");
     if (err instanceof Anthropic.APIError) throw new AiError(`Error de la API de Claude (${err.status ?? "sin estado"}).`);
     throw err;
   }
@@ -162,9 +192,16 @@ export function importChangelog(text: string, current: ChangelogContext): Promis
   return askClaude(changelogOutputSchema, CHANGELOG_SYSTEM_PROMPT, buildChangelogPrompt(text, current));
 }
 
-/** Asks Claude to rate 1–5 how relevant each keyword is for the app, and whether searchers want another kind of app. One batch (up to 100). */
-export function rateRelevance(context: RelevanceContext, items: RelevanceItem[]): Promise<{ output: RelevanceOutput; model: string }> {
-  return askClaude(relevanceOutputSchema, RELEVANCE_SYSTEM_PROMPT, buildRelevancePrompt(context, items));
+/**
+ * Asks Claude to rate 1–5 how relevant each keyword is for the app, and whether searchers want another kind of app.
+ * One batch (up to 100). `options` overrides timeout and retries (the daily cron uses a short timeout, no retries).
+ */
+export function rateRelevance(
+  context: RelevanceContext,
+  items: RelevanceItem[],
+  options?: AskOptions,
+): Promise<{ output: RelevanceOutput; model: string }> {
+  return askClaude(relevanceOutputSchema, RELEVANCE_SYSTEM_PROMPT, buildRelevancePrompt(context, items), options);
 }
 
 /** Asks Claude to write the listing for another locale from that market's searches (not a literal translation). Only a proposal. */

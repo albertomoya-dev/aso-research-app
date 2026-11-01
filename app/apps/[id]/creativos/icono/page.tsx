@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { defaultIconSpec, type IconSpec, iconSpecSchema } from "@/lib/assets/icon";
-import { proxied } from "@/lib/assets/screenshots";
+import { formatSavedAt, proxied } from "@/lib/assets/screenshots";
 import { hasAnthropicKey } from "@/lib/claude";
 
 type Props = { params: Promise<{ id: string }> };
@@ -47,7 +47,7 @@ export default async function IconPage({ params }: Props) {
         currentIconProxied={app.icon ? proxied(app.icon) : null}
         startFromIcon={!parsed?.success}
         aiEnabled={hasAnthropicKey()}
-        savedAt={saved?.updatedAt.toISOString() ?? null}
+        savedAt={formatSavedAt(saved?.updatedAt)}
       />
     </div>
   );

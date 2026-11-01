@@ -115,13 +115,20 @@ export function localeOptions(appCountry: string, store: Store, drafts: DraftTar
 }
 
 /**
- * Starting text for a target with no saved draft: the published listing for the main one; the main
- * draft for a custom country listing in the same language; for another language, an empty listing
- * that keeps only the brand (to be written or adapted with AI).
+ * Starting text for a target with no saved draft (also right after «Borrar borrador»): the published
+ * listing (or the main draft) for the main locale and for a locale or custom country listing in the same
+ * language; for another language, an empty listing. Text in another language is never preloaded: saved
+ * without a look, it would publish a Spanish listing as the English one (H22).
  */
-export function baseDraftFor(appCountry: string, target: DraftTarget, main: MetadataDraft, brand: string): MetadataDraft {
+export function baseDraftFor(appCountry: string, target: DraftTarget, main: MetadataDraft): MetadataDraft {
   if (isMainTarget(appCountry, target) || sharesMainLanguage(appCountry, target)) return main;
-  return { ...EMPTY_DRAFT, title: brand };
+  return EMPTY_DRAFT;
+}
+
+/** «Aún no hay ficha en inglés (Estados Unidos): usa «Adaptar a en-US».» for a listing in another language with no draft; null otherwise. */
+export function missingListingNotice(appCountry: string, target: DraftTarget, hasDraft: boolean): string | null {
+  if (hasDraft || sharesMainLanguage(appCountry, target)) return null;
+  return `Aún no hay ficha en ${localeLabel(target.locale)}: usa «Adaptar a ${target.locale}» para escribirla a partir de la principal, o escríbela aquí.`;
 }
 
 // ---------- H11.6: how old is the draft against the published listing ----------

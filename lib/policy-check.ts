@@ -38,6 +38,15 @@ export const POLICY_LINKS = {
 export const MAX_DESCRIPTION_REPEATS = 3;
 /** Single words are naturally more frequent: warn above this many per 1000 characters (and more than 6 times). */
 export const WORD_DENSITY_PER_1000 = 4;
+/**
+ * Keyword stuffing without repeats: in a paragraph or in any window of KEYWORD_WINDOW_CHARS characters,
+ * share of the meaningful words (no stopwords) that belong to tracked keyword phrases. A natural
+ * paragraph stays well below; a closing «pill reminder, med reminder, meds tracker…» is near 60 %.
+ */
+export const MAX_KEYWORD_SHARE = 0.38;
+export const KEYWORD_WINDOW_CHARS = 300;
+/** Fewer meaningful words than this is too little text to judge (a heading, a bullet line). */
+const MIN_SHARE_WORDS = 12;
 
 export type PolicyContext = {
   /** Store language ("es"). Without it, the promo terms of every supported language are checked. */
@@ -227,6 +236,107 @@ function densityMatches(text: string, ctx: RuleContext): string[] {
       return over ? `${k} (${count} veces, ${per1000.toLocaleString("es-ES", { maximumFractionDigits: 1 })} por cada 1000 caracteres)` : null;
     })
     .filter((m): m is string => m != null);
+}
+
+type Token = { word: string; start: number; end: number; content: boolean; keyword: boolean };
+
+/**
+ * `fold(text)` with, for each of its positions (and one past the end), the position in `text` it comes
+ * from. fold() changes the length of decomposed letters («e» + combining accent) and of some lower-case
+ * forms, so positions in the folded text are only valid there; this maps them back to quote the original.
+ */
+function foldWithMap(text: string): { folded: string; at: number[] } {
+  let folded = "";
+  const at: number[] = [];
+  let i = 0;
+  for (const ch of text) {
+    const f = fold(ch);
+    folded += f;
+    for (let k = 0; k < f.length; k++) at.push(i);
+    i += ch.length;
+  }
+  at.push(text.length);
+  return { folded, at };
+}
+
+/** Words of a folded text with their position in it, whether they are meaningful (not a stopword) and whether a tracked phrase covers them. */
+function keywordTokens(folded: string, ctx: RuleContext): Token[] {
+  const stop = stopwordsFor(ctx.lang ?? "en");
+  const tokens: Token[] = [...folded.matchAll(/[\p{L}\p{N}]+/gu)].map((m) => ({
+    word: m[0],
+    start: m.index ?? 0,
+    end: (m.index ?? 0) + m[0].length,
+    content: !stop.has(m[0]) && !/^\d+$/.test(m[0]),
+    keyword: false,
+  }));
+  for (const phrase of unique((ctx.keywords ?? []).map((k) => words(k).join(" "))).filter(Boolean)) {
+    const needle = phrase.split(" ");
+    for (let i = 0; i + needle.length <= tokens.length; i++) {
+      if (needle.every((w, j) => tokens[i + j].word === w)) for (let j = 0; j < needle.length; j++) tokens[i + j].keyword = true;
+    }
+  }
+  return tokens;
+}
+
+/** Share of meaningful words covered by keywords, or null when there are too few to judge. */
+function share(tokens: Token[]): number | null {
+  const content = tokens.filter((t) => t.content);
+  if (content.length < MIN_SHARE_WORDS) return null;
+  return content.filter((t) => t.keyword).length / content.length;
+}
+
+const percent = (x: number) => `${Math.round(x * 100)} %`;
+
+/**
+ * Paragraphs (or, failing that, ~300-character stretches) where tracked keyword phrases make up more than
+ * MAX_KEYWORD_SHARE of the meaningful words, even if no phrase repeats: many variants packed together.
+ */
+function keywordShare(text: string, ctx: RuleContext): string[] {
+  if (!ctx.keywords?.length) return [];
+  // Paragraphs, tokens and windows are all cut on the folded text; `at` maps back to quote the original.
+  const { folded, at } = foldWithMap(text);
+  const original = (from: number, to: number) => text.slice(at[from], at[to]);
+  const tokens = keywordTokens(folded, ctx);
+  const out: string[] = [];
+  const flagged: [number, number][] = [];
+  let offset = 0;
+  for (const para of folded.split(/\n\s*\n/)) {
+    const start = folded.indexOf(para, offset);
+    offset = start + para.length;
+    const inside = tokens.filter((t) => t.start >= start && t.end <= start + para.length);
+    const s = share(inside);
+    if (s != null && s > MAX_KEYWORD_SHARE) {
+      out.push(`«${clip(original(start, start + para.length).trim())}» (${percent(s)} de las palabras son keywords)`);
+      flagged.push([start, start + para.length]);
+    }
+  }
+  // Windows catch a stuffed stretch inside a long paragraph; one report, the worst, outside flagged paragraphs.
+  let worst: { s: number; from: number; to: number } | null = null;
+  for (let i = 0; i < tokens.length; i++) {
+    let j = i;
+    while (j + 1 < tokens.length && tokens[j + 1].end - tokens[i].start <= KEYWORD_WINDOW_CHARS) j++;
+    const s = share(tokens.slice(i, j + 1));
+    if (s != null && s > MAX_KEYWORD_SHARE && (!worst || s > worst.s)) worst = { s, from: tokens[i].start, to: tokens[j].end };
+  }
+  if (worst && !flagged.some(([a, b]) => worst.from >= a && worst.to <= b)) {
+    out.push(`«${clip(original(worst.from, worst.to))}» (${percent(worst.s)} de las palabras son keywords)`);
+  }
+  return out;
+}
+
+/** Paragraphs or lines that are a comma-separated run of tracked keywords («pill reminder, med tracker, pill box…»), even with a final period. */
+function trackedKeywordLists(text: string, ctx: RuleContext): string[] {
+  const phrases = unique((ctx.keywords ?? []).map((k) => words(k).join(" "))).filter(Boolean);
+  if (!phrases.length) return [];
+  const out: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(BULLET, "").trim();
+    const items = line.split(/\s*[,;]\s*|\s+(?:y|e|and|or|o|et|ou|und|oder)\s+/i).map((i) => i.replace(/[.!…]+$/, "").trim()).filter(Boolean);
+    if (items.length < 4 || items.some((i) => i.split(/\s+/).length > 5)) continue;
+    const listed = items.filter((i) => phrases.some((p) => ` ${words(i).join(" ")} `.includes(` ${p} `))).length;
+    if (listed / items.length >= 0.6) out.push(clip(line));
+  }
+  return out;
 }
 
 const LIST_LABEL = /^(keywords?|palabras clave|tags|etiquetas|mots[- ]cles|schlusselworter|parole chiave)\s*:/;
@@ -432,11 +542,22 @@ export const POLICY_RULES: PolicyRule[] = [
     reviewedAt: reviewed,
   },
   {
+    id: "play.description.keyword-share",
+    store: "android",
+    field: "description",
+    level: "warn",
+    test: (t, ctx) => keywordShare(t, ctx),
+    message: (m, f) =>
+      `${f}: demasiadas keywords juntas (relleno de keywords, aunque no se repitan; más del ${percent(MAX_KEYWORD_SHARE)} de las palabras). Google Play lo trata como spam de metadatos: repártelas en frases normales. ${m.join("; ")}.`,
+    link: L.playMetadata,
+    reviewedAt: reviewed,
+  },
+  {
     id: "play.description.keyword-list",
     store: "android",
     field: ["shortDescription", "description"],
     level: "warn",
-    test: (t) => keywordLists(t),
+    test: (t, ctx) => unique([...keywordLists(t), ...trackedKeywordLists(t, ctx)]),
     message: (m, f) => `${f}: parece una lista de palabras clave sin frases (Google Play no permite bloques de palabras): ${quote(m)}.`,
     link: L.playMetadata,
     reviewedAt: reviewed,

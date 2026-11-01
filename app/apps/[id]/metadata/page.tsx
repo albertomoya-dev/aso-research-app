@@ -1,11 +1,15 @@
+import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { followInCountry } from "@/app/actions";
 import { CoverageMatrix } from "@/components/coverage-matrix";
 import { LocalePicker } from "@/components/locale-picker";
 import { MetadataEditor } from "@/components/metadata-editor";
 import { ReleaseNotesCard } from "@/components/release-notes-card";
 import { PublishBar } from "@/components/publish-bar";
-import { PageHeader } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
+import { buttonSecondary, PageHeader } from "@/components/ui";
+import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import { detectBrands } from "@/lib/brand-queries";
 import { hasAnthropicKey } from "@/lib/claude";
@@ -20,7 +24,9 @@ import {
   localeLanguage,
   localeOptions,
   mainLocale,
+  marketCountryFor,
   type MatrixColumn,
+  missingListingNotice,
   resolveTarget,
   sharesMainLanguage,
   targetLabel,
@@ -28,7 +34,7 @@ import {
 } from "@/lib/listing-drafts";
 import { brandOf } from "@/lib/listing-optimizer";
 import { draftFromMeta } from "@/lib/metadata-check";
-import { hasProductFacts } from "@/lib/product-facts";
+import { declaredBrand, hasProductFacts } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { isRelevantKeyword } from "@/lib/relevance";
@@ -49,7 +55,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   const target = resolveTarget(app.country, app.store, { locale: one(query.locale), country: one(query.country) });
   const [rows, product, drafts] = await Promise.all([getKeywordRows(app), getProductFacts(app.id), getListingDrafts(app.id)]);
   const { lang } = getCountry(app.country);
-  const { brands, exceptions } = await detectBrands(app, rows, product);
+  const { brands, titleBrands, developers, exceptions } = await detectBrands(app, rows, product);
   // The weighted score counts only keywords worth building on, the same set the optimizer uses.
   const keywords = rows.map((r) => ({ term: r.term, opportunity: r.opportunity, relevant: isRelevantKeyword(r, lang) }));
 
@@ -60,9 +66,24 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   const mainRow = drafts.find((d) => d.locale === main && d.country === "");
   const row = drafts.find((d) => d.locale === target.locale && d.country === target.country);
   const mainDraft = mainRow?.draft ?? published;
-  const brand = brandOf(mainDraft.title || app.meta.title);
-  const start = baseDraftFor(app.country, target, mainDraft, brand);
+  const brand = declaredBrand(product.facts);
+  // No declared brand: the AI does not keep any. If the title looks like «Marca: palabras», suggest declaring it.
+  const guessedBrand = brandOf(app.title);
+  const brandHint = !brand && guessedBrand && guessedBrand.toLowerCase() !== app.title.trim().toLowerCase() ? guessedBrand : null;
+  const start = baseDraftFor(app.country, target, mainDraft);
   const targetName = targetLabel(target);
+  const aiEnabled = hasAnthropicKey();
+  // Before «Adaptar» to another language: does the app have keywords in that market (followed there)?
+  const marketCode = !isMain && !sameLanguage ? marketCountryFor(target) : null;
+  const followedThere =
+    marketCode == null
+      ? false
+      : marketCode === app.country ||
+        (await getDb().query.apps.findFirst({
+          where: and(eq(schema.apps.store, app.store), eq(schema.apps.storeId, app.storeId), eq(schema.apps.country, marketCode)),
+          columns: { id: true },
+        })) != null;
+  const marketName = marketCode ? getCountry(marketCode).name : null;
 
   // Coverage matrix: the main listing (draft or published) and every other saved draft.
   const relevant = keywords.filter((k) => k.relevant);
@@ -100,11 +121,31 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         hasDraft={row != null}
         href={`/apps/${app.id}/metadata/publicar${targetQuery(app.country, target)}`}
       />
+      {aiEnabled && !isMain && !sameLanguage && !followedThere && (
+        <div role="note" className="flex flex-col gap-2 rounded-lg bg-warn-bg px-4 py-3 text-[13px] text-warn-fg">
+          <p>
+            {marketName
+              ? `No sigues esta app en ${marketName}, así que Rankeo no tiene keywords de ese mercado. «Adaptar a ${target.locale}» usará el autocompletado de la tienda si responde y, si no, solo el criterio de la IA. Tus keywords de ${getCountry(app.country).name} se le pasan como conceptos, no como keywords.`
+              : `Ningún país de Rankeo habla ${localeLabel(target.locale)}: «Adaptar a ${target.locale}» no tendrá autocompletado ni keywords de ese mercado, solo el criterio de la IA.`}
+          </p>
+          {marketCode && (
+            <form action={followInCountry}>
+              <input type="hidden" name="appId" value={app.id} />
+              <input type="hidden" name="country" value={marketCode} />
+              <SubmitButton className={buttonSecondary} pendingLabel="Buscando la app…">
+                Seguir también en {marketName}
+              </SubmitButton>
+            </form>
+          )}
+        </div>
+      )}
       <MetadataEditor
         key={`${target.locale}|${target.country}`}
         appId={app.id}
         store={app.store}
         initial={row?.draft ?? start}
+        base={start}
+        missingNotice={missingListingNotice(app.country, target, row != null)}
         published={isMain ? published : sameLanguage ? start : null}
         hasDraft={row != null}
         target={target}
@@ -119,13 +160,15 @@ export default async function MetadataPage({ params, searchParams }: Props) {
             : `Tus keywords son de ${getCountry(app.country).name} (${main}): en ${localeLabel(target.locale)} no se pueden medir. Para tener keywords de ese idioma, sigue la app en ese país desde «Otros países».`
         }
         keywords={sameLanguage ? keywords : []}
-        policy={{ lang: localeLanguage(target.locale), category: app.meta.category }}
+        policy={{ lang: localeLanguage(target.locale), category: app.meta.category, ownBrand: brand || undefined }}
         brands={brands}
+        brandGroups={{ titles: titleBrands, developers }}
         brandExceptions={exceptions}
-        aiEnabled={hasAnthropicKey()}
+        aiEnabled={aiEnabled}
         product={{
           empty: !hasProductFacts(product.facts, product.features),
           nextCount: product.features.filter((f) => f.status === "next_release" && f.advertise).length,
+          brandHint,
         }}
       />
       <ReleaseNotesCard
@@ -133,7 +176,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         store={app.store}
         target={target}
         targetName={targetName}
-        aiEnabled={hasAnthropicKey()}
+        aiEnabled={aiEnabled}
         nextCount={product.features.filter((f) => f.status === "next_release" && f.advertise).length}
         latestVersion={product.releases[0]?.version ?? null}
         policy={{ lang: localeLanguage(target.locale), category: app.meta.category, brands }}

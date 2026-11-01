@@ -20,7 +20,10 @@ export type KeywordRow = {
   relevanceSource: RelevanceSource | null;
   /** "foreign" when people searching it want another kind of app. Use `isRelevantKeyword` / `isLikelyIrrelevant` from lib/relevance to filter. */
   intent: KeywordIntent | null;
+  /** Last time the AI was asked about it; set without a relevance when that request failed. */
   relevanceCheckedAt: Date | null;
+  /** When it was added to the app. */
+  createdAt: Date;
   position: number | null;
   /** Date of the latest snapshot; null when the keyword was never tracked. */
   checkedOn: string | null;
@@ -85,6 +88,7 @@ export async function getKeywordRows(app: { id: number; store: "ios" | "android"
         relevanceSource: schema.appKeywords.relevanceSource,
         intent: schema.appKeywords.intent,
         relevanceCheckedAt: schema.appKeywords.relevanceCheckedAt,
+        createdAt: schema.appKeywords.createdAt,
       })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useOptimistic, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useOptimistic, useState, useTransition } from "react";
 import { recalculateRelevance, type RelevanceState, setKeywordRelevance } from "@/app/ai-actions";
 import { NOISE_REASON_LABEL, type NoiseReason, RELEVANCE_SOURCE_LABEL, type RelevanceSource } from "@/lib/relevance";
 import { buttonSecondary } from "./ui";
@@ -21,6 +22,7 @@ export function RelevanceSelect({
   value,
   source,
   reason,
+  status,
 }: {
   appId: number;
   keywordId: number;
@@ -28,6 +30,8 @@ export function RelevanceSelect({
   value: number | null;
   source: RelevanceSource | null;
   reason: NoiseReason | null;
+  /** Why it has no relevance yet (see RELEVANCE_PROGRESS_LABEL); only for unrated keywords. */
+  status?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic({ value, source });
@@ -54,7 +58,7 @@ export function RelevanceSelect({
         ))}
       </select>
       <span className="text-xs text-muted">
-        {shown.source ? RELEVANCE_SOURCE_LABEL[shown.source] : "Cuenta como 0,7"}
+        {shown.source ? RELEVANCE_SOURCE_LABEL[shown.source] : status ? `${status} · cuenta como 0,7` : "Cuenta como 0,7"}
         {reason && reason !== "low" && <span className="text-warn-fg"> · {NOISE_REASON_LABEL[reason]}</span>}
       </span>
     </div>
@@ -87,4 +91,33 @@ export function RecalculateRelevance({ appId, pendingCount }: { appId: number; p
       </span>
     </form>
   );
+}
+
+/** Refreshes while the AI rates keywords just added: every 15 s, 10 times (2,5 min). The job lasts at most 120 s. */
+export const PENDING_REFRESH_INTERVAL_MS = 15_000;
+export const PENDING_REFRESH_MAX = 10;
+
+/**
+ * Reloads the page every few seconds while the AI is still rating keywords just added, and says so.
+ * Gives up after PENDING_REFRESH_MAX reloads (the request is over by then) and asks to reload later.
+ */
+export function RefreshWhilePending({
+  intervalMs = PENDING_REFRESH_INTERVAL_MS,
+  maxRefreshes = PENDING_REFRESH_MAX,
+}: {
+  intervalMs?: number;
+  maxRefreshes?: number;
+}) {
+  const router = useRouter();
+  const [refreshes, setRefreshes] = useState(0);
+  const done = refreshes >= maxRefreshes;
+  useEffect(() => {
+    if (done) return;
+    const id = setTimeout(() => {
+      setRefreshes((n) => n + 1);
+      router.refresh();
+    }, intervalMs);
+    return () => clearTimeout(id);
+  }, [router, intervalMs, refreshes, done]);
+  return <> {done ? "Sigue en segundo plano: recarga más tarde." : "La tabla se actualiza sola."}</>;
 }

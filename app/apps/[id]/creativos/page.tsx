@@ -8,6 +8,8 @@ import { getDb, schema } from "@/db";
 import { loadApp } from "@/lib/apps";
 import {
   defaultScreenshotSpec,
+  formatDayEs,
+  formatSavedAt,
   proxied,
   type ScreenshotSpec,
   screenshotSpecSchema,
@@ -126,8 +128,9 @@ export default async function ScreenshotsPage({ params }: Props) {
         backgrounds={backgrounds}
         detectSlides={detectSlides}
         appIcon={app.icon ? proxied(app.icon) : null}
-        savedAt={saved?.updatedAt.toISOString() ?? null}
+        savedAt={formatSavedAt(saved?.updatedAt)}
         published={{ version: app.meta.version, updatedAt: app.meta.updatedAt }}
+        publishedDate={formatDayEs(app.meta.updatedAt)}
         keywordOptions={keywordOptions}
       />
     </div>

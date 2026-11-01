@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { normalizeKeyword } from "./keywords";
 import type { AppMeta, Store } from "./stores/types";
-import { genericWordsFor, stopwordsFor } from "./stopwords";
-import { fold } from "./text";
+import { genericWordsFor, stopwordsFor, titleCommonWords } from "./stopwords";
+import { fold, sameRoot, stem } from "./text";
 
 /** Bump when the instructions or the output shape change, so old suggestions can be told apart. */
 export const PROMPT_VERSION = "kw-3";
@@ -128,6 +128,8 @@ export type BrandOptions = {
 
 /** A title head used by this many distinct apps or more is a common phrase, not a brand. */
 export const COMMON_TITLE_APPS = 3;
+/** Letters a lowercase first word needs to pass for a made-up name when nothing else says it is a brand. */
+const MIN_MADE_UP = 6;
 /** Words that make up generic developer names ("Fit Apps" is a brand, "Apps Studio" is not). */
 const DEVELOPER_FILLER = new Set(
   "apps app games game studio studios lab labs dev developer developers development mobile software soft tech technologies technology solutions digital media group team interactive online inc llc ltd corp".split(
@@ -137,17 +139,67 @@ const DEVELOPER_FILLER = new Set(
 
 const words = (s: string) => foldKey(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 
+/** Brands of other apps, in two groups: from app titles (shown as «Marcas detectadas») and developer names. */
+export type BrandGroups = { brands: string[]; developers: string[] };
+
+/** A folded word without its plural ending: «pills» → «pill», «diaries» → «diary», «classes» → «class», but «class» stays. */
+function singular(w: string): string {
+  if ([...w].length <= 3) return w;
+  if (/[^aeiou]ies$/.test(w)) return `${w.slice(0, -3)}y`;
+  if (/(?:ss|sh|ch|x|z)es$/.test(w)) return w.slice(0, -2);
+  // A final «s» after another «s» is part of the word («class», «process»).
+  if (/[^s]s$/.test(w)) return w.slice(0, -1);
+  return w;
+}
+
 /**
- * Brand phrases of other apps, for the prompts and to drop ideas: the part of the title before a
+ * A folded word without its plural ending and final vowel: «pills» → «pill», «diaries» → «diary»,
+ * «classes» → «class», «antibiótico» → «antibiotic», «medicine» → «medicin». Exported for tests.
+ */
+export function wordBase(w: string): string {
+  return singular(w).replace(/(?<=\p{L}{3})[aeiou]$/u, "");
+}
+
+/**
+ * The same word up to an inflection (`sameRoot` of the singulars and the same base): «pill» and «pills»,
+ * «diary» and «diaries», «antibiotic» and «antibiótico», «alarm» and «alarma». Stricter than `sameRoot`,
+ * which also joins a made-up name with the word it plays on («Remindy» and «reminder»). Exported for tests.
+ */
+export function sameWord(a: string, b: string): boolean {
+  return a === b || (sameRoot(singular(a), singular(b)) && wordBase(a) === wordBase(b));
+}
+
+/** Word list matched by inflection (`sameWord`): «antibiotic» is in a list with «antibiótico», «pills» in one with «pill». */
+export function rootSet(list: Iterable<string>) {
+  const byStem = new Map<string, string[]>();
+  for (const w of list) {
+    const key = stem(singular(w));
+    byStem.set(key, [...(byStem.get(key) ?? []), w]);
+  }
+  return { has: (w: string) => (byStem.get(stem(singular(w))) ?? []).some((x) => sameWord(x, w)) };
+}
+
+// "MyTherapy", "PillPal": a capital inside a word marks a made-up name.
+const CAMEL = /^\p{L}\p{Ll}+\p{Lu}\p{L}*$/u;
+
+/**
+ * Brands of other apps, for the prompts and to drop ideas, in two groups: the part of the title before a
  * separator (or the whole title when it is one word) and the developer name without its legal suffix.
- * Without options it behaves as before; with them, generic words stop counting as brands:
- * - never a word or phrase from our own title, the tracked keywords, the product sheet or the exceptions;
- * - a title head only if fewer than COMMON_TITLE_APPS distinct apps of the set use it in their title
- *   ("Notas", "Recordatorio de pastillas - X" are common, "MyTherapy" is not);
- * - a one-word head that is only a stopword or generic word is never a brand;
+ * Without options it behaves as before; with them, ordinary words stop counting as brands:
+ * - a title brand needs a proper name: a word that is not a stopword or generic word of the store
+ *   language or English, not a common app-title word (`titleCommonWords`: «pills», «reminder», «lady»),
+ *   not a word used in COMMON_TITLE_APPS or more distinct titles of the set, and not one of our own words
+ *   (title, tracked keywords, product sheet, exceptions). All of them compared by root and without
+ *   accents, so «antibiotic» is not a brand when we track «antibiótico» and «registros» is generic;
+ * - in a title without a separator, only its capitalised first word or a word like «MyTherapy» can be one;
+ * - a title head is never a brand when COMMON_TITLE_APPS or more distinct apps of the set use it;
  * - the developer only if it is not made only of generic words ("Apps Studio").
  */
-export function competitorBrands(competitors: { title: string; developer: string }[], ownDeveloper: string, options: BrandOptions = {}): string[] {
+export function competitorBrandGroups(
+  competitors: { title: string; developer: string }[],
+  ownDeveloper: string,
+  options: BrandOptions = {},
+): BrandGroups {
   const own = foldKey(ownDeveloper.replace(LEGAL_SUFFIX, ""));
   const lang = options.lang ?? "en";
   const stop = stopwordsFor(lang);
@@ -162,31 +214,82 @@ export function competitorBrands(competitors: { title: string; developer: string
   };
 
   // Distinct apps per title phrase: the same app twice in the list counts once.
-  const titles = [...new Map(competitors.map((c) => [`${foldKey(c.title)}|${foldKey(c.developer)}`, ` ${words(c.title).join(" ")} `])).values()];
+  const titleWords = [...new Map(competitors.map((c) => [`${foldKey(c.title)}|${foldKey(c.developer)}`, words(c.title)])).values()];
+  const titles = titleWords.map((ws) => ` ${ws.join(" ")} `);
   const appsUsing = (phrase: string) => titles.filter((t) => t.includes(` ${phrase} `)).length;
 
+  // Ordinary words, by root: dictionary (store language and English), app-title vocabulary, our own
+  // words and the words of many titles. Titles count by inflection too (`sameWord`), never by bare stem:
+  // «reminder» in every title does not make the brand «Remindy» common.
+  const titlesWithRoot = new Map<string, number>();
+  const appsWithRoot = (w: string) => {
+    let n = titlesWithRoot.get(w);
+    if (n === undefined) titlesWithRoot.set(w, (n = titleWords.filter((ws) => ws.some((x) => sameWord(x, w))).length));
+    return n;
+  };
+  const ordinary = rootSet([...generic, ...titleCommonWords(), ...excludedWords].filter((w) => w.length >= 3));
+  const isOrdinary = (w: string) =>
+    [...w].length < 3 || /^\d+$/.test(w) || stop.has(w) || ordinary.has(w) || appsWithRoot(w) >= COMMON_TITLE_APPS;
+  // First words of each developer's titles: «medisafe» opening two titles of the same developer is its brand.
+  const firstWordsBy = new Map<string, Map<string, number>>();
+  for (const c of new Map(competitors.map((c) => [`${foldKey(c.title)}|${foldKey(c.developer)}`, c])).values()) {
+    const first = words(c.title)[0];
+    if (!first) continue;
+    const dev = foldKey(c.developer);
+    const counts = firstWordsBy.get(dev) ?? new Map<string, number>();
+    counts.set(first, (counts.get(first) ?? 0) + 1);
+    firstWordsBy.set(dev, counts);
+  }
+
+  /**
+   * A lowercase first word («medisafe pill reminder») has no capital to say it is a name. It still is one
+   * (if it is no ordinary word, checked by the caller) when the developer's name has it, when it opens two
+   * or more titles of that developer, or when the whole title is lowercase and it is a long word of only
+   * this title (MIN_MADE_UP letters or more).
+   */
+  const lowercaseBrand = (c: { title: string; developer: string }, w: string) => {
+    if ([...w].length < 4) return false;
+    if (words(c.developer).includes(w)) return true;
+    if ((firstWordsBy.get(foldKey(c.developer))?.get(w) ?? 0) >= 2) return true;
+    return !/\p{Lu}/u.test(c.title) && [...w].length >= MIN_MADE_UP && appsWithRoot(w) <= 1;
+  };
+
   const brands = new Set<string>();
+  const developers = new Set<string>();
   for (const c of competitors) {
     const parts = c.title.split(TITLE_SEPARATOR);
     const head = foldKey(parts[0]);
-    if (parts.length > 1 || !head.includes(" ")) {
+    if (!strict) {
+      if (parts.length > 1 || !head.includes(" ")) brands.add(head);
+    } else if (parts.length > 1 || !head.includes(" ")) {
       const phrase = words(head).join(" ");
-      const single = !phrase.includes(" ");
-      const filler = single && (stop.has(phrase) || generic.has(phrase));
-      if (!strict || (phrase && !filler && !excluded(phrase) && appsUsing(phrase) < COMMON_TITLE_APPS)) brands.add(head);
-    } else if (strict) {
-      // "Medisafe Recordatorio Pastillas": a rare first word that is nobody's keyword is the brand.
-      const first = words(head)[0] ?? "";
-      if (first.length >= 4 && !stop.has(first) && !generic.has(first) && !excluded(first) && appsUsing(first) < COMMON_TITLE_APPS) brands.add(first);
+      if (phrase && !excluded(phrase) && appsUsing(phrase) < COMMON_TITLE_APPS && phrase.split(" ").some((w) => !isOrdinary(w))) brands.add(head);
+    } else {
+      // "Medisafe Recordatorio Pastillas": a capitalised first word that is no ordinary word is the brand;
+      // "Lady Pill Reminder" has none. Elsewhere in the title only a made-up name like "MyTherapy" counts.
+      const raw = parts[0].trim().split(/\s+/);
+      raw.forEach((token, i) => {
+        const clean = token.replace(/[^\p{L}\p{N}]+/gu, "");
+        const w = foldKey(clean);
+        const proper = i === 0 ? (/^\p{Lu}/u.test(clean) && [...w].length >= 4) || lowercaseBrand(c, w) : CAMEL.test(clean);
+        if (proper && !isOrdinary(w) && !excluded(w)) brands.add(w);
+      });
     }
     const developer = foldKey(c.developer.replace(LEGAL_SUFFIX, ""));
     if (developer && developer !== own) {
       const ws = words(developer);
       const genericName = ws.every((w) => DEVELOPER_FILLER.has(w) || stop.has(w) || generic.has(w));
-      if (!strict || (!genericName && !excluded(ws.join(" ")))) brands.add(developer);
+      if (!strict || (!genericName && !excluded(ws.join(" ")))) developers.add(developer);
     }
   }
-  return [...brands].filter((b) => b.length >= 3);
+  const keep = (set: Set<string>) => [...set].filter((b) => b.length >= 3);
+  return { brands: keep(brands), developers: keep(developers).filter((d) => !brands.has(d)) };
+}
+
+/** Every brand of `competitorBrandGroups`, titles and developers together: what the prompts avoid and the idea filter drops. */
+export function competitorBrands(competitors: { title: string; developer: string }[], ownDeveloper: string, options: BrandOptions = {}): string[] {
+  const { brands, developers } = competitorBrandGroups(competitors, ownDeveloper, options);
+  return [...brands, ...developers];
 }
 
 /** Apps of the TOP 5 of our keywords, most frequent first, without our own app. */

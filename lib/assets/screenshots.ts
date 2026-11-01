@@ -381,3 +381,30 @@ export function generatedImageUrl(id: number): string {
 export function proxied(url: string): string {
   return `/api/assets/image?url=${encodeURIComponent(url)}`;
 }
+
+// Dates shown in the studios are formatted on the server, with a fixed time zone, and passed as
+// text: formatting them in the client component would render the server's time zone in the HTML
+// and the browser's on hydration, a text mismatch (React error #418).
+const savedAtFormat = new Intl.DateTimeFormat("es-ES", {
+  day: "numeric",
+  month: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/Madrid",
+});
+const dayFormat = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "numeric", year: "numeric", timeZone: "Europe/Madrid" });
+
+/** «1/11/2026, 11:20», Spain time, for "Guardado por última vez el …". */
+export function formatSavedAt(date: Date | string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(date);
+  return Number.isNaN(d.getTime()) ? null : savedAtFormat.format(d);
+}
+
+/** «12/10/2026», Spain time, for a date like the last update of the published listing. */
+export function formatDayEs(date: Date | string | null | undefined): string | null {
+  if (!date) return null;
+  const d = new Date(date);
+  return Number.isNaN(d.getTime()) ? null : dayFormat.format(d);
+}

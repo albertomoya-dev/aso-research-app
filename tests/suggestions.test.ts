@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUserPrompt,
+  competitorBrandGroups,
   competitorBrands,
   filterSuggestions,
   MAX_SUGGESTIONS,
   PROMPT_VERSION,
   relevanceFactor,
+  sameWord,
   seedWords,
   topCompetitors,
+  wordBase,
 } from "@/lib/suggestions";
 import { EMPTY_FACTS, productBrandTerms } from "@/lib/product-facts";
 
@@ -101,8 +104,89 @@ describe("competitorBrands with options (real case)", () => {
     expect(brands).not.toContain("control");
   });
 
+  it("keeps developer names apart from the brands taken from titles", () => {
+    const { brands, developers } = competitorBrandGroups(competitors, "Moyalo Games", options);
+    expect(brands).toEqual(expect.arrayContaining(["mytherapy", "medisafe"]));
+    expect(brands).not.toContain("smartpatient");
+    expect(developers).toEqual(expect.arrayContaining(["smartpatient", "medisafe project", "pills time"]));
+    expect(developers).not.toContain("apps studio");
+  });
+
   it("is versioned after the PRODUCT FACTS block changed", () => {
     expect(PROMPT_VERSION).toBe("kw-3");
+  });
+});
+
+describe("competitorBrandGroups: ordinary words are not brands (H14)", () => {
+  // TOP 5 of the real case at the review of 30 Oct (Play ES): English apps among Spanish ones, and
+  // titles made of ordinary words.
+  const competitors = [
+    { title: "Lady Pill Reminder", developer: "Lady Apps Inc." },
+    { title: "Mis Medicinas - Recordatorio", developer: "Hugo Gomez" },
+    { title: "Antibiotic Reminder", developer: "Ahmed Ammar" },
+    { title: "Antibiotics: dosis y alarmas", developer: "Ahmed Ammar" },
+    { title: "Anticonceptivos: Recordatorio píldora", developer: "Ciclo Apps" },
+    { title: "Registros: diario de salud", developer: "Salud Digital SL" },
+    { title: "Pills: Medication Tracker", developer: "Pill Apps Ltd" },
+    { title: "MyTherapy: Recordatorio pastillas", developer: "smartpatient gmbh" },
+    { title: "Medisafe Recordatorio Pastillas", developer: "Medisafe Project" },
+  ];
+  const options = {
+    ownTitle: "Recordatorio pastillas: alarma",
+    trackedTerms: ["recordatorio pastillas", "antibiotico cada 8 horas", "anticonceptivo", "pastillero", "alarma medicamentos"],
+    productTerms: "Alarmas exactas para cada toma.",
+    lang: "es",
+  };
+
+  it("drops dictionary words, English ones and close forms of our keywords, and keeps the real brands", () => {
+    const { brands, developers } = competitorBrandGroups(competitors, "Moyalo Games", options);
+    for (const word of ["anticonceptivos", "registros", "pills", "lady", "antibiotic", "antibiotics", "mis medicinas", "lady pill reminder"]) {
+      expect(brands, word).not.toContain(word);
+    }
+    expect(brands).toEqual(expect.arrayContaining(["mytherapy", "medisafe"]));
+    // Developer names stay out of the brand list; they are a separate group.
+    expect(brands).not.toContain("hugo gomez");
+    expect(developers).toEqual(expect.arrayContaining(["hugo gomez", "ahmed ammar"]));
+    // Everything together is still what the AI must avoid.
+    expect(competitorBrands(competitors, "Moyalo Games", options)).toEqual(expect.arrayContaining(["mytherapy", "medisafe", "hugo gomez"]));
+  });
+
+  it("a made-up name inside a title without separator still counts", () => {
+    const { brands } = competitorBrandGroups([{ title: "Recordatorio con PillPal", developer: "X" }], "Yo", options);
+    expect(brands).toContain("pillpal");
+  });
+
+  // Review finding 9: words of many titles counted by bare stem («remin») hid «Remindy».
+  it("keeps a brand that only shares the first letters with a word of many titles", () => {
+    const set = [
+      { title: "Remindy: alarmas de toma", developer: "Remindy Labs" },
+      { title: "Pill Reminder Pro", developer: "A" },
+      { title: "Medication Reminder", developer: "B" },
+      { title: "Reminder: pastillas", developer: "C" },
+      { title: "Daily Reminder Plus", developer: "D" },
+    ];
+    const { brands } = competitorBrandGroups(set, "Yo", options);
+    expect(brands).toContain("remindy");
+    expect(brands).not.toContain("reminder");
+  });
+
+  it("takes a lowercase first word as a brand only with evidence", () => {
+    const brandsOf = (list: { title: string; developer: string }[]) => competitorBrandGroups(list, "Yo", options).brands;
+    // The developer's name has it.
+    expect(brandsOf([{ title: "medisafe pill reminder", developer: "Medisafe Project" }])).toContain("medisafe");
+    // It opens two titles of the same developer.
+    expect(
+      brandsOf([
+        { title: "dosify pill reminder", developer: "Acme" },
+        { title: "dosify tension arterial", developer: "Acme" },
+      ]),
+    ).toContain("dosify");
+    // An all-lowercase title with a long made-up word of only this title.
+    expect(brandsOf([{ title: "medizzy pill reminder", developer: "Acme" }])).toContain("medizzy");
+    // Ordinary or short words never; nor a lowercase word in a title with capitals and no other evidence.
+    expect(brandsOf([{ title: "pastillas reminder diario", developer: "Acme" }])).toEqual([]);
+    expect(brandsOf([{ title: "lady pill reminder", developer: "Acme" }])).toEqual([]);
+    expect(brandsOf([{ title: "medizzy Pill Reminder", developer: "Acme" }])).toEqual([]);
   });
 });
 
@@ -214,5 +298,24 @@ describe("buildUserPrompt with PRODUCT FACTS", () => {
     expect(prompt).toContain("App listing (may be outdated");
     expect(prompt).toContain("Published version: 2.0. Release notes: Arreglos");
     expect(prompt).toContain("- Planes de maratón");
+  });
+});
+
+describe("sameWord: inflections", () => {
+  it("joins plurals in -ies, -sses and -s, and the same word across languages", () => {
+    expect(wordBase("diaries")).toBe("diary");
+    expect(wordBase("classes")).toBe(wordBase("class"));
+    expect(sameWord("diary", "diaries")).toBe(true);
+    expect(sameWord("class", "classes")).toBe(true);
+    expect(sameWord("process", "processes")).toBe(true);
+    expect(sameWord("pill", "pills")).toBe(true);
+    expect(sameWord("antibiotic", "antibiotico")).toBe(true);
+    expect(sameWord("alarm", "alarma")).toBe(true);
+  });
+
+  it("keeps a made-up name apart from the word it plays on, and short look-alikes apart", () => {
+    expect(sameWord("remindy", "reminder")).toBe(false);
+    expect(sameWord("care", "caro")).toBe(false);
+    expect(sameWord("class", "clas")).toBe(false);
   });
 });

@@ -100,6 +100,31 @@ describe("proposalFeedback", () => {
   });
 });
 
+describe("proposalFeedback without a declared brand (H12)", () => {
+  it("asks nothing of the title: a keyword title has no brand to keep", () => {
+    const p = cleanProposal("android", output({ title: "Pill Reminder: Med Tracker", shortDescription: "ok" }), []);
+    expect(proposalFeedback("android", p, "")).toEqual([]);
+  });
+
+  it("tells the model whether a brand was declared, and not to close with a keyword summary", () => {
+    const base: ListingPromptInput = {
+      store: "android",
+      countryName: "España",
+      lang: "es",
+      developer: "Yo",
+      category: null,
+      current: { title: "Recordatorio pastillas: alarma", subtitle: "", keywordField: "", shortDescription: "", description: "" },
+      keywords: [],
+      avoidBrands: [],
+      facts: null,
+    };
+    expect(buildListingPrompt(base)).toContain("Declared brand: none. The current title is not a brand");
+    expect(buildListingPrompt({ ...base, brand: "Runly" })).toContain("Declared brand (keep it at the start of the title, exactly as given): Runly");
+    expect(LISTING_SYSTEM_PROMPT).toMatch(/never close the description with a summary paragraph/);
+    expect(LISTING_SYSTEM_PROMPT).not.toMatch(/Keep the app's brand name at the start of the title, exactly as it is now/);
+  });
+});
+
 describe("brandOf", () => {
   it("takes the part before a separator, or the first word", () => {
     expect(brandOf("Runly: Correr y GPS")).toBe("Runly");
@@ -178,7 +203,7 @@ describe("buildListingPrompt with PRODUCT FACTS (real case)", () => {
   });
 });
 
-describe("buildListingPrompt: coverage and DO NOT LOSE (lst-3)", () => {
+describe("buildListingPrompt: coverage and DO NOT LOSE", () => {
   const input = (keywords: ReturnType<typeof kw>[]): ListingPromptInput => ({
     store: "android",
     countryName: "España",
@@ -193,7 +218,7 @@ describe("buildListingPrompt: coverage and DO NOT LOSE (lst-3)", () => {
 
   it("says where each keyword is covered today and lists the most valuable covered ones", () => {
     const prompt = buildListingPrompt(input([kw("correr", { opportunity: 50 }), kw("plan maraton", { opportunity: 70 }), kw("gps noche", { opportunity: 30 }), kw("natacion", { opportunity: 90 })]));
-    expect(LISTING_PROMPT_VERSION).toBe("lst-3");
+    expect(LISTING_PROMPT_VERSION).toBe("lst-4");
     expect(prompt).toContain("- correr | position – | popularity – | difficulty – | opportunity 50 | relevance – | today: title");
     expect(prompt).toContain("- gps noche | position – | popularity – | difficulty – | opportunity 30 | relevance – | today: words only, not the phrase");
     expect(prompt).toContain("- natacion | position – | popularity – | difficulty – | opportunity 90 | relevance – | today: not covered");

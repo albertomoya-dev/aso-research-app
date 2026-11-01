@@ -10,6 +10,7 @@ import {
   localeOptions,
   mainLocale,
   marketCountryFor,
+  missingListingNotice,
   resolveTarget,
   sharesMainLanguage,
   storeLangFor,
@@ -120,10 +121,22 @@ describe("localeOptions", () => {
 });
 
 describe("baseDraftFor", () => {
-  it("starts from the main text in the same language and from the brand alone in another", () => {
-    expect(baseDraftFor("es", { locale: "es-ES", country: "" }, published, "Recordatorio")).toBe(published);
-    expect(baseDraftFor("es", { locale: "es-ES", country: "mx" }, published, "Recordatorio")).toBe(published);
-    expect(baseDraftFor("es", { locale: "en-US", country: "" }, published, "Recordatorio")).toEqual({ ...EMPTY_DRAFT, title: "Recordatorio" });
+  it("starts from the main text in the same language and from an empty listing in another (H22)", () => {
+    expect(baseDraftFor("es", { locale: "es-ES", country: "" }, published)).toBe(published);
+    expect(baseDraftFor("es", { locale: "es-ES", country: "mx" }, published)).toBe(published);
+    expect(baseDraftFor("es", { locale: "es-MX", country: "" }, published)).toBe(published);
+    // After «Borrar borrador» in en-US the editor goes back to this: never the Spanish title.
+    const en = baseDraftFor("es", { locale: "en-US", country: "" }, published);
+    expect(en).toEqual(EMPTY_DRAFT);
+    expect(Object.values(en).join("")).not.toContain("Recordatorio");
+  });
+
+  it("tells how to start a listing in another language when it has no draft", () => {
+    expect(missingListingNotice("es", { locale: "en-US", country: "" }, false)).toBe(
+      "Aún no hay ficha en inglés (Estados Unidos): usa «Adaptar a en-US» para escribirla a partir de la principal, o escríbela aquí.",
+    );
+    expect(missingListingNotice("es", { locale: "en-US", country: "" }, true)).toBeNull();
+    expect(missingListingNotice("es", { locale: "es-MX", country: "" }, false)).toBeNull();
   });
 });
 
