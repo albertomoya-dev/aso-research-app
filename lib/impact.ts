@@ -88,3 +88,58 @@ export function summarizeImpacts(impacts: Impact[]): Record<ImpactVerdict, numbe
   for (const i of impacts) out[i.verdict]++;
   return out;
 }
+
+export type AggregateImpact = {
+  /** Keywords with a mean position on both sides: the ones the averages stand on. */
+  affected: number;
+  /** Mean of their mean positions before and after (1 decimal); null when `affected` is 0. */
+  before: number | null;
+  after: number | null;
+  /** Positions gained on average (positive = better); null when `affected` is 0. */
+  change: number | null;
+  /** From the averages; without any pair, «entered» or «left» when that is what most did, else «unknown». */
+  verdict: ImpactVerdict;
+  /** Keywords that entered or left the results (no mean on one side): counted apart. */
+  entered: number;
+  left: number;
+  /** False while any window after the change is still running. */
+  complete: boolean;
+};
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * One line for a change across its keywords (the visibility chart's tooltip): the average of the mean
+ * positions before and after, over the keywords measured on both sides. Entries and exits have no
+ * position on one side, so they are counted apart instead of being given a made-up rank.
+ */
+export function aggregateImpact(impacts: Impact[]): AggregateImpact {
+  const pairs = impacts.filter((i) => i.before.mean != null && i.after.mean != null);
+  const entered = impacts.filter((i) => i.verdict === "entered").length;
+  const left = impacts.filter((i) => i.verdict === "left").length;
+  const complete = impacts.every((i) => i.complete);
+  if (pairs.length === 0) {
+    const verdict: ImpactVerdict = entered > left ? "entered" : left > entered ? "left" : "unknown";
+    return { affected: 0, before: null, after: null, change: null, verdict, entered, left, complete };
+  }
+  const before = pairs.reduce((s, i) => s + i.before.mean!, 0) / pairs.length;
+  const after = pairs.reduce((s, i) => s + i.after.mean!, 0) / pairs.length;
+  const change = before - after;
+  const verdict: ImpactVerdict = Math.abs(change) < FLAT_THRESHOLD ? "flat" : change > 0 ? "up" : "down";
+  return { affected: pairs.length, before: round1(before), after: round1(after), change: round1(change), verdict, entered, left, complete };
+}
+
+/** «12 keywords · 23 → 18 ▲», plus entries and exits; «Sin datos suficientes» when nothing was measured. */
+export function formatAggregateImpact(a: AggregateImpact): string {
+  const parts: string[] = [];
+  if (a.affected > 0 && a.before != null && a.after != null) {
+    // Whole positions read best; a small change keeps its decimal so «9 → 10 =» never shows.
+    const digits = a.verdict === "flat" || Math.round(a.before) === Math.round(a.after) ? 1 : 0;
+    const n = (x: number) => x.toLocaleString("es-ES", { maximumFractionDigits: digits });
+    const arrow = a.verdict === "up" ? "▲" : a.verdict === "down" ? "▼" : "=";
+    parts.push(`${a.affected} ${a.affected === 1 ? "keyword" : "keywords"} · ${n(a.before)} → ${n(a.after)} ${arrow}`);
+  }
+  if (a.entered > 0) parts.push(`${a.entered} ${a.entered === 1 ? "entra" : "entran"} en resultados`);
+  if (a.left > 0) parts.push(`${a.left} ${a.left === 1 ? "sale" : "salen"} de resultados`);
+  return parts.length ? parts.join(" · ") : IMPACT_VERDICT_LABEL.unknown;
+}

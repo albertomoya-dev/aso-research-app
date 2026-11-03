@@ -36,6 +36,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
 | 26b | Datos de la app en el producto: ficha de producto, marcas excluidas y creativos por `product_id` (migración 0020, que fusiona los países). Se conservan al dejar de seguir un país. Los borradores siguen siendo de cada país y el editor avisa si dos países tienen el mismo idioma | Hecho |
 | 27 | Navegación: barra lateral global (selector de app, Inicio, Actividad, Integraciones) y barra lateral de cada app (Resumen, Keywords, Mercado, Optimizar, Ajustes de la app), cabecera fija con selector de mercado y «Actualizar posiciones», paleta ⌘K, barra inferior en el móvil, páginas Actividad, Integraciones y Añadir app, Ajustes de la app con pestañas (Producto, Mercados, Marcas, Datos de Play Console, Zona de peligro) y redirecciones 308 de las páginas globales antiguas | Hecho |
+| 28 | Inicio (KPIs de todas las apps, una fila por mercado con mini-gráfico, TOP 10 y 30, posición media, valoración y salud, y «Qué hacer hoy») y Resumen de cada mercado (KPIs, visibilidad a 30, 90 o 180 días con los cambios marcados y su impacto, próximos pasos, movimientos de la semana y competencia en una línea) | Hecho |
 
 ## Stack
 
@@ -446,9 +447,43 @@ Las imágenes generativas no tienen prueba porque cada imagen se cobra. Los avis
 
 Cada tarjeta muestra «Probar» cuando está conectada y «Cómo conectar» cuando no: un panel con los pasos numerados y los nombres de las variables, con un botón para copiarlos y pegarlos en Vercel (`lib/integration-guides.ts`). Las variables y si están puestas quedan dentro de «Detalles técnicos».
 
+## Inicio
+
+`/` resume todas las apps que sigues. Está en `lib/home.ts` (`getHomeOverview`) y `components/home-overview.tsx`.
+
+- **KPIs del conjunto:** keywords en el TOP 10 y en el TOP 30, visibilidad media y avisos sin leer, con el cambio frente a hace una semana. El cambio solo cuenta las keywords que tenían consulta en las dos fechas, así que una keyword añadida esta semana no parece una subida. Los mercados sin una semana de datos no suman al cambio.
+- **Una fila por mercado** (en el móvil, una tarjeta), ordenadas por app y país. Al pulsarla se abre su Resumen. Columnas:
+  - el mini-gráfico de tu cuota de visibilidad en los últimos 30 días;
+  - el TOP 10 con su cambio y el TOP 30;
+  - la **posición media**: la de las 5 keywords relevantes con más oportunidad. Las que están fuera de los resultados no cuentan, porque no sabemos su posición, y lo indica «(3/5)»;
+  - la valoración de la ficha;
+  - la salud en pocas palabras («2 por atender · 1 mejorable»).
+- **Coste:** todos los mercados salen de una sola ronda de 3 consultas (los mercados con sus avisos sin leer, las posiciones de 30 días de las keywords seguidas y las keywords con sus métricas). De cada consulta solo se lee el número de apps del TOP 5, no las apps. La salud de cada fila llega después, por streaming, y no llama a las tiendas: la línea de reseñas, que pregunta a Google Play, solo está en el Resumen. Con `LOG_TIMING=1` el servidor escribe cuánto tarda la ronda.
+- **Qué hacer hoy:** de 3 a 5 tareas con la app, el país y un botón (`whatToDoToday` en `lib/today.ts`). Salen de la salud de cada mercado, de los avisos sin leer de los últimos 14 días y de los picos de temporada. Por orden:
+
+  | Tarea | Puntos |
+  | --- | --- |
+  | Línea de salud que necesita atención / mejorable | 100 / 60, más un desempate: ficha frente a producto, normas, cobertura, reseñas, irrelevantes y capturas |
+  | Pierdes el nº 1 / sales del TOP 10 / dejas de aparecer / bajas 5 o más | 90 / 85 / 80 / 70 |
+  | Pico en temporada ahora / que empieza en 35 días o menos (más cerca, más puntos) | 75 / 60–70 |
+  | Aviso de temporada / ficha vigilada que cambia / nuevo nº 1 de otra app | 65 / 45 / 35 |
+
+  Las subidas no son tareas. Un aviso de temporada y el pico de la misma keyword son una sola tarea, la del pico, que dice cuánto falta. Las capturas y la línea «Ficha frente a tu producto» son de la app, así que la misma tarea sale una vez aunque la sigas en dos países. Hay una tarea por keyword y mercado, y como mucho dos picos por mercado.
+- **Sin apps**, la página es un buscador grande que lleva a Añadir app.
+
+## Resumen de la app
+
+`/a/[app]/[país]` es el Resumen del mercado (`components/market-summary.tsx`). La tabla de keywords está en `/a/[app]/[país]/keywords` (Seguimiento). Cada bloque llega por streaming con un esqueleto de su forma, y las keywords y la cuota se leen una vez por petición.
+
+1. **KPIs:** visibilidad (tu cuota del TOP 5, con el cambio en puntos), keywords en el TOP 10 y en el TOP 30 (con su cambio, contado como en Inicio) y la valoración con el número de valoraciones.
+2. **Visibilidad a 30, 90 o 180 días** (`?dias=90`), con tu app en `--series-own` (`getShareHistory` en `lib/competitor-queries.ts`). Las anotaciones de Cambios son líneas verticales con una marca. Al pasar el ratón por un día se ven los cambios desde el punto anterior y su impacto a 14 días en una línea: «12 keywords · 23 → 18 ▲» (`aggregateImpact` en `lib/impact.ts`, la media de las posiciones medias de las keywords medidas antes y después; las que entran o salen de los resultados se cuentan aparte). Debajo, la lista de esos cambios, que también lee un lector de pantalla.
+3. **Próximos pasos:** las líneas de la salud ASO como tareas, primero las que necesitan atención y después las mejorables, cada una con su botón. Las que están bien se pliegan en «4 en orden».
+4. **Movimientos de la semana:** «Suben» y «Bajan», con la posición anterior → la actual, y «Nuevos nº 1 donde compites», que son los avisos de cambio de nº 1 de la semana.
+5. **Competencia en una línea:** «MyTherapy 33 % · Medisafe 15 % · Tú 3 %» como barra apilada, con los mismos colores que en Competidores y un enlace a esa página.
+
 ## Panel de salud
 
-La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señal, con su estado (bien, mejorable, necesita atención o sin datos) y un enlace a la pantalla donde se arregla. La decisión está en `lib/health.ts` (puro y con tests) y los datos se cargan en `lib/health-queries.ts` en una sola ronda de consultas en paralelo, reutilizando las keywords que la portada ya ha leído. La tarjeta llega por streaming (Suspense), así que la tabla de keywords no la espera.
+El Resumen de cada app convierte la **Salud ASO** en «Próximos pasos». Inicio la resume por fila, y la tabla de keywords (Seguimiento) aún muestra la tarjeta completa. Cada señal tiene un estado (bien, mejorable, necesita atención o sin datos) y un enlace a la pantalla donde se arregla. La decisión está en `lib/health.ts` (puro y con tests). Los datos se cargan en `lib/health-queries.ts` (`loadHealth`, y `loadHealthDetail` con todos los picos que vienen para Inicio) en una sola ronda de consultas en paralelo, reutilizando las keywords ya leídas. Todo llega por streaming (Suspense).
 
 | Señal | De dónde sale | Umbrales |
 | --- | --- | --- |
@@ -488,7 +523,7 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 | Actividad (novedades) y resumen semanal | `/actividad` y `/actividad?vista=semana` (filtros `periodo`, `app`, `tipo`) |
 | Integraciones | `/integraciones` |
 | Añadir app (buscar en las tiendas) | `/apps/nueva` |
-| Resumen del mercado (hasta la fase 28 muestra las keywords) | `/a/[app]/[país]` |
+| Resumen del mercado | `/a/[app]/[país]` (`?dias=90` o `180` para el gráfico) |
 | Keywords › Seguimiento y una keyword | `/a/[app]/[país]/keywords`, `/a/[app]/[país]/keywords/[id]` |
 | Keywords › Encontrar (tres fuentes hasta la fase 29) | `/a/[app]/[país]/descubrir`, `/ideas`, `/top10` |
 | Mercado › Competidores, Reseñas, Tendencias | `/a/[app]/[país]/competidores`, `/resenas`, `/tendencias` |
@@ -529,6 +564,7 @@ Las páginas globales antiguas también responden con un **308**, conservando la
 - `E2E_DATABASE_URL_FILE=ruta/al/archivo npm run test:e2e` compila la app y la arranca con `next start -p 3200` (otro puerto con `E2E_PORT`), sin contraseña y sin claves de IA, correo ni consolas de las tiendas. Para repetir sin compilar: `npx playwright test`.
 - **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Falla si el documento hace scroll horizontal a 390 o 1440 px, salvo en Creativos y su vídeo (fase 32), que solo se informan. El desbordamiento de `<main>` se mide y se deja en `test-results/overflow.md`.
 - **`e2e/navigation.spec.ts`**: la navegación de la fase 27. Redirecciones 308 de las páginas globales, sin pestañas horizontales, «Dejar de seguir» solo en la zona de peligro (abre el diálogo, nunca lo envía), cambio de mercado con la misma subpágina, ⌘K y la barra inferior del móvil.
+- **`e2e/summary.spec.ts`**: Inicio y Resumen (fase 28). Comprueba los KPIs, una fila por mercado que abre su Resumen, «Qué hacer hoy», las tarjetas en el móvil, el gráfico con una marca por anotación (si la base de datos de prueba tiene alguna en 30 días) y el cambio de periodo. También que no hay scroll horizontal a 390 y 1440 px y que el contenido pasa axe AA en los dos temas. Anota el tiempo de Inicio.
 - **`e2e/axe.spec.ts`**: `/dev/ui` en los dos temas debe pasar WCAG 2.1 AA. De las pantallas actuales solo se informa en `test-results/axe-routes.json`.
 
 ## Comandos

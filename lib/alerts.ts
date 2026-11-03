@@ -189,6 +189,9 @@ export type WeekSummary = {
   worsened: number;
   top10: number;
   top10Before: number;
+  /** Keywords in the first 30 results now and on the baseline date (same rule as `top10`). */
+  top30: number;
+  top30Before: number;
   /** Keywords with no check by the baseline date: left out of gains and losses. */
   noBaseline: number;
   /**
@@ -215,12 +218,15 @@ function weekMove(r: WeekRow): WeekMove | null {
 export function summarizeWeek(rows: WeekRow[], limit = 5): WeekSummary {
   const moves = rows.map(weekMove).filter((m): m is WeekMove => m != null && m.change !== 0);
   const inTop10 = (p: number | null) => p != null && p <= 10;
+  const inTop30 = (p: number | null) => p != null && p <= 30;
   return {
     tracked: rows.length,
     improved: moves.filter((m) => m.change > 0).length,
     worsened: moves.filter((m) => m.change < 0).length,
     top10: rows.filter((r) => inTop10(r.now)).length,
     top10Before: rows.filter((r) => r.hasBefore && inTop10(r.before)).length,
+    top30: rows.filter((r) => inTop30(r.now)).length,
+    top30Before: rows.filter((r) => r.hasBefore && inTop30(r.before)).length,
     noBaseline: rows.filter((r) => !r.hasBefore).length,
     gainers: moves.filter((m) => m.change > 0).sort((a, b) => b.change - a.change).slice(0, limit),
     losers: moves.filter((m) => m.change < 0).sort((a, b) => a.change - b.change).slice(0, limit),

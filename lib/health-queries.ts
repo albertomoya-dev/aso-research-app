@@ -8,12 +8,16 @@ import {
   type HealthItem,
   irrelevantItem,
   listingAgeItem,
-  nextSeason,
+  type NextSeason,
+  nextSeasons,
   policyItem,
+  reviewsItem,
   screenshotsItem,
   seasonItem,
 } from "./health";
 import { getListingDraft } from "./listing-draft-queries";
+import { playConfig } from "./play-console/auth";
+import { getPlayClient, playErrorMessage } from "./play-console/client";
 import { mainLocale } from "./listing-drafts";
 import { draftFromMeta, weightedCoverage } from "./metadata-check";
 import { policyCheck } from "./policy-check";
@@ -60,6 +64,11 @@ function trendPoints(app: HealthApp) {
  * the brand exceptions, never one query per keyword.
  */
 export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<HealthItem[]> {
+  return (await loadHealthDetail(app, rows)).items;
+}
+
+/** `loadHealth` plus every coming seasonal peak (nearest first), for «Qué hacer hoy». */
+export async function loadHealthDetail(app: HealthApp, rows: KeywordRow[]): Promise<{ items: HealthItem[]; seasons: NextSeason[] }> {
   const lang = getCountry(app.country).lang;
   const [draftRow, product, slides, trends] = await Promise.all([
     getListingDraft(app.id, mainLocale(app.country), ""),
@@ -89,10 +98,11 @@ export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<He
     const row = byId.get(t.keywordId);
     if (!row || !canAnnouncePeak(row.popularity) || !isRelevantKeyword(row, lang)) return [];
     const s = analyzeSeasonality(t.points as TrendPoint[]);
-    return s && s.peaks.length ? [{ term: row.term, peaks: s.peaks }] : [];
+    return s && s.peaks.length ? [{ term: row.term, peaks: s.peaks, keywordId: row.id }] : [];
   });
 
-  return [
+  const seasons = nextSeasons(peaks, today());
+  const items = [
     coverageItem({ score: coverage, source, keywords: relevant.length, href: marketPath(app, "/ficha") }),
     irrelevantItem({ irrelevant: rows.filter((r) => isLikelyIrrelevant(r, lang)).length, total: rows.length, budget: KEYWORD_BUDGET, href: marketPath(app, "/keywords?f=noise") }),
     listingAgeItem({
@@ -105,6 +115,24 @@ export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<He
     }),
     screenshotsItem({ stale, uploaded: uploaded.length, hasDesign: slides.length > 0, href: productPath(app.productSlug, "/creativos") }),
     policyItem({ issues, source, href: marketPath(app, "/ficha") }),
-    seasonItem({ next: nextSeason(peaks, today()), analysed: analysed.length, href: marketPath(app, "/tendencias") }),
+    seasonItem({ next: seasons[0] ?? null, analysed: analysed.length, href: marketPath(app, "/tendencias") }),
   ];
+  return { items, seasons };
+}
+
+/**
+ * The reviews line: unanswered Google Play reviews of the last week. It calls Google, so pages stream it
+ * apart from the rest; without Play Console (or on the App Store) it is the «sin datos» line, at once.
+ */
+export async function loadReviewsItem(app: { productSlug: string; country: string; store: "ios" | "android"; storeId: string }): Promise<HealthItem> {
+  const reviewsHref = marketPath(app, "/resenas");
+  if (app.store !== "android" || !playConfig().configured) return reviewsItem({ store: app.store, configured: false, unanswered: null, reviewsHref });
+  try {
+    const client = getPlayClient();
+    if (!client) throw new Error("Play Console no está configurado.");
+    const { reviews } = await client.listReviews(app.storeId, { maxResults: 50 });
+    return reviewsItem({ store: "android", configured: true, unanswered: reviews.filter((r) => !r.reply).length, total: reviews.length, reviewsHref });
+  } catch (err) {
+    return reviewsItem({ store: "android", configured: true, unanswered: null, error: playErrorMessage(err), reviewsHref });
+  }
 }

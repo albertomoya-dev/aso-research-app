@@ -15,17 +15,23 @@ export async function watchedStoreIds(appId: number): Promise<Set<string>> {
   return new Set(rows.map((r) => r.storeId));
 }
 
-export async function getCompetitorPage(app: { id: number; store: "ios" | "android"; country: string; storeId: string; title: string }) {
-  const db = getDb();
-  const [snapshots, followed] = await Promise.all([
-    db
-      .select({ keywordId: schema.rankSnapshots.keywordId, date: schema.rankSnapshots.date, top5: schema.rankSnapshots.top5 })
-      .from(schema.rankSnapshots)
-      .where(and(eq(schema.rankSnapshots.appId, app.id), gte(schema.rankSnapshots.date, shiftDate(today(), -SHARE_DAYS))))
-      .orderBy(asc(schema.rankSnapshots.date)),
-    db.select().from(schema.competitors).where(eq(schema.competitors.appId, app.id)).orderBy(schema.competitors.title),
-  ]);
+/** Ranges of the visibility charts (Resumen offers all three; Competidores uses the first). */
+export const SHARE_RANGES = [30, 90, 180] as const;
+export type ShareDays = (typeof SHARE_RANGES)[number];
 
+type ShareApp = { id: number; store: "ios" | "android"; country: string; storeId: string; title: string };
+
+/**
+ * Visibility share of the last `days` days: the current share of every app (latest check of each keyword),
+ * the series to draw (our app first, then the strongest others) and the share per day. Two queries.
+ */
+export async function getShareHistory(app: ShareApp, days: ShareDays = SHARE_DAYS) {
+  const db = getDb();
+  const snapshots = await db
+    .select({ keywordId: schema.rankSnapshots.keywordId, date: schema.rankSnapshots.date, top5: schema.rankSnapshots.top5 })
+    .from(schema.rankSnapshots)
+    .where(and(eq(schema.rankSnapshots.appId, app.id), gte(schema.rankSnapshots.date, shiftDate(today(), -days))))
+    .orderBy(asc(schema.rankSnapshots.date));
   const keywordIds = [...new Set(snapshots.map((s) => s.keywordId))];
   const metrics = keywordIds.length
     ? await db
@@ -54,6 +60,16 @@ export async function getCompetitorPage(app: { id: number; store: "ios" | "andro
     popularity,
     series.map((s) => s.id),
   );
+  return { keywordCount: keywordIds.length, current, series, history };
+}
+
+export async function getCompetitorPage(app: ShareApp, opts: { days?: ShareDays } = {}) {
+  const db = getDb();
+  const [share, followed] = await Promise.all([
+    getShareHistory(app, opts.days),
+    db.select().from(schema.competitors).where(eq(schema.competitors.appId, app.id)).orderBy(schema.competitors.title),
+  ]);
+  const { keywordCount, current, series, history } = share;
 
   const competitorIds = followed.map((c) => c.id);
   const listings = competitorIds.length
@@ -74,7 +90,7 @@ export async function getCompetitorPage(app: { id: number; store: "ios" | "andro
   changes.sort((a, b) => b.date.getTime() - a.date.getTime());
 
   return {
-    keywordCount: keywordIds.length,
+    keywordCount,
     current,
     series,
     history,

@@ -38,7 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "top",
     label: null,
-    // Until phase 28 the market root shows the keywords; the Resumen plugs in there.
+    // The market root is the Resumen (phase 28); the keyword table is Seguimiento.
     entries: [{ id: "resumen", label: "Resumen", scope: "market", path: "", icon: "summary", counter: "alerts" }],
   },
   {
