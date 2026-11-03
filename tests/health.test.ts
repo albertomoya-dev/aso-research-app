@@ -15,7 +15,7 @@ import {
   seasonItem,
 } from "@/lib/health";
 
-const href = "/apps/1/metadata";
+const href = "/a/recordatorio/es/ficha";
 
 describe("coverageItem", () => {
   it("grades the weighted score with the thresholds", () => {
@@ -38,7 +38,7 @@ describe("coverageItem", () => {
 });
 
 describe("irrelevantItem", () => {
-  const base = { budget: 150, href: "/apps/1?f=noise" };
+  const base = { budget: 150, href: "/a/recordatorio/es/keywords?f=noise" };
   it("is good with nothing to clean and no link", () => {
     expect(irrelevantItem({ ...base, irrelevant: 0, total: 40 })).toMatchObject({ status: "good", href: null });
   });
@@ -63,7 +63,7 @@ describe("compareVersions", () => {
 });
 
 describe("listingAgeItem", () => {
-  const base = { productHref: "/apps/1/producto", editorHref: href, nextFeatures: 0, hasProduct: true };
+  const base = { productHref: "/a/recordatorio/ajustes/producto", editorHref: href, nextFeatures: 0, hasProduct: true };
   it("is bad when the product has a newer version than the store", () => {
     const item = listingAgeItem({ ...base, published: { version: "2.1", updatedAt: "2026-09-01" }, latestRelease: { version: "2.2", date: "2026-10-20" } });
     expect(item.status).toBe("bad");
@@ -84,14 +84,14 @@ describe("listingAgeItem", () => {
   it("is unknown without a product sheet or without releases", () => {
     expect(listingAgeItem({ ...base, hasProduct: false, published: { version: "1", updatedAt: null }, latestRelease: null })).toMatchObject({
       status: "unknown",
-      href: "/apps/1/producto",
+      href: "/a/recordatorio/ajustes/producto",
     });
     expect(listingAgeItem({ ...base, published: { version: "1", updatedAt: null }, latestRelease: null }).status).toBe("unknown");
   });
 });
 
 describe("screenshotsItem", () => {
-  const h = "/apps/1/creativos";
+  const h = "/a/recordatorio/creativos";
   it("is unknown without uploaded screenshots", () => {
     expect(screenshotsItem({ stale: 0, uploaded: 0, hasDesign: true, href: h }).status).toBe("unknown");
     expect(screenshotsItem({ stale: 0, uploaded: 0, hasDesign: false, href: h }).status).toBe("unknown");
@@ -115,7 +115,7 @@ describe("policyItem", () => {
 });
 
 describe("reviewsItem", () => {
-  const h = "/apps/1/resenas";
+  const h = "/a/recordatorio/es/resenas";
   it("is unknown for App Store and without Play Console, pointing to Ajustes", () => {
     expect(reviewsItem({ store: "ios", configured: false, unanswered: null, reviewsHref: h }).status).toBe("unknown");
     expect(reviewsItem({ store: "android", configured: false, unanswered: null, reviewsHref: h })).toMatchObject({ status: "unknown", href: "/ajustes" });
@@ -147,7 +147,7 @@ describe("nextSeason and seasonItem", () => {
   });
 
   it("warns when the peak is close and is unknown without data", () => {
-    const h = "/apps/1/estacionalidad";
+    const h = "/a/recordatorio/es/tendencias";
     expect(seasonItem({ next: { term: "navidad", month: 11, days: 32, running: false }, analysed: 5, href: h })).toMatchObject({
       status: "warn",
       value: "Diciembre, en 32 días",

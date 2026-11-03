@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures";
+import { type E2eApp, expect, test } from "./fixtures";
 
 // WCAG 2.1 A and AA. /dev/ui must pass in both themes; the current screens are only reported
 // until the redesign phases go through them.
@@ -43,9 +43,15 @@ for (const theme of THEMES) {
 }
 
 // Report only: annotated and written to test-results/axe-routes.json.
-const MAIN_ROUTES = ["/", "/buscar", "/novedades", "/resumen", "/ajustes", "/apps/1", "/apps/1/ideas", "/apps/1/metadata", "/apps/1/competidores", "/apps/1/producto"];
+const GLOBAL_ROUTES = ["/", "/buscar", "/novedades", "/resumen", "/ajustes"];
+// The first market of the test database stands in for every app.
+const appRoutes = (a: E2eApp) => {
+  const market = `/a/${a.slug}/${a.country}`;
+  return [market, `${market}/ideas`, `${market}/ficha`, `${market}/competidores`, `/a/${a.slug}/ajustes/producto`];
+};
 
-test("rutas actuales: informe de accesibilidad (no bloquea)", async ({ page }) => {
+test("rutas actuales: informe de accesibilidad (no bloquea)", async ({ page, apps }) => {
+  const MAIN_ROUTES = [...GLOBAL_ROUTES, ...(apps[0] ? appRoutes(apps[0]) : [])];
   test.setTimeout(300_000);
   const report: Record<string, string[]> = {};
   for (const theme of THEMES) {

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, notExists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -14,6 +14,8 @@ import { KEYWORD_INTENTS, RELEVANCE_SOURCES } from "@/lib/relevance";
 import { rateNewKeywords, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { today } from "@/lib/ranking";
 import { trackRankings } from "@/lib/tracking";
+import { ensureProduct, marketPath } from "@/lib/products";
+import { revalidateMarket } from "@/lib/revalidate";
 import { getAdapter } from "@/lib/stores";
 
 const followSchema = z.object({
@@ -27,8 +29,11 @@ export async function followApp(formData: FormData) {
   const { store, id, country } = followSchema.parse(Object.fromEntries(formData));
   const { lang } = getCountry(country);
   const meta = await getAdapter(store).getApp(id, { country, lang });
+  // The app as a whole: created the first time it is followed, shared by every country after that.
+  const product = await ensureProduct({ store, storeId: meta.id, title: meta.title, icon: meta.icon });
 
   const values = {
+    productId: product.id,
     store,
     storeId: meta.id,
     country,
@@ -50,8 +55,8 @@ export async function followApp(formData: FormData) {
   // Baseline for the automatic annotations (or an annotation, if the app was already followed and changed).
   await recordOwnListing(app.id, meta);
 
-  revalidatePath("/");
-  redirect(`/apps/${app.id}`);
+  revalidatePath("/", "layout");
+  redirect(marketPath({ productSlug: product.slug, country }));
 }
 
 const appIdSchema = z.coerce.number().int().positive();
@@ -68,7 +73,7 @@ export async function refreshAppMeta(formData: FormData) {
   });
   // Same path as the daily job: a changed listing leaves an automatic annotation.
   await recordOwnListing(appId, meta);
-  revalidatePath(`/apps/${appId}`, "layout");
+  await revalidateMarket(appId, "", "layout");
 }
 
 export type AddKeywordsState = {
@@ -93,7 +98,7 @@ export async function addKeywords(_prev: AddKeywordsState, formData: FormData): 
     source,
   );
   const relevance = await rateNewKeywords(appId, keywordIds);
-  revalidatePath(`/apps/${appId}`, "layout");
+  await revalidateMarket(appId, "", "layout");
   return { added, skipped: terms.length - added, trackingFailed, relevance };
 }
 
@@ -103,7 +108,7 @@ export async function removeKeyword(formData: FormData) {
   await getDb()
     .delete(schema.appKeywords)
     .where(and(eq(schema.appKeywords.appId, appId), eq(schema.appKeywords.keywordId, keywordId)));
-  revalidatePath(`/apps/${appId}`);
+  await revalidateMarket(appId);
 }
 
 const removeSchema = z.object({
@@ -149,7 +154,7 @@ export async function removeKeywords(appId: number, keywordIds: number[]): Promi
     .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
     .where(where);
   await db.delete(schema.appKeywords).where(where);
-  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  await revalidateMarket(parsed.data.appId, "", "layout");
   return {
     removed: rows.map((r) => ({ ...r, relevanceCheckedAt: r.relevanceCheckedAt?.toISOString() ?? null, createdAt: r.createdAt.toISOString() })),
   };
@@ -189,15 +194,39 @@ export async function restoreKeywords(appId: number, rows: RemovedKeyword[]): Pr
     )
     .onConflictDoNothing()
     .returning({ keywordId: schema.appKeywords.keywordId });
-  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  await revalidateMarket(parsed.data.appId, "", "layout");
   return { restored: restored.length };
 }
 
 export async function unfollowApp(formData: FormData) {
   const appId = appIdSchema.parse(formData.get("appId"));
-  await getDb().delete(schema.apps).where(eq(schema.apps.id, appId));
-  revalidatePath("/");
-  redirect("/");
+  const db = getDb();
+  // Only the market goes (its keywords, rankings, reviews, drafts…). The app-wide data (product sheet,
+  // brand exceptions, creatives) belongs to the product and stays while another country is followed.
+  const [removed] = await db.delete(schema.apps).where(eq(schema.apps.id, appId)).returning({ productId: schema.apps.productId });
+  let next = "/";
+  if (removed) {
+    // The last market gone: the product goes too, and its data with it by cascade (its slug is free again).
+    await db
+      .delete(schema.products)
+      .where(
+        and(
+          eq(schema.products.id, removed.productId),
+          notExists(db.select({ id: schema.apps.id }).from(schema.apps).where(eq(schema.apps.productId, removed.productId))),
+        ),
+      );
+    // Otherwise, on to the product's next market.
+    const [other] = await db
+      .select({ productSlug: schema.products.slug, country: schema.apps.country })
+      .from(schema.apps)
+      .innerJoin(schema.products, eq(schema.products.id, schema.apps.productId))
+      .where(eq(schema.apps.productId, removed.productId))
+      .orderBy(asc(schema.apps.id))
+      .limit(1);
+    if (other) next = marketPath(other);
+  }
+  revalidatePath("/", "layout");
+  redirect(next);
 }
 
 export async function refreshRankings(formData: FormData) {
@@ -222,7 +251,7 @@ export async function addAnnotation(_prev: AnnotationState, formData: FormData):
   const parsed = annotationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   await getDb().insert(schema.annotations).values(parsed.data);
-  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  await revalidateMarket(parsed.data.appId, "", "layout");
   return { ok: true };
 }
 
@@ -232,7 +261,7 @@ export async function removeAnnotation(formData: FormData) {
   await getDb()
     .delete(schema.annotations)
     .where(and(eq(schema.annotations.id, id), eq(schema.annotations.appId, appId)));
-  revalidatePath(`/apps/${appId}`, "layout");
+  await revalidateMarket(appId, "", "layout");
 }
 
 const countrySchema = z.object({
@@ -249,6 +278,8 @@ export async function followInCountry(formData: FormData) {
   if (!source) throw new Error("App no encontrada");
   const meta = await getAdapter(source.store).getApp(source.storeId, { country, lang: getCountry(country).lang });
   const values = {
+    // Same product as the market it was added from.
+    productId: source.productId,
     store: source.store,
     storeId: meta.id,
     country,
@@ -284,6 +315,7 @@ export async function followInCountry(formData: FormData) {
       "manual",
     );
   }
+  const product = await db.query.products.findFirst({ where: eq(schema.products.id, source.productId) });
   revalidatePath("/", "layout");
-  redirect(`/apps/${app.id}`);
+  redirect(product ? marketPath({ productSlug: product.slug, country }) : "/");
 }

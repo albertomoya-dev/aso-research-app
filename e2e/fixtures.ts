@@ -2,16 +2,23 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { neon } from "@neondatabase/serverless";
 import { test as base, type Page } from "@playwright/test";
 
-export type E2eApp = { id: number; title: string; keywordId: number | null };
+/** One market (an `apps` row) with its product slug, so tests build `/a/[app]/[market]` paths. */
+export type E2eApp = { id: number; title: string; slug: string; country: string; keywordId: number | null };
 
 /** Every followed app in the test database, with one of its keywords for the detail page. */
 async function loadApps(): Promise<E2eApp[]> {
   const sql = neon(process.env.E2E_RESOLVED_DATABASE_URL!);
   const rows = (await sql`
-    select a.id, a.title, min(ak.keyword_id) as keyword_id
-    from apps a left join app_keywords ak on ak.app_id = a.id
-    group by a.id, a.title order by a.id`) as { id: number; title: string; keyword_id: number | null }[];
-  return rows.map((r) => ({ id: Number(r.id), title: r.title, keywordId: r.keyword_id == null ? null : Number(r.keyword_id) }));
+    select a.id, a.title, p.slug, a.country, min(ak.keyword_id) as keyword_id
+    from apps a join products p on p.id = a.product_id left join app_keywords ak on ak.app_id = a.id
+    group by a.id, a.title, p.slug, a.country order by a.id`) as { id: number; title: string; slug: string; country: string; keyword_id: number | null }[];
+  return rows.map((r) => ({
+    id: Number(r.id),
+    title: r.title,
+    slug: r.slug,
+    country: r.country,
+    keywordId: r.keyword_id == null ? null : Number(r.keyword_id),
+  }));
 }
 
 export const test = base.extend<object, { apps: E2eApp[] }>({

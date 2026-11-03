@@ -34,11 +34,38 @@ export const storeEnum = pgEnum("store", ["ios", "android"]);
 export const keywordSourceEnum = pgEnum("keyword_source", KEYWORD_SOURCES);
 export const suggestionStatusEnum = pgEnum("suggestion_status", ["pending", "accepted", "dismissed"]);
 
-/** A followed app in one store and one country. */
+/**
+ * An app of one store, followed in one or more countries (its markets: rows of `apps`). Holds what is
+ * the same in every country: the URL slug (`/a/[slug]/[country]`), and the title and icon of the first
+ * market followed.
+ */
+export const products = pgTable(
+  "products",
+  {
+    id: serial("id").primaryKey(),
+    store: storeEnum("store").notNull(),
+    storeId: text("store_id").notNull(),
+    /** URL name, unique: lower case, no accents, hyphens (lib/market-path.ts `slugify`). */
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    icon: text("icon").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("products_store_store_id_idx").on(t.store, t.storeId)],
+);
+
+/**
+ * A MARKET: a followed app in one store and one country. The table keeps its old name (`apps`, type
+ * `App`, alias `Market`) so ids and foreign keys stay; the app as a whole is its `products` row.
+ */
 export const apps = pgTable(
   "apps",
   {
     id: serial("id").primaryKey(),
+    /** The product this market belongs to: one per (store, store_id), shared by every country. */
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
     store: storeEnum("store").notNull(),
     storeId: text("store_id").notNull(),
     country: text("country").notNull(),
@@ -304,28 +331,39 @@ export const reviewAnalyses = pgTable("review_analyses", {
 
 export const assetKindEnum = pgEnum("asset_kind", ["screenshots", "icon"]);
 
+// The app-wide tables below (creatives, product sheet, brand exceptions) belong to the PRODUCT, not to a
+// market: every country shares them and they survive unfollowing any single market (migration 0020).
+// `legacyAppId` is their old `app_id`, kept nullable and no longer written or read, so code still
+// running on the pre-0020 schema keeps reading; ON DELETE SET NULL so unfollowing a market never takes
+// the data with it. A later cleanup migration drops it.
+const legacyAppId = () => integer("app_id").references(() => apps.id, { onDelete: "set null" });
+const productRef = () =>
+  integer("product_id")
+    .notNull()
+    .references(() => products.id, { onDelete: "cascade" });
+
 /** The saved screenshot set or icon design of an app (one per kind), built in the browser from its spec. */
 export const assetDesigns = pgTable(
   "asset_designs",
   {
     id: serial("id").primaryKey(),
-    appId: integer("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
+    productId: productRef(),
+    /** @deprecated Old owner market (see the note above). */
+    legacyAppId: legacyAppId(),
     kind: assetKindEnum("kind").notNull(),
     spec: jsonb("spec").$type<ScreenshotSpec | IconSpec>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("asset_designs_app_kind_idx").on(t.appId, t.kind)],
+  (t) => [uniqueIndex("asset_designs_product_kind_idx").on(t.productId, t.kind)],
 );
 
 /** A logo produced by the image provider, kept as base64 so it survives redeploys. */
 export const generatedImages = pgTable("generated_images", {
   id: serial("id").primaryKey(),
-  appId: integer("app_id")
-    .notNull()
-    .references(() => apps.id, { onDelete: "cascade" }),
+  productId: productRef(),
+  /** @deprecated Old owner market. */
+  legacyAppId: legacyAppId(),
   /** "logo" (square icon) or "background" (portrait backdrop for the screenshots). */
   kind: text("kind").notNull().default("logo"),
   prompt: text("prompt").notNull(),
@@ -338,9 +376,11 @@ export const generatedImages = pgTable("generated_images", {
 
 /** What the app does, declared by its owner. The source of truth for every AI feature; the store listing lags behind. */
 export const productFacts = pgTable("product_facts", {
-  appId: integer("app_id")
+  productId: integer("product_id")
     .primaryKey()
-    .references(() => apps.id, { onDelete: "cascade" }),
+    .references(() => products.id, { onDelete: "cascade" }),
+  /** @deprecated Old owner market. */
+  legacyAppId: legacyAppId(),
   /** The app's brand as the owner declares it ("Runly"); "" when the title is only keywords. Brand rules use only this. */
   brand: text("brand").notNull().default(""),
   /** One line: what it is and who it is for. */
@@ -358,9 +398,9 @@ export const featureStatusEnum = pgEnum("feature_status", FEATURE_STATUSES);
 
 export const productFeatures = pgTable("product_features", {
   id: serial("id").primaryKey(),
-  appId: integer("app_id")
-    .notNull()
-    .references(() => apps.id, { onDelete: "cascade" }),
+  productId: productRef(),
+  /** @deprecated Old owner market. */
+  legacyAppId: legacyAppId(),
   name: text("name").notNull(),
   summary: text("summary").notNull().default(""),
   status: featureStatusEnum("status").notNull().default("shipped"),
@@ -373,9 +413,9 @@ export const productFeatures = pgTable("product_features", {
 /** Version history declared by the owner (or imported from a CHANGELOG). */
 export const productReleases = pgTable("product_releases", {
   id: serial("id").primaryKey(),
-  appId: integer("app_id")
-    .notNull()
-    .references(() => apps.id, { onDelete: "cascade" }),
+  productId: productRef(),
+  /** @deprecated Old owner market. */
+  legacyAppId: legacyAppId(),
   version: text("version").notNull(),
   date: date("date"),
   notes: text("notes").notNull().default(""),
@@ -385,12 +425,12 @@ export const productReleases = pgTable("product_releases", {
 export const brandExceptions = pgTable(
   "brand_exceptions",
   {
-    appId: integer("app_id")
-      .notNull()
-      .references(() => apps.id, { onDelete: "cascade" }),
+    productId: productRef(),
+    /** @deprecated Old owner market. */
+    legacyAppId: legacyAppId(),
     word: text("word").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.appId, t.word] })],
+  (t) => [primaryKey({ columns: [t.productId, t.word] })],
 );
 
 /**
@@ -467,6 +507,9 @@ export const searchTermStats = pgTable(
 );
 
 export type App = typeof apps.$inferSelect;
+/** A row of `apps`: the app in one country. */
+export type Market = App;
+export type Product = typeof products.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
 export type Annotation = typeof annotations.$inferSelect;
 export type Experiment = typeof experiments.$inferSelect;

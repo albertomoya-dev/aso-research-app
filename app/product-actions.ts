@@ -1,7 +1,6 @@
 "use server";
 
 import { and, eq, inArray, max } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, importChangelog } from "@/lib/claude";
@@ -14,30 +13,40 @@ import {
   MAX_CHANGELOG_CHARS,
   releaseInputSchema,
 } from "@/lib/product-facts";
+import { marketProductId } from "@/lib/products";
+import { revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 
-// The sheet feeds every AI screen of the app (editor, ideas, creatives, reviews), so refresh them all.
-const refresh = (appId: number) => revalidatePath(`/apps/${appId}`, "layout");
+type Owner = { marketId: number; productId: number };
 
-async function appExists(appId: number) {
-  return Boolean(await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId), columns: { id: true } }));
+// The sheet feeds every AI screen of the app (editor, ideas, creatives, reviews) in every country, so refresh them all.
+const refresh = (owner: Owner) => revalidateProduct(owner.marketId, "", "layout");
+
+/**
+ * The form's market (`appId`, any country of the app) and its product, which owns the sheet: every
+ * country shares it. Null when the market does not exist.
+ */
+async function sheetOwner(formData: FormData): Promise<Owner | null> {
+  const marketId = idSchema.parse(formData.get("appId"));
+  const productId = await marketProductId(marketId);
+  return productId === null ? null : { marketId, productId };
 }
 
 export type FactsState = { savedAt?: string; error?: string } | null;
 
 export async function saveFacts(_prev: FactsState, formData: FormData): Promise<FactsState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const fields = Object.fromEntries(Object.keys(factsFormSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
   const parsed = factsFormSchema.safeParse(fields);
   if (!parsed.success) return { error: "Algún campo es demasiado largo para guardarlo." };
-  if (!(await appExists(appId))) return { error: "App no encontrada." };
+  if (!owner) return { error: "App no encontrada." };
   const values = { ...parsed.data, updatedAt: new Date() };
   await getDb()
     .insert(schema.productFacts)
-    .values({ appId, ...values })
-    .onConflictDoUpdate({ target: schema.productFacts.appId, set: values });
-  refresh(appId);
+    .values({ productId: owner.productId, ...values })
+    .onConflictDoUpdate({ target: schema.productFacts.productId, set: values });
+  await refresh(owner);
   return { savedAt: new Date().toISOString() };
 }
 
@@ -51,43 +60,44 @@ function featureFromForm(formData: FormData) {
   });
 }
 
-async function nextSort(appId: number) {
+async function nextSort(productId: number) {
   const [row] = await getDb()
     .select({ sort: max(schema.productFeatures.sort) })
     .from(schema.productFeatures)
-    .where(eq(schema.productFeatures.appId, appId));
+    .where(eq(schema.productFeatures.productId, productId));
   return (row?.sort ?? -1) + 1;
 }
 
 export async function addFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const parsed = featureFromForm(formData);
-  if (!parsed.success || !(await appExists(appId))) return;
+  if (!parsed.success || !owner) return;
   await getDb()
     .insert(schema.productFeatures)
-    .values({ appId, ...parsed.data, sort: await nextSort(appId) });
-  refresh(appId);
+    .values({ productId: owner.productId, ...parsed.data, sort: await nextSort(owner.productId) });
+  await refresh(owner);
 }
 
 export async function updateFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("featureId"));
   const parsed = featureFromForm(formData);
-  if (!parsed.success) return;
+  if (!parsed.success || !owner) return;
   await getDb()
     .update(schema.productFeatures)
     .set(parsed.data)
-    .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.appId, appId)));
-  refresh(appId);
+    .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.productId, owner.productId)));
+  await refresh(owner);
 }
 
 export async function deleteFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("featureId"));
+  if (!owner) return;
   await getDb()
     .delete(schema.productFeatures)
-    .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.appId, appId)));
-  refresh(appId);
+    .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.productId, owner.productId)));
+  await refresh(owner);
 }
 
 function releaseFromForm(formData: FormData) {
@@ -99,48 +109,50 @@ function releaseFromForm(formData: FormData) {
 }
 
 export async function addRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const parsed = releaseFromForm(formData);
-  if (!parsed.success || !(await appExists(appId))) return;
+  if (!parsed.success || !owner) return;
   await getDb()
     .insert(schema.productReleases)
-    .values({ appId, ...parsed.data });
-  refresh(appId);
+    .values({ productId: owner.productId, ...parsed.data });
+  await refresh(owner);
 }
 
 export async function updateRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("releaseId"));
   const parsed = releaseFromForm(formData);
-  if (!parsed.success) return;
+  if (!parsed.success || !owner) return;
   await getDb()
     .update(schema.productReleases)
     .set(parsed.data)
-    .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.appId, appId)));
-  refresh(appId);
+    .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.productId, owner.productId)));
+  await refresh(owner);
 }
 
 export async function deleteRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("releaseId"));
+  if (!owner) return;
   await getDb()
     .delete(schema.productReleases)
-    .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.appId, appId)));
-  refresh(appId);
+    .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.productId, owner.productId)));
+  await refresh(owner);
 }
 
 export type ChangelogState = { proposal?: ChangelogProposal; model?: string; error?: string } | null;
 
 /** Asks Claude for the features in a pasted CHANGELOG. Nothing is saved: the owner ticks what to keep. */
 export async function proposeChangelog(_prev: ChangelogState, formData: FormData): Promise<ChangelogState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   const text = z.string().trim().catch("").parse(formData.get("changelog"));
   if (!text) return { error: "Pega el CHANGELOG o las notas de versión." };
   if (text.length > MAX_CHANGELOG_CHARS) return { error: `El texto es demasiado largo: como mucho ${MAX_CHANGELOG_CHARS.toLocaleString("es-ES")} caracteres.` };
+  if (!owner) return { error: "App no encontrada." };
   const db = getDb();
-  const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, appId) });
+  const app = await db.query.apps.findFirst({ where: eq(schema.apps.id, owner.marketId) });
   if (!app) return { error: "App no encontrada." };
-  const existing = await db.select().from(schema.productFeatures).where(eq(schema.productFeatures.appId, appId));
+  const existing = await db.select().from(schema.productFeatures).where(eq(schema.productFeatures.productId, owner.productId));
   try {
     const { output, model } = await importChangelog(text, {
       appTitle: app.title,
@@ -162,7 +174,7 @@ export type ApplyState = { features?: number; releases?: number; error?: string 
 
 /** Saves only the items the owner ticked in the import review. */
 export async function applyChangelog(_prev: ApplyState, formData: FormData): Promise<ApplyState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const owner = await sheetOwner(formData);
   let payload: unknown;
   try {
     payload = JSON.parse(String(formData.get("payload") ?? ""));
@@ -173,19 +185,20 @@ export async function applyChangelog(_prev: ApplyState, formData: FormData): Pro
   if (!parsed.success) return { error: "La selección no tiene un formato válido." };
   const { features, releases } = parsed.data;
   if (features.length === 0 && releases.length === 0) return { error: "Marca al menos una función o versión." };
-  if (!(await appExists(appId))) return { error: "App no encontrada." };
+  if (!owner) return { error: "App no encontrada." };
+  const { productId } = owner;
 
   const db = getDb();
-  let sort = await nextSort(appId);
+  let sort = await nextSort(productId);
   for (const { existingId, advertise, ...f } of features) {
     if (existingId) {
       // An update never touches `advertise`: hiding a feature from the listing is the owner's call.
       await db
         .update(schema.productFeatures)
         .set(f)
-        .where(and(eq(schema.productFeatures.id, existingId), eq(schema.productFeatures.appId, appId)));
+        .where(and(eq(schema.productFeatures.id, existingId), eq(schema.productFeatures.productId, productId)));
     } else {
-      await db.insert(schema.productFeatures).values({ appId, ...f, advertise, sort: sort++ });
+      await db.insert(schema.productFeatures).values({ productId, ...f, advertise, sort: sort++ });
     }
   }
   // A version already in the history is updated, not duplicated.
@@ -193,14 +206,14 @@ export async function applyChangelog(_prev: ApplyState, formData: FormData): Pro
     ? await db
         .select({ id: schema.productReleases.id, version: schema.productReleases.version })
         .from(schema.productReleases)
-        .where(and(eq(schema.productReleases.appId, appId), inArray(schema.productReleases.version, releases.map((r) => r.version))))
+        .where(and(eq(schema.productReleases.productId, productId), inArray(schema.productReleases.version, releases.map((r) => r.version))))
     : [];
   const idByVersion = new Map(known.map((r) => [r.version, r.id]));
   for (const r of releases) {
     const id = idByVersion.get(r.version);
     if (id) await db.update(schema.productReleases).set(r).where(eq(schema.productReleases.id, id));
-    else await db.insert(schema.productReleases).values({ appId, ...r });
+    else await db.insert(schema.productReleases).values({ productId, ...r });
   }
-  refresh(appId);
+  await refresh(owner);
   return { features: features.length, releases: releases.length };
 }

@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Playwright output.
     "test-results/**",
     "playwright-report/**",
+    // Agent worktrees and local tool state.
+    ".claude/**",
   ]),
 ]);
 

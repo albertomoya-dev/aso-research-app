@@ -1,7 +1,6 @@
 "use server";
 
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, localizeListing, rateRelevance, rewriteListing, suggestKeywords, writeReleaseNotes } from "@/lib/claude";
@@ -45,6 +44,8 @@ import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
 import { competitorBrands, filterSuggestions, parseDismissRequest, PROMPT_VERSION, seedWords, topCompetitors } from "@/lib/suggestions";
 import { fold } from "@/lib/text";
+import { marketProductId } from "@/lib/products";
+import { revalidateMarket, revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 
@@ -153,7 +154,7 @@ export async function generateSuggestions(_prev: GenerateState, formData: FormDa
           .onConflictDoNothing()
           .returning({ id: schema.aiSuggestions.id });
 
-  revalidatePath(`/apps/${appId}/ideas`);
+  await revalidateMarket(appId, "/ideas");
   return { created: inserted.length, dropped: dropped.length + kept.length - inserted.length };
 }
 
@@ -179,7 +180,7 @@ export async function acceptSuggestions(_prev: AcceptState, formData: FormData):
     .update(schema.aiSuggestions)
     .set({ status: "accepted" })
     .where(inArray(schema.aiSuggestions.id, picked.map((s) => s.id)));
-  revalidatePath(`/apps/${appId}`, "layout");
+  await revalidateMarket(appId, "", "layout");
   return { added, trackingFailed, relevance };
 }
 
@@ -199,7 +200,7 @@ export async function dismissSuggestions(appIdValue: number, idValues: number[])
       .set({ status: "dismissed" })
       .where(and(eq(schema.aiSuggestions.appId, appId), eq(schema.aiSuggestions.status, "pending"), inArray(schema.aiSuggestions.id, ids)))
       .returning({ id: schema.aiSuggestions.id });
-    revalidatePath(`/apps/${appId}/ideas`);
+    await revalidateMarket(appId, "/ideas");
     return { dismissed: changed.length };
   } catch (err) {
     console.error("dismissSuggestions", err);
@@ -241,7 +242,7 @@ export async function saveDraft(_prev: DraftState, formData: FormData): Promise<
   const previousRow = await getListingDraft(appId, target.locale, target.country);
   // apps.draft is no longer written: drafts live in listing_drafts, one per locale (and country).
   const savedAt = await saveListingDraft(appId, target, draft);
-  revalidatePath(`/apps/${appId}/metadata`);
+  await revalidateMarket(appId, "/ficha");
 
   // Same weighted coverage as the editor and the optimizer, against the previous draft or the published listing.
   // Only for listings in the language of the tracked keywords: in another language they say nothing.
@@ -274,7 +275,7 @@ export async function discardDraft(formData: FormData) {
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
   if (!app) return;
   await deleteListingDraft(appId, targetFrom(formData, app));
-  revalidatePath(`/apps/${appId}/metadata`);
+  await revalidateMarket(appId, "/ficha");
 }
 
 export type OptimizeState = { proposal?: ListingProposal; model?: string; error?: string } | null;
@@ -360,15 +361,19 @@ export async function setBrandException(formData: FormData): Promise<void> {
     exception: formData.get("exception"),
   });
   if (!parsed.success) return;
-  const { appId, exception } = parsed.data;
+  const { exception } = parsed.data;
+  // Same list in every country: it belongs to the product.
+  const { appId } = parsed.data;
+  const productId = await marketProductId(appId);
+  if (productId === null) return;
   const word = fold(parsed.data.word).replace(/\s+/g, " ");
   const db = getDb();
   if (exception === "1") {
-    await db.insert(schema.brandExceptions).values({ appId, word }).onConflictDoNothing();
+    await db.insert(schema.brandExceptions).values({ productId, word }).onConflictDoNothing();
   } else {
-    await db.delete(schema.brandExceptions).where(and(eq(schema.brandExceptions.appId, appId), eq(schema.brandExceptions.word, word)));
+    await db.delete(schema.brandExceptions).where(and(eq(schema.brandExceptions.productId, productId), eq(schema.brandExceptions.word, word)));
   }
-  revalidatePath(`/apps/${appId}/metadata`);
+  await revalidateProduct(appId, "", "layout");
 }
 
 export type RelevanceState = { rated?: number; asked?: number; error?: string } | null;
@@ -380,7 +385,7 @@ export async function recalculateRelevance(_prev: RelevanceState, formData: Form
   if (!app) return { error: "App no encontrada." };
   try {
     const report = await rateAppKeywords(app);
-    revalidatePath(`/apps/${appId}`, "layout");
+    await revalidateMarket(appId, "", "layout");
     if (report.error && report.rated === 0) return { error: report.error };
     return report;
   } catch (err) {
@@ -411,7 +416,7 @@ export async function setKeywordRelevance(appId: number, keywordId: number, rele
       ...(parsed.data.relevance >= 3 ? { intent: "own" as const } : {}),
     })
     .where(and(eq(schema.appKeywords.appId, parsed.data.appId), eq(schema.appKeywords.keywordId, parsed.data.keywordId)));
-  revalidatePath(`/apps/${parsed.data.appId}`, "layout");
+  await revalidateMarket(parsed.data.appId, "", "layout");
   return {};
 }
 
@@ -560,10 +565,11 @@ export async function localizeListingAction(_prev: OptimizeState, formData: Form
 }
 
 /** The same app followed in another country's store, if it is. */
-function findSibling(app: { store: "ios" | "android"; storeId: string }, country: string) {
+/** The market of the same product in `country`, if followed. */
+function findSibling(app: { productId: number }, country: string) {
   return getDb()
     .query.apps.findFirst({
-      where: and(eq(schema.apps.store, app.store), eq(schema.apps.storeId, app.storeId), eq(schema.apps.country, country)),
+      where: and(eq(schema.apps.productId, app.productId), eq(schema.apps.country, country)),
     })
     .then((row) => row ?? null);
 }

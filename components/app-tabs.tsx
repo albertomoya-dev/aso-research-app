@@ -3,30 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// `scope`: "market" pages hang from `/a/[app]/[market]`, "product" ones from `/a/[app]` (same in every country).
 const TABS = [
-  { path: "", label: "Keywords" },
-  { path: "/descubrir", label: "Descubrir" },
-  { path: "/ideas", label: "Ideas con IA" },
-  { path: "/top10", label: "Keywords del TOP 10" },
-  { path: "/resenas", label: "Reseñas" },
-  { path: "/competidores", label: "Competidores" },
-  { path: "/estacionalidad", label: "Estacionalidad" },
-  { path: "/cambios", label: "Cambios" },
-  { path: "/producto", label: "Producto" },
-  { path: "/metadata", label: "Editor de ficha" },
-  { path: "/creativos", label: "Creativos" },
-];
+  { scope: "market", path: "/keywords", label: "Keywords" },
+  { scope: "market", path: "/descubrir", label: "Descubrir" },
+  { scope: "market", path: "/ideas", label: "Ideas con IA" },
+  { scope: "market", path: "/top10", label: "Keywords del TOP 10" },
+  { scope: "market", path: "/resenas", label: "Reseñas" },
+  { scope: "market", path: "/competidores", label: "Competidores" },
+  { scope: "market", path: "/tendencias", label: "Estacionalidad" },
+  { scope: "market", path: "/cambios", label: "Cambios" },
+  { scope: "product", path: "/ajustes/producto", label: "Producto" },
+  { scope: "market", path: "/ficha", label: "Editor de ficha" },
+  { scope: "product", path: "/creativos", label: "Creativos" },
+] as const;
 
-export function AppTabs({ appId }: { appId: string }) {
+/** `marketBase` is `/a/[app]/[market]` (on the app-wide pages, the primary market's); `productBase` is `/a/[app]`. */
+export function AppTabs({ marketBase, productBase }: { marketBase: string; productBase: string }) {
   const pathname = usePathname();
-  const base = `/apps/${appId}`;
   return (
     <nav aria-label="Secciones de la app" className="-mx-1 overflow-x-auto border-b border-line">
       <ul className="flex min-w-max gap-1 px-1">
         {TABS.map((tab) => {
-          const href = base + tab.path;
-          // Keyword detail pages belong to the Keywords tab.
-          const active = tab.path ? pathname.startsWith(href) : pathname === base || pathname.startsWith(`${base}/keywords`);
+          const href = (tab.scope === "market" ? marketBase : productBase) + tab.path;
+          // The market root shows the keywords too; keyword detail pages belong to the Keywords tab.
+          const active = pathname.startsWith(href) || (tab.path === "/keywords" && pathname === marketBase);
           return (
             <li key={tab.path}>
               <Link

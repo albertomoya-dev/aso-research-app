@@ -8,6 +8,7 @@ import { hasDatabase } from "@/db";
 import { emailConfigured } from "@/lib/email";
 import { describeMove, weekPosition } from "@/lib/alerts";
 import { formatDate, formatDay } from "@/lib/format";
+import { marketPath } from "@/lib/market-path";
 import { competitorChanges, getWeeklySummaries } from "@/lib/summary";
 
 export const metadata: Metadata = { title: "Resumen semanal" };
@@ -65,7 +66,7 @@ export default async function SummaryPage() {
         return (
           <Card key={app.id} aria-label={app.title} className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <Link href={`/apps/${app.id}`} className="flex items-center gap-3 hover:underline">
+              <Link href={marketPath(app)} className="flex items-center gap-3 hover:underline">
                 <AppIcon src={app.icon} size={36} />
                 <span className="text-[17px] font-semibold">{app.title}</span>
               </Link>
@@ -117,7 +118,7 @@ export default async function SummaryPage() {
                       <ul className="flex flex-col gap-1 text-sm">
                         {group.rows.map((r) => (
                           <li key={r.keywordId} className="flex items-center justify-between gap-3">
-                            <Link href={`/apps/${app.id}/keywords/${r.keywordId}`} className="truncate hover:underline">
+                            <Link href={marketPath(app, `/keywords/${r.keywordId}`)} className="truncate hover:underline">
                               {r.term}
                             </Link>
                             <span className="shrink-0 font-mono text-[13px]">

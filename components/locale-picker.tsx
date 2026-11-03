@@ -7,7 +7,8 @@ import type { Store } from "@/lib/stores/types";
 import { Card, inputClass } from "./ui";
 
 type Props = {
-  appId: number;
+  /** The editor of this market (`/a/[app]/[market]/ficha`). */
+  editorHref: string;
   store: Store;
   /** The app's main locale: its URL has no query. */
   mainLocale: string;
@@ -24,14 +25,14 @@ const GROUPS: { kind: LocaleOption["kind"]; label: string }[] = [
 ];
 
 /** Which listing the editor works on: a language, and in Google Play optionally a custom listing for one country. */
-export function LocalePicker({ appId, store, mainLocale, options, current }: Props) {
+export function LocalePicker({ editorHref, store, mainLocale, options, current }: Props) {
   const router = useRouter();
   const go = (target: DraftTarget) => {
     const q = new URLSearchParams();
     if (target.locale !== mainLocale || target.country) q.set("locale", target.locale);
     if (target.country) q.set("country", target.country);
     const query = q.toString();
-    router.push(`/apps/${appId}/metadata${query ? `?${query}` : ""}`);
+    router.push(`${editorHref}${query ? `?${query}` : ""}`);
   };
   const value = `${current.locale}|${current.country}`;
 

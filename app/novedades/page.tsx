@@ -9,6 +9,7 @@ import { getDb, hasDatabase, schema } from "@/db";
 import { loadAlertPrefs, prefsFor } from "@/lib/alert-jobs";
 import { ALERT_KIND_GROUPS, alertPriority } from "@/lib/alerts";
 import { formatDate } from "@/lib/format";
+import { marketPath } from "@/lib/market-path";
 import { shiftDate, today } from "@/lib/ranking";
 
 export const metadata: Metadata = { title: "Novedades" };
@@ -28,7 +29,11 @@ export default async function AlertsPage({ searchParams }: Props) {
   const appFilter = Number((await searchParams).app) || null;
   const db = getDb();
   const [apps, rows, prefs] = await Promise.all([
-    db.select({ id: schema.apps.id, title: schema.apps.title, icon: schema.apps.icon }).from(schema.apps).orderBy(schema.apps.title),
+    db
+      .select({ id: schema.apps.id, title: schema.apps.title, icon: schema.apps.icon, country: schema.apps.country, productSlug: schema.products.slug })
+      .from(schema.apps)
+      .innerJoin(schema.products, eq(schema.products.id, schema.apps.productId))
+      .orderBy(schema.apps.title),
     db
       .select()
       .from(schema.alerts)
@@ -149,11 +154,14 @@ export default async function AlertsPage({ searchParams }: Props) {
                 {items.map((alert) => {
                   const app = appById.get(alert.appId);
                   const tone = TONE[alert.tone];
-                  const href = alert.keywordId
-                    ? `/apps/${alert.appId}/keywords/${alert.keywordId}`
-                    : alert.competitorId
-                      ? `/apps/${alert.appId}/competidores`
-                      : `/apps/${alert.appId}`;
+                  // Alerts belong to a market (an app unfollowed meanwhile takes its alerts with it; just in case, stay here).
+                  const href = !app
+                    ? "/novedades"
+                    : alert.keywordId
+                      ? marketPath(app, `/keywords/${alert.keywordId}`)
+                      : alert.competitorId
+                        ? marketPath(app, "/competidores")
+                        : marketPath(app);
                   return (
                     <li key={alert.id} className="border-b border-line last:border-0">
                       <Link href={href} className="flex items-start gap-3 px-5 py-3 hover:bg-surface-muted/60">

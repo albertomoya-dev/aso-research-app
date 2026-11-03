@@ -1,10 +1,10 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { experimentInputSchema } from "@/lib/experiments";
+import { revalidateMarket } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 
@@ -36,7 +36,7 @@ export async function saveExperiment(_prev: ExperimentState, formData: FormData)
     if (!app) return { error: "App no encontrada." };
     await db.insert(schema.experiments).values({ appId, ...parsed.data });
   }
-  revalidatePath(`/apps/${appId}/cambios`);
+  await revalidateMarket(appId, "/cambios");
   return { ok: true, savedAt: new Date().toISOString() };
 }
 
@@ -48,5 +48,5 @@ export async function deleteExperiment(formData: FormData) {
   await getDb()
     .delete(schema.experiments)
     .where(and(eq(schema.experiments.id, id.data), eq(schema.experiments.appId, appId.data)));
-  revalidatePath(`/apps/${appId.data}/cambios`);
+  await revalidateMarket(appId.data, "/cambios");
 }

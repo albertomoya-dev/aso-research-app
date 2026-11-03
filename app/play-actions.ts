@@ -1,7 +1,6 @@
 "use server";
 
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, draftReviewReply } from "@/lib/claude";
@@ -18,6 +17,7 @@ import { buildPublishPreview, fieldList, publishedFields } from "@/lib/publicati
 import { fitReply } from "@/lib/review-replies";
 import { saveSearchTermStats } from "@/lib/search-term-queries";
 import { PeriodRequiredError, statRowsFrom } from "@/lib/search-terms";
+import { revalidateMarket } from "@/lib/revalidate";
 
 // Writes to Google Play are double-gated: the server needs GOOGLE_PLAY_ALLOW_WRITE=1 and every request
 // carries the explicit confirmation of the dialog (confirm=yes). Credentials never leave the server.
@@ -69,7 +69,7 @@ export async function publishToPlay(_prev: PlayActionState, formData: FormData):
     // The attempt is recorded too: what was tried, and why it failed.
     const tried = buildPublishPreview("android", null, plan.fields);
     await recordPublication({ ...base, fields: publishedFields(tried.changes), status: "failed", error: message }).catch(() => {});
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+    await revalidateMarket(app.id, "/ficha", "layout");
     return { error: `Google Play no aceptó la publicación. ${message} No se ha cambiado nada en la ficha.` };
   }
   if (result.unchanged) return { ok: true, message: "La ficha de Google Play ya tenía este texto: no se ha enviado nada." };
@@ -79,7 +79,7 @@ export async function publishToPlay(_prev: PlayActionState, formData: FormData):
   const sent = `Enviado a Google Play: ${fieldList(preview.changes.map((c) => c.label))}. Google revisa los cambios antes de publicarlos; puede tardar desde minutos hasta unos días.`;
   try {
     await recordPublication({ ...base, fields: publishedFields(preview.changes), status: "committed", externalRef: result.editId });
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+    await revalidateMarket(app.id, "/ficha", "layout");
   } catch {
     return { ok: true, message: `${sent} ${HISTORY_NOT_SAVED}` };
   }
@@ -127,7 +127,7 @@ export async function replyToReview(_prev: PlayActionState, formData: FormData):
   } catch (err) {
     return { error: playErrorMessage(err) };
   }
-  revalidatePath(`/apps/${app.id}/resenas`);
+  await revalidateMarket(app.id, "/resenas");
   return { ok: true, message: "Respuesta publicada en Google Play." };
 }
 
@@ -148,7 +148,7 @@ export async function importSearchTerms(_prev: PlayActionState, formData: FormDa
     const rows = statRowsFrom(parsed, start.success && end.success ? { start: start.data, end: end.data } : null);
     if (rows.length === 0) return { error: "El archivo no tiene ningún término de búsqueda con datos." };
     await saveSearchTermStats(app.id, rows);
-    revalidatePath(`/apps/${app.id}`, "layout");
+    await revalidateMarket(app.id, "", "layout");
     const terms = new Set(rows.map((r) => r.term)).size;
     const range = parsed.hasDates ? `del ${formatDay(parsed.from)} al ${formatDay(parsed.to)}` : `del ${formatDay(start.data)} al ${formatDay(end.data)}`;
     return {

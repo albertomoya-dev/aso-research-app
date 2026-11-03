@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: (path: string) => mocks.revalidated.push(path) }));
+// Paths are per market since phase 26; the market lookup itself needs the database.
+vi.mock("@/lib/revalidate", () => ({
+  revalidateMarket: async (appId: number, sub = "") => {
+    mocks.revalidated.push(`market:${appId}${sub}`);
+  },
+  revalidateProduct: async () => {},
+}));
 vi.mock("drizzle-orm", async (original) => {
   const actual = await original<typeof import("drizzle-orm")>();
   return {
@@ -80,7 +87,7 @@ describe("dismissSuggestions", () => {
     expect(mocks.updates).toHaveLength(1);
     expect(mocks.updates[0]).toEqual({ set: { status: "dismissed" }, ids: all });
     expect(mocks.pending.size).toBe(0);
-    expect(mocks.revalidated).toEqual(["/apps/1/ideas"]);
+    expect(mocks.revalidated).toEqual(["market:1/ideas"]);
   });
 
   it("counts only the ideas that were still pending", async () => {

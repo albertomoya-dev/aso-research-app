@@ -25,6 +25,8 @@ import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
 type Props = {
   appId: number;
+  /** The product sheet (`/a/[app]/ajustes/producto`). */
+  productHref: string;
   store: Store;
   initial: MetadataDraft;
   /** Text with no saved draft (`baseDraftFor`): what the editor shows again after «Borrar borrador». Never another language. */
@@ -64,6 +66,7 @@ type Props = {
 
 export function MetadataEditor({
   appId,
+  productHref,
   store,
   initial,
   base,
@@ -178,7 +181,7 @@ export function MetadataEditor({
               {product.empty ? (
                 <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
                   Tu ficha de producto está vacía: la IA solo conoce la ficha publicada, que puede estar desfasada.{" "}
-                  <Link href={`/apps/${appId}/producto`} className="font-medium underline">
+                  <Link href={productHref} className="font-medium underline">
                     Completar la ficha de producto
                   </Link>
                 </p>
@@ -197,7 +200,7 @@ export function MetadataEditor({
                   </div>
                   <span className="text-xs text-muted">
                     La IA usa tu{" "}
-                    <Link href={`/apps/${appId}/producto`} className="text-link hover:underline">
+                    <Link href={productHref} className="text-link hover:underline">
                       ficha de producto
                     </Link>
                     : solo funciones publicadas, o también las {product.nextCount > 0 ? `${product.nextCount} ` : ""}de la próxima versión. Nunca las
@@ -208,7 +211,7 @@ export function MetadataEditor({
               {product.brandHint && (
                 <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
                   ¿Tu título empieza por una marca («{product.brandHint}»)?{" "}
-                  <Link href={`/apps/${appId}/producto`} className="font-medium underline">
+                  <Link href={productHref} className="font-medium underline">
                     Declárala en Producto
                   </Link>{" "}
                   para que la IA la conserve.

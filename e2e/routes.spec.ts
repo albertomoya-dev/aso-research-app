@@ -5,13 +5,30 @@ import { collectErrors, type E2eApp, expect, measureOverflow, recordOverflow, te
 
 const GLOBAL_ROUTES = ["/", "/buscar", "/novedades", "/resumen", "/ajustes"];
 
+const market = (a: E2eApp) => `/a/${a.slug}/${a.country}`;
+const product = (a: E2eApp) => `/a/${a.slug}`;
+
 const APP_ROUTES: { route: string; path: (app: E2eApp) => string | null }[] = [
-  { route: "/apps/[id]", path: (a) => `/apps/${a.id}` },
-  { route: "/apps/[id]/keywords/[keywordId]", path: (a) => (a.keywordId ? `/apps/${a.id}/keywords/${a.keywordId}` : null) },
-  ...["descubrir", "ideas", "top10", "competidores", "resenas", "estacionalidad", "metadata", "metadata/publicar", "producto", "creativos", "creativos/icono", "creativos/logo", "creativos/video", "cambios"].map((sub) => ({
-    route: `/apps/[id]/${sub}`,
-    path: (a: E2eApp) => `/apps/${a.id}/${sub}`,
+  { route: "/a/[app]/[market]", path: market },
+  { route: "/a/[app]/[market]/keywords/[keywordId]", path: (a) => (a.keywordId ? `${market(a)}/keywords/${a.keywordId}` : null) },
+  ...["keywords", "descubrir", "ideas", "top10", "competidores", "resenas", "tendencias", "ficha", "ficha/publicar", "cambios"].map((sub) => ({
+    route: `/a/[app]/[market]/${sub}`,
+    path: (a: E2eApp) => `${market(a)}/${sub}`,
   })),
+  // Product-level pages: the same for every market of a product, so they are visited once per product.
+  ...["ajustes/producto", "creativos", "creativos/icono", "creativos/logo", "creativos/video"].map((sub) => ({
+    route: `/a/[app]/${sub}`,
+    path: (a: E2eApp) => `${product(a)}/${sub}`,
+  })),
+];
+
+// Old /apps/[id] URLs (bookmarks, weekly emails) must answer 308 to their new path.
+const LEGACY_REDIRECTS: { from: (a: E2eApp) => string; to: (a: E2eApp) => string }[] = [
+  { from: (a) => `/apps/${a.id}`, to: (a) => `${market(a)}/keywords` },
+  { from: (a) => `/apps/${a.id}/metadata`, to: (a) => `${market(a)}/ficha` },
+  { from: (a) => `/apps/${a.id}/estacionalidad`, to: (a) => `${market(a)}/tendencias` },
+  { from: (a) => `/apps/${a.id}/producto`, to: (a) => `${product(a)}/ajustes/producto` },
+  { from: (a) => `/apps/${a.id}/creativos/icono`, to: (a) => `${product(a)}/creativos/icono` },
 ];
 
 // Some pages read Google Play live (search, autocomplete, reviews), so they get room.
@@ -65,9 +82,23 @@ for (const route of GLOBAL_ROUTES) {
 for (const { route, path } of APP_ROUTES) {
   test(`ruta ${route}`, async ({ page, apps }) => {
     expect(apps.length, "la base de datos de prueba tiene apps").toBeGreaterThan(0);
+    const seen = new Set<string>();
     for (const app of apps) {
       const p = path(app);
-      if (p) await visit(page, route, p);
+      if (p && !seen.has(p)) {
+        seen.add(p);
+        await visit(page, route, p);
+      }
     }
   });
 }
+
+test("las URLs antiguas redirigen con 308", async ({ request, apps }) => {
+  for (const app of apps) {
+    for (const { from, to } of LEGACY_REDIRECTS) {
+      const response = await request.get(from(app), { maxRedirects: 0 });
+      expect.soft(response.status(), `${from(app)} responde 308`).toBe(308);
+      expect.soft(new URL(response.headers()["location"] ?? "", "http://x").pathname, `${from(app)} lleva a ${to(app)}`).toBe(to(app));
+    }
+  }
+});
