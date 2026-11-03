@@ -2,14 +2,14 @@ import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { followInCountry } from "@/app/actions";
 import { CoverageMatrix } from "@/components/coverage-matrix";
-import { LocalePicker } from "@/components/locale-picker";
 import { MetadataEditor } from "@/components/metadata-editor";
 import { ReleaseNotesCard } from "@/components/release-notes-card";
 import { PublishBar } from "@/components/publish-bar";
 import { SubmitButton } from "@/components/submit-button";
-import { buttonSecondary, Card, PageHeader } from "@/components/ui";
+import { buttonSecondary, PageHeader } from "@/components/ui";
 import { AppMetadata } from "@/components/app-metadata";
 import { getDb, schema } from "@/db";
+import { type ScreenshotSpec, screenshotSpecSchema } from "@/lib/assets/screenshots";
 import { loadMarketParams, marketPath, productPath } from "@/lib/products";
 import { detectBrands } from "@/lib/brand-queries";
 import { hasAnthropicKey } from "@/lib/claude";
@@ -35,7 +35,7 @@ import {
   targetQuery,
 } from "@/lib/listing-drafts";
 import { brandOf } from "@/lib/listing-optimizer";
-import { draftFromMeta } from "@/lib/metadata-check";
+import { draftFromMeta, PREVIEW_SHOTS } from "@/lib/metadata-check";
 import { declaredBrand, hasProductFacts } from "@/lib/product-facts";
 import { getProductFacts } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
@@ -46,9 +46,19 @@ type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
-export const metadata: Metadata = { title: "Editor de ficha" };
+export const metadata: Metadata = { title: "Ficha de la tienda" };
 
 const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : null);
+
+/** The Creativos screenshot design of the product, cut to the slides the preview shows; null when there is none. */
+async function previewDesign(productId: number): Promise<ScreenshotSpec | null> {
+  const saved = await getDb().query.assetDesigns.findFirst({
+    where: and(eq(schema.assetDesigns.productId, productId), eq(schema.assetDesigns.kind, "screenshots")),
+  });
+  const parsed = saved ? screenshotSpecSchema.safeParse(saved.spec) : null;
+  if (!parsed?.success || parsed.data.slides.length === 0) return null;
+  return { ...parsed.data, slides: parsed.data.slides.slice(0, PREVIEW_SHOTS) };
+}
 
 export default async function MetadataPage({ params, searchParams }: Props) {
   const app = await loadMarketParams(params);
@@ -102,21 +112,14 @@ export default async function MetadataPage({ params, searchParams }: Props) {
       .map((d) => ({ locale: d.locale, country: d.country, label: targetLabel(d), draft: d.draft, saved: true })),
   ];
   const matrix = coverageMatrix(app.store, columns, relevant);
+  const nextCount = product.features.filter((f) => f.status === "next_release" && f.advertise).length;
+  const design = await previewDesign(app.productId);
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Editor de ficha">
-        Prepara el texto de tu próxima versión, en cada idioma, y comprueba los límites de la tienda y qué keywords cubre. Los cambios se guardan aquí
-        como borrador; para publicarlos, cópialos a {app.store === "ios" ? "App Store Connect" : "Google Play Console"} o, si conectas la consola, envíalos
-        desde aquí con una vista previa de lo que cambia.
+      <PageHeader title="Ficha de la tienda">
+        El texto de tu ficha en cada idioma, con la vista previa, las keywords que cubre y las normas de la tienda. Se guarda como borrador.
       </PageHeader>
-      <LocalePicker
-        editorHref={marketPath(app, "/ficha")}
-        store={app.store}
-        mainLocale={main}
-        options={localeOptions(app.country, app.store, drafts, target)}
-        current={target}
-      />
       <PublishBar
         store={app.store}
         target={target}
@@ -174,32 +177,39 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         aiEnabled={aiEnabled}
         product={{
           empty: !hasProductFacts(product.facts, product.features),
-          nextCount: product.features.filter((f) => f.status === "next_release" && f.advertise).length,
+          nextCount,
           brandHint,
         }}
-      />
-      <ReleaseNotesCard
-        appId={app.id}
-        productHref={productPath(app.productSlug, "/ajustes/producto")}
-        store={app.store}
-        target={target}
-        targetName={targetName}
-        aiEnabled={aiEnabled}
-        nextCount={product.features.filter((f) => f.status === "next_release" && f.advertise).length}
-        latestVersion={product.releases[0]?.version ?? null}
-        policy={{ lang: localeLanguage(target.locale), category: app.meta.category, brands }}
-      />
-      {/* The published listing (it used to sit at the foot of the keywords page). Phase 30 turns it into the «Publicada» view. */}
-      <Card aria-label="Ficha publicada" className="px-5 py-4">
-        <details id="publicada">
-          <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-card-title font-semibold md:min-h-8">
-            Ficha publicada <span className="text-table font-normal text-muted">· leída el {formatDate(app.metaFetchedAt)}</span>
-          </summary>
-          <div className="mt-4">
+        locales={{ editorHref: marketPath(app, "/ficha"), mainLocale: main, options: localeOptions(app.country, app.store, drafts, target) }}
+        preview={{
+          icon: app.meta.icon || app.icon,
+          developer: app.meta.developer,
+          rating: app.meta.rating,
+          screenshots: app.meta.screenshots.slice(0, PREVIEW_SHOTS),
+          design,
+        }}
+        publishedView={
+          <div className="flex flex-col gap-3">
+            <p className="text-table text-muted">Leída de la tienda el {formatDate(app.metaFetchedAt)}.</p>
             <AppMetadata meta={app.meta} />
           </div>
-        </details>
-      </Card>
+        }
+        releaseNotes={
+          <ReleaseNotesCard
+            bare
+            appId={app.id}
+            productHref={productPath(app.productSlug, "/ajustes/producto")}
+            store={app.store}
+            target={target}
+            targetName={targetName}
+            aiEnabled={aiEnabled}
+            nextCount={nextCount}
+            latestVersion={product.releases[0]?.version ?? null}
+            policy={{ lang: localeLanguage(target.locale), category: app.meta.category, brands }}
+          />
+        }
+        autoAdapt={one(query.adaptar) === "1" && aiEnabled && !isMain && !sameLanguage}
+      />
       {columns.length > 1 && (
         <CoverageMatrix editorHref={marketPath(app, "/ficha")} store={app.store} matrix={matrix} hrefs={columns.map((c) => targetQuery(app.country, c))} />
       )}

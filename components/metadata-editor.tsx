@@ -1,26 +1,42 @@
 "use client";
 
+import { ChevronDown, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { startTransition, useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
-import type { DraftAge, DraftTarget } from "@/lib/listing-drafts";
-import { importantLosses, isRegression, type ListingProposal } from "@/lib/listing-optimizer";
+import type { ScreenshotSpec } from "@/lib/assets/screenshots";
+import { cn } from "@/lib/cn";
+import type { DraftAge, DraftTarget, LocaleOption } from "@/lib/listing-drafts";
+import { type ListingProposal } from "@/lib/listing-optimizer";
 import {
   appendToKeywordField,
   charCount,
   checkMetadata,
-  type DiffItem,
   FIELD_WEIGHTS,
   type FieldKey,
   FIELDS,
-  type Issue,
-  type KeywordDiff,
-  keywordDiff,
+  type FieldSpec,
   type MetadataDraft,
+  type MetadataReport,
+  phraseRanges,
+  tokens,
   weightedCoverage,
 } from "@/lib/metadata-check";
 import type { Store } from "@/lib/stores/types";
-import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
+import { wordSpans } from "@/lib/text";
+import { DiffText } from "./diff-text";
+import { HighlightTextarea, type TextMark } from "./highlight-textarea";
+import { CoverageList } from "./listing-coverage";
+import { IssueList } from "./listing-issues";
+import { editorUrl, ListingLocalePicker } from "./listing-locale-picker";
+import { ListingProposalPanel, pendingFields } from "./listing-proposal";
+import { StorePreview } from "./store-preview";
+import { inputClass } from "./ui";
+import { Button } from "./ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { HelpTip } from "./ui/help-tip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 type Props = {
   appId: number;
@@ -45,7 +61,7 @@ type Props = {
   sameLanguage: boolean;
   /** «Borrador del … · la ficha publicada cambió el …» (H11.6). */
   age: DraftAge | null;
-  /** Shown in the coverage card instead of the list when the keywords do not apply to this language. */
+  /** Shown in «Cobertura» instead of the list when the keywords do not apply to this language. */
   keywordNote?: string;
   /** Tracked keywords; `relevant` ones (not noise, relevance 3+ or unrated) count in the weighted score, like in the optimizer. */
   keywords: { term: string; opportunity: number | null; relevant: boolean }[];
@@ -61,7 +77,19 @@ type Props = {
    * when no brand is declared but the title looks like «Marca: palabras», that first part (`brandOf`).
    */
   product: { empty: boolean; nextCount: number; brandHint?: string | null };
+  /** The language picker: this market's editor URL, its main locale and the options (`localeOptions`). */
+  locales: { editorHref: string; mainLocale: string; options: LocaleOption[] };
+  /** Store preview: what the editor does not hold (icon, developer, rating) and the screenshots. */
+  preview: { icon: string; developer: string; rating: number | null; screenshots: string[]; design: ScreenshotSpec | null };
+  /** «Publicada» for the main listing: the published listing as read from the store (server-rendered). */
+  publishedView?: React.ReactNode;
+  /** «Notas de la versión» tab (server-rendered `ReleaseNotesCard`). */
+  releaseNotes: React.ReactNode;
+  /** Opened from «Adaptar a…» on another listing (`?adaptar=1`): start adapting once, then drop the flag from the URL. */
+  autoAdapt?: boolean;
 };
+
+type View = "draft" | "published" | "compare";
 
 export function MetadataEditor({
   appId,
@@ -85,22 +113,35 @@ export function MetadataEditor({
   brandsHref,
   aiEnabled,
   product,
+  locales,
+  preview,
+  publishedView,
+  releaseNotes,
+  autoAdapt,
 }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const formRef = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState(initial);
+  const [view, setView] = useState<View>("draft");
+  const [panel, setPanel] = useState("preview");
+  const [addOpen, setAddOpen] = useState(false);
+  const [focusTerm, setFocusTerm] = useState<string | null>(null);
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
-  // One proposal at a time: «Optimizar con IA» or «Adaptar a …», told apart by the submit button's intent.
+  // One proposal at a time: «Optimizar con IA» or «Adaptar a …», told apart by the submit's intent.
   const [ai, aiAction, optimizing] = useActionState<OptimizeState, FormData>(
     (prev, formData) => (formData.get("intent") === "localize" ? localizeListingAction(prev, formData) : optimizeListing(prev, formData)),
     null,
   );
   const [focus, setFocus] = useState("");
-  // Fields of the current proposal already applied or discarded.
+  // Fields of the current proposal already accepted or discarded.
   const [handled, setHandled] = useState<{ proposal?: ListingProposal; keys: FieldKey[] }>({ keys: [] });
   const terms = useMemo(() => keywords.map((k) => k.term), [keywords]);
   const scoring = useMemo(() => keywords.filter((k) => k.relevant), [keywords]);
   const policyContext = useMemo(() => ({ ...policy, brands }), [policy, brands]);
   const report = useMemo(() => checkMetadata(store, draft, terms, policyContext), [store, draft, terms, policyContext]);
   const weighted = useMemo(() => weightedCoverage(store, draft, scoring), [store, draft, scoring]);
+  const marks = useMemo(() => fieldMarks(store, draft, report, focusTerm), [store, draft, report, focusTerm]);
   const set = (key: FieldKey, value: string) => setDraft((d) => ({ ...d, [key]: value }));
   // The page re-renders after the delete, but this state would keep the old text: go back to the base,
   // which is never text in another language (H22).
@@ -112,388 +153,465 @@ export function MetadataEditor({
   const proposal = ai?.proposal;
   const done = handled.proposal === proposal ? handled.keys : [];
   const markDone = (keys: FieldKey[]) => setHandled({ proposal, keys: [...done, ...keys] });
-  const pendingKeys = proposal
-    ? FIELDS[store].map((f) => f.key).filter((k) => proposal.fields[k] != null && proposal.fields[k] !== draft[k] && !done.includes(k))
-    : [];
-  const apply = (keys: FieldKey[]) => {
+  const accept = (keys: FieldKey[]) => {
     if (!proposal) return;
     setDraft((d) => ({ ...d, ...Object.fromEntries(keys.map((k) => [k, proposal.fields[k] ?? d[k]])) }));
     markDone(keys);
   };
-  const proposedDraft: MetadataDraft | null = proposal ? { ...draft, ...Object.fromEntries(pendingKeys.map((k) => [k, proposal.fields[k]])) } : null;
-  const proposed = proposedDraft ? checkMetadata(store, proposedDraft, terms, policyContext) : null;
-  // Same pure function as the server's quality lock, against what is in the editor right now.
-  const proposedWeighted = proposedDraft ? weightedCoverage(store, proposedDraft, scoring) : null;
-  const diff = proposedWeighted ? keywordDiff(weighted, proposedWeighted) : null;
-  const lostImportant = diff ? importantLosses(diff) : [];
-  const scoreDropped = proposedWeighted != null && proposedWeighted.score < weighted.score;
-  // Same rule as the server (lower score or an important keyword lost); the server's verdict on the whole proposal also counts.
-  const regressed = Boolean(proposal?.regression) || (proposedWeighted != null && diff != null && isRegression(weighted.score, proposedWeighted.score, diff));
-  // What the warning shows: the live figures, else the server's for the whole proposal.
-  const drop: [number, number] | null =
-    scoreDropped && proposedWeighted
-      ? [weighted.score, proposedWeighted.score]
-      : proposal?.scoreBefore != null && proposal.scoreAfter != null && proposal.scoreAfter < proposal.scoreBefore
-        ? [proposal.scoreBefore, proposal.scoreAfter]
-        : null;
-  const lostShown = lostImportant.length > 0 ? lostImportant : proposal?.diff ? importantLosses(proposal.diff) : [];
-  const labels = Object.fromEntries(FIELDS[store].map((f) => [f.key, f.label])) as Record<FieldKey, string>;
+  const pendingCount = proposal ? pendingFields(store, draft, proposal, done).length : 0;
+
+  const canOptimize = aiEnabled && sameLanguage;
+  const canLocalize = aiEnabled && !isMain && !sameLanguage;
+  const localize = () => {
+    const form = formRef.current;
+    if (!form) return;
+    const data = new FormData(form);
+    data.set("intent", "localize");
+    setView("draft");
+    startTransition(() => aiAction(data));
+  };
+  // «Adaptar a…» from another listing lands here with ?adaptar=1: run it once and clean the URL, so a reload does not pay again.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (!autoAdapt || autoRan.current) return;
+    autoRan.current = true;
+    const q = new URLSearchParams(window.location.search);
+    q.delete("adaptar");
+    router.replace(`${pathname}${q.size ? `?${q}` : ""}`, { scroll: false });
+    if (canLocalize) localize();
+    // Only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const adaptTargets = locales.options.filter((o) => o.kind !== "other" && o.locale.split("-")[0] !== locales.mainLocale.split("-")[0]);
+
+  const specs = FIELDS[store];
+  const labels = Object.fromEntries(specs.map((f) => [f.key, f.label])) as Record<FieldKey, string>;
+  const indexed = specs.filter((f) => f.indexed);
   const covered = report.coverage.filter((c) => c.covered).length;
   const extra = appendToKeywordField(draft.keywordField, report.missingWords);
+  const errors = report.issues.filter((i) => i.level === "error").length;
+  const showFocus = (term: string | null, field: FieldKey | null) => {
+    setFocusTerm(term);
+    if (!term) return;
+    setView("draft");
+    const target = field ?? indexed.find((f) => phraseRanges(draft[f.key], term).length > 0)?.key ?? indexed[0]?.key;
+    if (target) requestAnimationFrame(() => document.getElementById(`field-${target}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  };
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-      <Card className="px-5 py-5">
-        <form action={action} className="flex flex-col gap-5">
-          <input type="hidden" name="appId" value={appId} />
-          <input type="hidden" name="locale" value={target.locale} />
-          <input type="hidden" name="country" value={target.country} />
-          {missingNotice && (
-            <p role="status" className="rounded-lg bg-surface-muted px-3 py-2 text-[13px] text-ink-soft">
-              {missingNotice}
-            </p>
-          )}
-          {age && (
-            <p role={age.stale ? "status" : undefined} className={`rounded-lg px-3 py-2 text-[13px] ${age.stale ? "bg-warn-bg text-warn-fg" : "bg-surface-muted text-muted"}`}>
-              {age.text}
-            </p>
-          )}
-          {aiEnabled && (
-            <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface-muted px-4 py-3">
-              <label htmlFor="ai-focus" className="text-[13px] font-medium text-ink-soft">
-                {isMain ? "Optimizar con IA" : `Escribir la ficha en ${targetName} con IA`}
-              </label>
-              {isMain ? (
-                <p className="text-xs text-muted">
-                  Reescribe la ficha con tus keywords (prioriza las de más oportunidad y las que ya rozan el top) respetando los límites de la tienda.
-                  Verás la propuesta campo a campo antes de aplicarla.
-                </p>
-              ) : (
-                <p className="text-xs text-muted">
-                  «Adaptar» parte de la ficha principal ({mainName}) y usa lo que se busca en el país de destino: el autocompletado de la tienda y los
-                  títulos de las apps que salen arriba. No es una traducción literal. Verás la propuesta campo a campo; no se guarda nada hasta que
-                  pulses «Guardar borrador».
-                  {sameLanguage ? " «Optimizar» reescribe este texto con tus keywords, como en la ficha principal." : ""}
-                </p>
-              )}
-              {product.empty ? (
-                <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
-                  Tu ficha de producto está vacía: la IA solo conoce la ficha publicada, que puede estar desfasada.{" "}
-                  <Link href={productHref} className="font-medium underline">
-                    Completar la ficha de producto
-                  </Link>
-                </p>
-              ) : (
-                <fieldset className="flex flex-col gap-1 text-[13px] text-ink-soft">
-                  <legend className="sr-only">Para qué versión es la ficha</legend>
-                  <div className="flex flex-wrap gap-x-5">
-                    <label className="flex min-h-11 items-center gap-2 md:min-h-8">
-                      <input type="radio" name="factsMode" value="published" defaultChecked={product.nextCount === 0} className="size-4 accent-[var(--brand)]" />
-                      Ficha para la versión publicada
-                    </label>
-                    <label className="flex min-h-11 items-center gap-2 md:min-h-8">
-                      <input type="radio" name="factsMode" value="next" defaultChecked={product.nextCount > 0} className="size-4 accent-[var(--brand)]" />
-                      Ficha para la próxima versión
-                    </label>
-                  </div>
-                  <span className="text-xs text-muted">
-                    La IA usa tu{" "}
-                    <Link href={productHref} className="text-link hover:underline">
-                      ficha de producto
-                    </Link>
-                    : solo funciones publicadas, o también las {product.nextCount > 0 ? `${product.nextCount} ` : ""}de la próxima versión. Nunca las
-                    planeadas ni las retiradas.
-                  </span>
-                </fieldset>
-              )}
-              {product.brandHint && (
-                <p className="rounded-md bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
-                  ¿Tu título empieza por una marca («{product.brandHint}»)?{" "}
-                  <Link href={productHref} className="font-medium underline">
-                    Declárala en Producto
-                  </Link>{" "}
-                  para que la IA la conserve.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <input
-                  id="ai-focus"
-                  name="focus"
-                  value={focus}
-                  onChange={(e) => setFocus(e.target.value)}
-                  maxLength={200}
-                  placeholder="Opcional: en qué centrarse, p. ej. «entrenar para un maratón»"
-                  className={`${inputClass} min-w-0 flex-1`}
-                />
-                {!isMain && (
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="localize"
-                    formAction={aiAction}
-                    disabled={optimizing}
-                    aria-busy={optimizing}
-                    className={buttonSecondary}
-                  >
-                    {optimizing ? "Escribiendo…" : `Adaptar a ${target.locale}`}
-                  </button>
-                )}
-                {sameLanguage && (
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="optimize"
-                    formAction={aiAction}
-                    disabled={optimizing}
-                    aria-busy={optimizing}
-                    className={buttonSecondary}
-                  >
-                    {optimizing ? "Optimizando…" : "Optimizar con IA"}
-                  </button>
-                )}
-              </div>
-              <span aria-live="polite" className="text-[13px]">
-                {ai?.error && <span className="text-danger">{ai.error}</span>}
-                {optimizing && <span className="text-muted">Puede tardar hasta un minuto.</span>}
-              </span>
-            </div>
-          )}
-          {/* Fields of the other store are kept so switching stores never loses text. */}
-          {(Object.keys(draft) as FieldKey[])
-            .filter((k) => !FIELDS[store].some((f) => f.key === k))
-            .map((k) => (
-              <input key={k} type="hidden" name={k} value={draft[k]} />
-            ))}
-          {report.fields.map((f) => {
-            const id = `field-${f.key}`;
-            const changed = published != null && draft[f.key] !== published[f.key];
-            const props = {
-              id,
-              name: f.key,
-              value: draft[f.key],
-              onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(f.key, e.target.value),
-              "aria-describedby": `${id}-count`,
-              "aria-invalid": f.over || undefined,
-              className: `${inputClass} w-full ${f.over ? "border-danger" : ""}`,
-            };
-            return (
-              <div key={f.key} className="flex flex-col gap-1.5">
-                <div className="flex items-baseline justify-between gap-3">
-                  <label htmlFor={id} className="text-[13px] font-medium text-ink-soft">
-                    {f.label}
-                    {changed && <span className="ml-2 text-xs font-normal text-link">modificado</span>}
-                  </label>
-                  <span id={`${id}-count`} className={`font-mono text-xs ${f.over ? "font-semibold text-danger" : "text-muted"}`}>
-                    {f.length}/{f.limit}
-                  </span>
-                </div>
-                {f.multiline ? <textarea rows={10} {...props} className={`${props.className} py-2.5`} /> : <input {...props} />}
-                {f.hint && <p className="text-xs text-muted">{f.hint}</p>}
-                {proposal && pendingKeys.includes(f.key) && (
-                  <ProposalBox
-                    text={proposal.fields[f.key] ?? ""}
-                    limit={f.limit}
-                    why={proposal.changes.find((c) => c.field === f.key)?.why}
-                    onApply={() => apply([f.key])}
-                    onDiscard={() => markDone([f.key])}
-                  />
-                )}
-                {f.key === "keywordField" && report.missingWords.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => set("keywordField", extra)}
-                    className="self-start text-[13px] font-medium text-link hover:underline"
-                  >
-                    Añadir las palabras que faltan ({report.missingWords.length}) → {charCount(extra)}/100
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <button type="submit" disabled={pending} className={buttonPrimary}>
-              {pending ? "Guardando…" : "Guardar borrador"}
-            </button>
-            {published && (
-              <button type="button" className={buttonSecondary} onClick={() => setDraft(published)}>
-                {isMain ? "Volver a la ficha publicada" : "Volver al texto de partida"}
-              </button>
-            )}
-            {hasDraft && (
-              <button type="submit" formAction={discard} className={`${buttonSecondary} text-danger`}>
-                Borrar borrador
-              </button>
-            )}
-            <span aria-live="polite" className="text-[13px] text-muted">
-              {state?.error && <span className="text-danger">{state.error}</span>}
-              {state?.savedAt && !state.warning && "Borrador guardado"}
-            </span>
+    // The grid holds the three zones. The form and the view tabs are `display: contents`, so their children
+    // (top bar, messages, editor) are grid items too, while the right panel stays outside the form: the
+    // release notes generator inside it has a form of its own.
+    <div className="grid items-start gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <form ref={formRef} action={action} className="contents">
+      <input type="hidden" name="appId" value={appId} />
+      <input type="hidden" name="locale" value={target.locale} />
+      <input type="hidden" name="country" value={target.country} />
+      {/* Fields of the other store are kept so switching stores never loses text. */}
+      {(Object.keys(draft) as FieldKey[])
+        .filter((k) => !specs.some((f) => f.key === k))
+        .map((k) => (
+          <input key={k} type="hidden" name={k} value={draft[k]} />
+        ))}
+
+      <Tabs value={view} onValueChange={(v) => setView(v as View)} className="contents">
+        {/* Top bar: language, view and actions. */}
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface px-3 py-3 sm:px-4 lg:col-span-2 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <ListingLocalePicker
+              editorHref={locales.editorHref}
+              store={store}
+              mainLocale={locales.mainLocale}
+              options={locales.options}
+              current={target}
+              addOpen={addOpen}
+              onAddOpenChange={setAddOpen}
+            />
+            <TabsList aria-label="Vista de la ficha">
+              <TabsTrigger value="published">Publicada</TabsTrigger>
+              <TabsTrigger value="draft">Borrador</TabsTrigger>
+              <TabsTrigger value="compare">Comparar</TabsTrigger>
+            </TabsList>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canOptimize && (
+              <Button type="submit" name="intent" value="optimize" formAction={aiAction} variant="primary" disabled={optimizing} aria-busy={optimizing} onClick={() => setView("draft")}>
+                <Sparkles size={16} aria-hidden="true" />
+                {optimizing ? "Optimizando…" : "Optimizar con IA"}
+              </Button>
+            )}
+            {aiEnabled && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant={canOptimize ? "secondary" : "primary"} disabled={optimizing}>
+                    {optimizing && !canOptimize ? "Escribiendo…" : "Adaptar a…"}
+                    <ChevronDown size={16} aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+                  <DropdownMenuLabel>Escribir la ficha en otro idioma a partir de la principal ({mainName})</DropdownMenuLabel>
+                  {canLocalize && <DropdownMenuItem onSelect={localize}>Esta ficha: {targetName}</DropdownMenuItem>}
+                  {adaptTargets
+                    .filter((o) => o.locale !== target.locale || o.country !== target.country)
+                    .map((o) => (
+                      <DropdownMenuItem
+                        key={`${o.locale}|${o.country}`}
+                        onSelect={() => router.push(editorUrl(locales.editorHref, locales.mainLocale, o, { adaptar: "1" }))}
+                      >
+                        {o.label} ({o.locale})
+                      </DropdownMenuItem>
+                    ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setTimeout(() => setAddOpen(true), 0)}>Otro idioma…</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            <Button type="submit" variant={aiEnabled ? "secondary" : "primary"} disabled={pending}>
+              {pending ? "Guardando…" : "Guardar"}
+            </Button>
+          </div>
+        </div>
+
+        <div aria-live="polite" className="flex flex-col gap-2 text-table empty:hidden lg:col-span-2">
+          {ai?.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-danger">{ai.error}</p>}
+          {optimizing && <p className="rounded-control bg-surface-muted px-3 py-2 text-ink-soft">La IA está escribiendo la propuesta. Puede tardar hasta un minuto.</p>}
+          {state?.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-danger">{state.error}</p>}
+          {state?.savedAt && !state.warning && <p className="text-muted">Borrador guardado.</p>}
           {state?.warning && (
-            <p role="status" className="rounded-lg bg-warn-bg px-3 py-2 text-[13px] text-warn-fg">
+            <p className="rounded-control bg-warn-bg px-3 py-2 text-warn-fg">
               Borrador guardado, pero cubre peor tus keywords relevantes que {state.warning.against === "draft" ? "el borrador anterior" : "la ficha publicada"}:
               cobertura ponderada {state.warning.before} → {state.warning.after} de 100
               {state.warning.lost.length > 0 && <>. Deja de cubrir: {state.warning.lost.join(", ")}</>}. Puedes seguir así si es lo que quieres.
             </p>
           )}
-        </form>
-      </Card>
+          {pendingCount > 0 && view !== "draft" && <p className="text-ink-soft">Hay una propuesta de la IA pendiente en la vista Borrador.</p>}
+        </div>
 
-      <div className="flex flex-col gap-6">
-        {proposal && proposed && (pendingKeys.length > 0 || proposal.notes.length > 0) && (
-          <Card aria-label="Propuesta de la IA" className="px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Propuesta de la IA</h2>
-            {proposedWeighted && scoring.length > 0 && (
-              <p className="mt-1 text-[13px] text-muted">
-                Cobertura ponderada: {weighted.score} →{" "}
-                <span className={`font-mono font-semibold ${scoreDropped ? "text-down" : proposedWeighted.score > weighted.score ? "text-up" : "text-ink"}`}>
-                  {proposedWeighted.score}
-                </span>{" "}
-                de 100 · keywords cubiertas: {covered} → {proposed.coverage.filter((c) => c.covered).length} de {keywords.length}. Revisa el texto antes de
-                publicarlo.
-              </p>
-            )}
-            {regressed && (
-              <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-                Esta propuesta cubre peor tus keywords que el texto actual
-                {drop ? ` (${drop[0]} → ${drop[1]})` : ""}.
-                {lostShown.length > 0 ? ` Deja de cubrir keywords importantes: ${lostShown.slice(0, 5).map((l) => l.term).join(", ")}.` : ""}
-                {proposal.attempts === 2 ? " La IA lo intentó dos veces y esta es la mejor de las dos." : ""} Aplica solo los campos que te convenzan.
-              </p>
-            )}
-            {diff && <KeywordDiffView diff={diff} labels={labels} />}
-            {proposal.targetKeywords.length > 0 && (
-              <div className="mt-3">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted">Construida alrededor de</h3>
-                <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                  {proposal.targetKeywords.map((k) => (
-                    <li key={k} className="rounded-md bg-surface-muted px-2 py-0.5 text-xs text-ink-soft">
-                      {k}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {proposal.over.length > 0 && (
-              <p className="mt-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-fg">
-                Se pasa del límite: {proposal.over.map((k) => labels[k]?.toLowerCase()).join(", ")}. Recórtalo tras aplicarlo.
-              </p>
-            )}
-            {proposal.warnings?.map((w) => (
-              <p key={w} className="mt-3 rounded-lg bg-warn-bg px-3 py-2 text-sm text-warn-fg">
-                {w}
-              </p>
-            ))}
-            {proposal.notes.length > 0 && (
-              <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm text-ink-soft">
-                {proposal.notes.map((n) => (
-                  <li key={n}>{n}</li>
+          {/* Editor (60 %). */}
+          <div className="flex min-w-0 flex-col gap-4">
+            {/* Forced mount: the fields must stay in the form while «Publicada» or «Comparar» is shown. */}
+            <TabsContent value="draft" forceMount className="mt-0 flex flex-col gap-4 data-[state=inactive]:hidden">
+              {missingNotice && <p className="rounded-control bg-surface-muted px-3 py-2 text-table text-ink-soft">{missingNotice}</p>}
+              {age && <p className={cn("rounded-control px-3 py-2 text-table", age.stale ? "bg-warn-bg text-warn-fg" : "bg-surface-muted text-ink-soft")}>{age.text}</p>}
+              {aiEnabled && (canOptimize || canLocalize) && (
+                <AiOptions productHref={productHref} product={product} focus={focus} onFocusChange={setFocus} isMain={isMain} mainName={mainName} />
+              )}
+              {proposal && (
+                <ListingProposalPanel
+                  store={store}
+                  draft={draft}
+                  proposal={proposal}
+                  model={ai?.model}
+                  terms={terms}
+                  scoring={scoring}
+                  policy={policyContext}
+                  done={done}
+                  onAccept={accept}
+                  onDiscard={markDone}
+                />
+              )}
+              <section aria-label="Texto de la ficha" className="flex flex-col gap-5 rounded-card border border-line bg-surface px-4 py-5 sm:px-5">
+                {report.fields.map((f) => (
+                  <FieldEditor
+                    key={f.key}
+                    field={f}
+                    value={draft[f.key]}
+                    onChange={(v) => set(f.key, v)}
+                    marks={marks[f.key] ?? []}
+                    changed={published != null && draft[f.key] !== published[f.key]}
+                    issues={report.issues.filter((i) => i.field === f.key)}
+                    after={
+                      f.key === "keywordField" && report.missingWords.length > 0 ? (
+                        <button type="button" onClick={() => set("keywordField", extra)} className="self-start text-table font-medium text-link underline">
+                          Añadir las palabras que faltan ({report.missingWords.length}) → {charCount(extra)}/100
+                        </button>
+                      ) : null
+                    }
+                  />
                 ))}
-              </ul>
-            )}
-            {proposed && proposed.issues.length > 0 && (
-              <div className="mt-3">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted">Avisos de la propuesta</h3>
-                <IssueList issues={proposed.issues} />
-              </div>
-            )}
-            {pendingKeys.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button type="button" className={buttonSecondary} onClick={() => apply(pendingKeys)}>
-                  Aplicar todo ({pendingKeys.length})
-                </button>
-                <button type="button" className={`${buttonSecondary} text-muted`} onClick={() => markDone(pendingKeys)}>
-                  Descartar
-                </button>
-              </div>
-            )}
-            <p className="mt-3 text-xs text-muted">Generado por IA{ai?.model ? ` (${ai.model})` : ""}. Se aplica al editor; guarda el borrador para conservarlo.</p>
-          </Card>
-        )}
-        <Card aria-label="Avisos" className="px-5 py-4">
-          <h2 className="text-[15px] font-semibold">Avisos</h2>
-          <p className="mt-1 text-xs text-muted">Límites de la tienda y normas de Google Play y App Store. Cada aviso enlaza a la norma oficial.</p>
-          {report.issues.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">Todo dentro de los límites y sin problemas de normas detectados.</p>
-          ) : (
-            <IssueList issues={report.issues} />
-          )}
-        </Card>
+                <div className="flex flex-wrap items-center gap-2 border-t border-line pt-4">
+                  {published && (
+                    <Button variant="ghost" onClick={() => setDraft(published)}>
+                      {isMain ? "Volver a la ficha publicada" : "Volver al texto de partida"}
+                    </Button>
+                  )}
+                  {hasDraft && (
+                    <Button type="submit" variant="ghost" formAction={discard} className="text-danger">
+                      Borrar borrador
+                    </Button>
+                  )}
+                  <span className="text-label text-muted">Los cambios se guardan como borrador; publicar es aparte.</span>
+                </div>
+              </section>
+            </TabsContent>
 
-        <p className="px-1 text-table text-muted">
-          {brands.length === 1 ? "1 marca de la competencia detectada" : `${brands.length} marcas de la competencia detectadas`}: la IA no las usa y, si
-          aparecen en tu texto, salen en Avisos.{" "}
-          <Link href={brandsHref} className="text-link underline">
-            Revisar las marcas
-          </Link>
-        </p>
+            <TabsContent value="published" className="mt-0">
+              <section aria-label="Ficha publicada" className="rounded-card border border-line bg-surface px-4 py-5 sm:px-5">
+                {isMain && publishedView ? (
+                  publishedView
+                ) : published ? (
+                  <ReadOnlyFields specs={specs} draft={published} note={`Texto de la ficha principal (${mainName}): esta ficha usa el mismo idioma.`} />
+                ) : (
+                  <p className="text-sm text-ink-soft">Rankeo no lee fichas publicadas en {targetName}: solo la principal de cada mercado.</p>
+                )}
+              </section>
+            </TabsContent>
 
-        <Card aria-label="Cobertura de keywords" className="overflow-hidden">
-          <div className="border-b border-line px-5 py-4">
-            <h2 className="text-[15px] font-semibold">Cobertura de keywords</h2>
-            <p className="mt-1 text-[13px] text-muted">
-              {keywordNote
-                ? keywordNote
-                : keywords.length === 0
-                ? "Aún no sigues ninguna keyword."
-                : `${covered} de ${keywords.length} tienen todas sus palabras en ${store === "ios" ? "nombre, subtítulo o campo de keywords" : "título o descripciones"}.`}
-            </p>
-            {scoring.length > 0 && (
-              <p className="mt-1 text-[13px] text-muted">
-                Cobertura ponderada: <span className="font-mono font-semibold text-ink">{weighted.score}</span> de 100. Cuenta las {scoring.length} keywords
-                relevantes por su oportunidad y por el campo: {weightsText(store, labels)}; si solo están las palabras sueltas, cuenta{" "}
-                {store === "ios" ? "el 80 %" : "la mitad"}.
-              </p>
-            )}
+            <TabsContent value="compare" className="mt-0">
+              <section aria-label="Publicada frente a borrador" className="flex flex-col gap-4 rounded-card border border-line bg-surface px-4 py-5 sm:px-5">
+                {published ? (
+                  <>
+                    <p className="text-table text-ink-soft">
+                      Lo <del className="rounded-[3px] bg-danger-soft text-danger">tachado</del> está en la ficha {isMain ? "publicada" : "de partida"} y no en
+                      el editor; lo <ins className="rounded-[3px] bg-up/15 text-ink decoration-up">subrayado</ins> es nuevo.
+                    </p>
+                    {specs.map((f) => (
+                      <div key={f.key} className="flex flex-col gap-1 border-t border-line pt-3">
+                        <h3 className="text-table font-medium text-ink-soft">{f.label}</h3>
+                        {published[f.key] === draft[f.key] ? (
+                          <p className="text-table text-muted">Sin cambios.</p>
+                        ) : (
+                          <DiffText before={published[f.key]} after={draft[f.key]} className={f.multiline ? "text-sm leading-relaxed" : "text-body"} />
+                        )}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-sm text-ink-soft">No hay ficha publicada en {targetName} con la que comparar.</p>
+                )}
+              </section>
+            </TabsContent>
           </div>
-          <ul className="max-h-[480px] overflow-y-auto">
-            {report.coverage.map((c) => (
-              <li key={c.term} className="flex items-start justify-between gap-3 border-b border-line px-5 py-2.5 text-sm last:border-0">
-                <span>
-                  <span className={c.covered ? "" : "text-ink-soft"}>{c.term}</span>
-                  {c.missing.length > 0 && <span className="block text-xs text-muted">Falta: {c.missing.join(", ")}</span>}
-                </span>
-                <span className="shrink-0 text-right text-xs">
-                  {c.exactIn ? (
-                    <span className="font-semibold text-up">En {labels[c.exactIn]?.toLowerCase()}</span>
-                  ) : c.covered ? (
-                    <span className="text-ink-soft">Palabras sueltas</span>
-                  ) : (
-                    <span className="text-down">No cubierta</span>
+      </Tabs>
+    </form>
+
+          {/* Right panel (40 %). */}
+          <section aria-label="Panel de la ficha" className="min-w-0 rounded-card border border-line bg-surface px-4 py-4 sm:px-5 lg:sticky lg:top-4">
+            <Tabs value={panel} onValueChange={setPanel}>
+              <TabsList aria-label="Panel de la ficha" className="flex-wrap">
+                <TabsTrigger value="preview">Vista previa</TabsTrigger>
+                <TabsTrigger value="coverage">Cobertura</TabsTrigger>
+                <TabsTrigger value="policy">
+                  Normas
+                  {report.issues.length > 0 && (
+                    <span className={cn("rounded-full px-1.5 font-mono text-label", errors > 0 ? "bg-danger-soft text-danger" : "bg-warn-bg text-warn-fg")}>
+                      {report.issues.length}
+                      <span className="sr-only"> avisos</span>
+                    </span>
                   )}
-                  {c.descriptionCount != null && c.descriptionCount > 0 && (
-                    <span className="block text-muted">{c.descriptionCount}× en descripción</span>
+                </TabsTrigger>
+                <TabsTrigger value="notes">Notas de la versión</TabsTrigger>
+              </TabsList>
+              <TabsContent value="preview" className="mt-4">
+                <StorePreview
+                  store={store}
+                  icon={preview.icon}
+                  developer={preview.developer}
+                  rating={preview.rating}
+                  title={draft.title}
+                  tagline={store === "ios" ? draft.subtitle : draft.shortDescription}
+                  screenshots={preview.screenshots}
+                  design={preview.design}
+                />
+              </TabsContent>
+              <TabsContent value="coverage" className="mt-4 flex flex-col gap-4">
+                <div className="flex flex-col gap-1 text-table text-ink-soft">
+                  <p>
+                    {keywordNote
+                      ? keywordNote
+                      : keywords.length === 0
+                        ? "Aún no sigues ninguna keyword."
+                        : `${covered} de ${keywords.length} keywords tienen todas sus palabras en ${store === "ios" ? "nombre, subtítulo o campo de keywords" : "título o descripciones"}. Pulsa una para verla en el texto.`}
+                  </p>
+                  {scoring.length > 0 && (
+                    <p className="flex items-center gap-1">
+                      Cobertura ponderada: <span className="font-mono font-semibold text-ink">{weighted.score}</span> de 100
+                      <HelpTip label="Cobertura ponderada">
+                        Cuenta las {scoring.length} keywords relevantes por su oportunidad y por el campo: {weightsText(store, labels)}. Si solo están las
+                        palabras sueltas, cuenta {store === "ios" ? "el 80 %" : "la mitad"}.
+                      </HelpTip>
+                    </p>
                   )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      </div>
+                </div>
+                {!keywordNote && report.coverage.length > 0 && <CoverageList coverage={report.coverage} indexed={indexed} focus={focusTerm} onFocus={showFocus} />}
+              </TabsContent>
+              <TabsContent value="policy" className="mt-4 flex flex-col gap-3">
+                {report.issues.length === 0 ? (
+                  <p className="text-sm text-ink-soft">Todo dentro de los límites y sin problemas de normas detectados.</p>
+                ) : (
+                  <IssueList issues={report.issues} />
+                )}
+                <p className="text-label text-muted">
+                  Límites de la tienda y normas de Google Play y App Store; cada aviso enlaza a la norma. Las marcas de la competencia se revisan en{" "}
+                  <Link href={brandsHref} className="text-link underline">
+                    Ajustes › Marcas
+                  </Link>
+                  .
+                </p>
+              </TabsContent>
+              {/* Forced mount: a generated text survives switching tabs. */}
+              <TabsContent value="notes" forceMount className="mt-4 data-[state=inactive]:hidden">
+                {releaseNotes}
+              </TabsContent>
+            </Tabs>
+          </section>
     </div>
   );
 }
 
-function ProposalBox({ text, limit, why, onApply, onDiscard }: { text: string; limit: number; why?: string; onApply: () => void; onDiscard: () => void }) {
-  const length = charCount(text);
+/** The AI options under the top bar: what to focus on and which version the listing is for. */
+function AiOptions({
+  productHref,
+  product,
+  focus,
+  onFocusChange,
+  isMain,
+  mainName,
+}: {
+  productHref: string;
+  product: Props["product"];
+  focus: string;
+  onFocusChange: (v: string) => void;
+  isMain: boolean;
+  mainName: string;
+}) {
   return (
-    <div className="rounded-lg border border-line bg-brand-soft px-3 py-2.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-xs font-medium text-link">Propuesta de la IA</span>
-        <span className={`font-mono text-xs ${length > limit ? "font-semibold text-danger" : "text-muted"}`}>
-          {length}/{limit}
-        </span>
+    <div className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="ai-focus" className="text-table font-medium text-ink-soft">
+          Para la IA
+        </label>
+        <HelpTip label="Para la IA">
+          {isMain
+            ? "«Optimizar con IA» reescribe la ficha con tus keywords (prioriza las de más oportunidad y las que rozan el top) dentro de los límites de la tienda. La propuesta sale como cambios sobre tu texto y la aceptas campo a campo."
+            : `«Adaptar» parte de la ficha principal (${mainName}) y usa lo que se busca en el país de destino. No es una traducción literal. No se guarda nada hasta que pulses «Guardar».`}
+        </HelpTip>
+        <input
+          id="ai-focus"
+          name="focus"
+          value={focus}
+          onChange={(e) => onFocusChange(e.target.value)}
+          maxLength={200}
+          placeholder="Opcional: en qué centrarse, p. ej. «entrenar para un maratón»"
+          className={`${inputClass} min-w-0 flex-1 basis-60`}
+        />
+        {!product.empty && (
+          <>
+            <label htmlFor="ai-facts" className="sr-only">
+              Para qué versión es la ficha
+            </label>
+            <select id="ai-facts" name="factsMode" defaultValue={product.nextCount > 0 ? "next" : "published"} className={`${inputClass} min-w-0`}>
+              <option value="published">Versión publicada</option>
+              <option value="next">Próxima versión{product.nextCount > 0 ? ` (${product.nextCount} funciones)` : ""}</option>
+            </select>
+          </>
+        )}
       </div>
-      <p className="mt-1 max-h-60 overflow-y-auto whitespace-pre-wrap break-words text-sm text-ink">{text || "(vacío)"}</p>
-      {why && <p className="mt-1.5 text-xs text-muted">{why}</p>}
-      <div className="mt-2 flex gap-4">
-        <button type="button" onClick={onApply} className="min-h-8 text-[13px] font-medium text-link hover:underline">
-          Aplicar
-        </button>
-        <button type="button" onClick={onDiscard} className="min-h-8 text-[13px] text-muted hover:underline">
-          Descartar
-        </button>
+      {product.empty && (
+        <p className="rounded-control bg-warn-bg px-3 py-2 text-table text-warn-fg">
+          Tu ficha de producto está vacía: la IA solo conoce la ficha publicada, que puede estar desfasada.{" "}
+          <Link href={productHref} className="font-medium underline">
+            Completar la ficha de producto
+          </Link>
+        </p>
+      )}
+      {product.brandHint && (
+        <p className="rounded-control bg-warn-bg px-3 py-2 text-table text-warn-fg">
+          ¿Tu título empieza por una marca («{product.brandHint}»)?{" "}
+          <Link href={productHref} className="font-medium underline">
+            Declárala en Producto
+          </Link>{" "}
+          para que la IA la conserve.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const FIELD_TEXT: Partial<Record<FieldKey, string>> = {
+  title: "text-page-title font-medium",
+  description: "min-h-80 text-sm leading-relaxed",
+};
+
+function FieldEditor({
+  field,
+  value,
+  onChange,
+  marks,
+  changed,
+  issues,
+  after,
+}: {
+  field: MetadataReport["fields"][number];
+  value: string;
+  onChange: (v: string) => void;
+  marks: TextMark[];
+  changed: boolean;
+  issues: MetadataReport["issues"];
+  after?: React.ReactNode;
+}) {
+  const id = `field-${field.key}`;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <label htmlFor={id} className="text-table font-medium text-ink-soft">
+          {field.label}
+          {changed && <span className="ml-2 text-label font-normal text-link">modificado</span>}
+        </label>
+        <CharMeter id={`${id}-count`} length={field.length} limit={field.limit} />
       </div>
+      <HighlightTextarea
+        id={id}
+        name={field.key}
+        value={value}
+        onChange={onChange}
+        marks={marks}
+        singleLine={!field.multiline}
+        aria-describedby={`${id}-count${issues.length ? ` ${id}-issues` : ""}`}
+        aria-invalid={field.over || undefined}
+        textClassName={FIELD_TEXT[field.key] ?? "text-body"}
+      />
+      {field.hint && <p className="text-label text-muted">{field.hint}</p>}
+      {issues.length > 0 && (
+        <div id={`${id}-issues`}>
+          <IssueList issues={issues} compact />
+        </div>
+      )}
+      {after}
+    </div>
+  );
+}
+
+/** «23/30» with a bar: amber from 90 % of the limit, red over it. */
+function CharMeter({ id, length, limit }: { id: string; length: number; limit: number }) {
+  const ratio = length / limit;
+  const tone = ratio > 1 ? "danger" : ratio >= 0.9 ? "warn" : "ok";
+  return (
+    <span id={id} className="inline-flex items-center gap-2">
+      <span aria-hidden="true" className="h-1 w-16 overflow-hidden rounded-full bg-surface-muted">
+        <span
+          className={cn("block h-full rounded-full", tone === "danger" ? "bg-danger" : tone === "warn" ? "bg-warn" : "bg-brand")}
+          style={{ width: `${Math.min(100, Math.round(ratio * 100))}%` }}
+        />
+      </span>
+      <span className={cn("font-mono text-label", tone === "danger" ? "font-semibold text-danger" : tone === "warn" ? "text-warn-fg" : "text-muted")}>
+        {length}/{limit}
+        <span className="sr-only"> caracteres{tone === "danger" ? ", se pasa del límite" : ""}</span>
+      </span>
+    </span>
+  );
+}
+
+function ReadOnlyFields({ specs, draft, note }: { specs: FieldSpec[]; draft: MetadataDraft; note: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-table text-muted">{note}</p>
+      {specs.map((f) => (
+        <div key={f.key} className="flex flex-col gap-1 border-t border-line pt-3">
+          <h3 className="text-table font-medium text-ink-soft">{f.label}</h3>
+          <p className="text-sm break-words whitespace-pre-wrap text-ink">{draft[f.key] || <span className="text-muted">Vacío</span>}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -504,76 +622,28 @@ function weightsText(store: Store, labels: Record<FieldKey, string>): string {
     .join(", ");
 }
 
-const ISSUE_STYLE: Record<Issue["level"], string> = {
-  error: "bg-danger-soft text-danger",
-  warn: "bg-warn-bg text-warn-fg",
-  info: "bg-surface-muted text-ink-soft",
-};
-const ISSUE_LABEL: Record<Issue["level"], string> = { error: "Error", warn: "Aviso", info: "Info" };
-
-function IssueList({ issues }: { issues: Issue[] }) {
-  return (
-    <ul className="mt-2 flex flex-col gap-2 text-sm">
-      {issues.map((issue) => (
-        <li key={`${issue.ruleId ?? ""}${issue.text}`} className={`rounded-lg px-3 py-2 ${ISSUE_STYLE[issue.level]}`}>
-          <span className="sr-only">{ISSUE_LABEL[issue.level]}: </span>
-          {issue.text}
-          {issue.link && (
-            <>
-              {" "}
-              <a href={issue.link} target="_blank" rel="noreferrer" className="whitespace-nowrap font-medium underline">
-                Ver norma
-              </a>
-            </>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-const DIFF_PREVIEW = 5;
-
-function KeywordDiffView({ diff, labels }: { diff: KeywordDiff; labels: Record<FieldKey, string> }) {
-  const field = (k: FieldKey | null) => (k ? labels[k]?.toLowerCase() : "palabras sueltas");
-  const groups: { key: keyof KeywordDiff; title: string; tone: string; detail: (d: DiffItem) => string }[] = [
-    { key: "lost", title: "Pierde", tone: "text-down", detail: (d) => `estaba en ${field(d.from)}` },
-    { key: "gained", title: "Gana", tone: "text-up", detail: (d) => `en ${field(d.to)}` },
-    { key: "moved", title: "Cambia de campo", tone: "text-ink-soft", detail: (d) => `${field(d.from)} → ${field(d.to)}` },
-  ];
-  if (groups.every((g) => diff[g.key].length === 0)) return null;
-  return (
-    <div className="mt-3 flex flex-col gap-3">
-      {groups.map((g) =>
-        diff[g.key].length > 0 ? <DiffGroup key={g.key} title={g.title} tone={g.tone} detail={g.detail} items={diff[g.key]} /> : null,
-      )}
-    </div>
-  );
-}
-
-function DiffGroup({ title, tone, items, detail }: { title: string; tone: string; items: DiffItem[]; detail: (d: DiffItem) => string }) {
-  const [open, setOpen] = useState(false);
-  const shown = open ? items : items.slice(0, DIFF_PREVIEW);
-  return (
-    <div>
-      <h3 className="text-xs font-medium uppercase tracking-wide text-muted">
-        {title} ({items.length})
-      </h3>
-      <ul className="mt-1 flex flex-col text-sm">
-        {shown.map((d) => (
-          <li key={d.term} className="flex items-baseline justify-between gap-3 py-0.5">
-            <span className={tone}>{d.term}</span>
-            <span className="shrink-0 text-xs text-muted">
-              {detail(d)} · <span className="font-mono">{Math.round(d.value)}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      {items.length > DIFF_PREVIEW && (
-        <button type="button" onClick={() => setOpen((o) => !o)} className="min-h-11 text-[13px] text-link hover:underline md:min-h-8">
-          {open ? "Ver menos" : `Ver ${items.length - DIFF_PREVIEW} más`}
-        </button>
-      )}
-    </div>
-  );
+/**
+ * Marks of each field: covered keywords (exact phrase in that field), policy issues on their exact
+ * words, and the keyword picked in «Cobertura» (the phrase, or each of its words when they are scattered).
+ */
+export function fieldMarks(store: Store, draft: MetadataDraft, report: MetadataReport, focusTerm: string | null): Partial<Record<FieldKey, TextMark[]>> {
+  const out: Partial<Record<FieldKey, TextMark[]>> = {};
+  for (const f of FIELDS[store]) {
+    const text = draft[f.key];
+    const spans = wordSpans(text);
+    const list: TextMark[] = [];
+    for (const c of report.coverage) {
+      if (c.inFields.includes(f.key)) for (const range of phraseRanges(text, c.term, spans)) list.push({ range, kind: "keyword" });
+    }
+    for (const issue of report.issues) {
+      if (issue.field === f.key) for (const range of issue.ranges ?? []) list.push({ range, kind: "issue" });
+    }
+    if (focusTerm) {
+      const exact = phraseRanges(text, focusTerm, spans);
+      const ranges = exact.length > 0 ? exact : tokens(focusTerm).flatMap((w) => phraseRanges(text, w, spans));
+      for (const range of ranges) list.push({ range, kind: "focus" });
+    }
+    out[f.key] = list;
+  }
+  return out;
 }

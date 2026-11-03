@@ -54,7 +54,7 @@ export function AppMetadata({ meta }: { meta: AppMeta }) {
       {meta.screenshots.length > 0 && (
         <div>
           <h3 className="mb-2.5 text-[15px] font-semibold">Capturas</h3>
-          <div className="flex gap-2.5 overflow-x-auto pb-2">
+          <div tabIndex={0} role="region" aria-label="Capturas publicadas" className="flex gap-2.5 overflow-x-auto pb-2 focus-visible:outline-2 focus-visible:outline-brand">
             {meta.screenshots.map((src, i) => (
               // eslint-disable-next-line @next/next/no-img-element
               <img

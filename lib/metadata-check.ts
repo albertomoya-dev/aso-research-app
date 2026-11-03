@@ -1,6 +1,6 @@
 import { policyCheck, type PolicyContext } from "./policy-check";
 import type { AppMeta, Store } from "./stores/types";
-import { fold } from "./text";
+import { fold, phraseRanges, type Range } from "./text";
 
 export type MetadataDraft = {
   title: string;
@@ -35,6 +35,9 @@ export const FIELDS: Record<Store, FieldSpec[]> = {
   ],
 };
 
+/** Screenshots a phone shows above the fold in the store, and so in the editor's preview. */
+export const PREVIEW_SHOTS = 3;
+
 export function draftFromMeta(meta: AppMeta): MetadataDraft {
   return {
     title: meta.title,
@@ -51,6 +54,21 @@ export const charCount = (s: string) => [...s].length;
 export const tokens = (s: string) => fold(s).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 /** True when the words of `phrase` appear together and in order in `text` (folded, ignoring punctuation). */
 export const containsPhrase = (text: string, phrase: string) => ` ${tokens(text).join(" ")} `.includes(` ${tokens(phrase).join(" ")} `);
+
+// Positions in the original text (`phraseRanges` lives in lib/text.ts so lib/policy-check.ts can use it without importing this module).
+export { phraseRanges, type Range, wordSpans } from "./text";
+
+/** UTF-16 position of the n-th character (code point) of the text; its length when shorter. */
+export function charOffset(text: string, n: number): number {
+  let i = 0;
+  let count = 0;
+  for (const ch of text) {
+    if (count === n) return i;
+    i += ch.length;
+    count++;
+  }
+  return text.length;
+}
 
 export type Coverage = {
   term: string;
@@ -71,7 +89,16 @@ export type IssueLevel = "error" | "warn" | "info";
  * `warn`: likely to hurt ranking or review; `info`: worth knowing. Policy issues carry the rule id
  * and the link to the official text (see lib/policy-check.ts).
  */
-export type Issue = { level: IssueLevel; text: string; ruleId?: string; link?: string };
+export type Issue = {
+  level: IssueLevel;
+  text: string;
+  ruleId?: string;
+  link?: string;
+  /** The field the issue is about, when it is about one. */
+  field?: FieldKey;
+  /** The exact words in that field, for the editor's wavy underline. Absent when the issue is about the whole field. */
+  ranges?: Range[];
+};
 
 export type MetadataReport = {
   fields: (FieldSpec & { length: number; over: boolean })[];
@@ -123,20 +150,48 @@ export function checkMetadata(store: Store, draft: MetadataDraft, keywords: stri
 
   const issues: Issue[] = fields
     .filter((f) => f.over)
-    .map((f) => ({ level: "error" as const, text: `${f.label}: ${f.length} de ${f.limit} caracteres, sobran ${f.length - f.limit}.` }));
+    .map(
+      (f): Issue => ({
+        level: "error",
+        text: `${f.label}: ${f.length} de ${f.limit} caracteres, sobran ${f.length - f.limit}.`,
+        field: f.key,
+        // What does not fit: from the first character over the limit to the end.
+        ranges: [[charOffset(draft[f.key], f.limit), draft[f.key].length]],
+      }),
+    );
 
   if (store === "ios") {
     const field = draft.keywordField;
     const spaces = (field.match(/,\s+|\s+,/g) ?? []).reduce((sum, m) => sum + m.length - 1, 0);
-    if (spaces > 0) issues.push({ level: "warn", text: `El campo de keywords gasta ${spaces === 1 ? "1 carácter" : `${spaces} caracteres`} en espacios junto a las comas.` });
+    if (spaces > 0) {
+      issues.push({
+        level: "warn",
+        text: `El campo de keywords gasta ${spaces === 1 ? "1 carácter" : `${spaces} caracteres`} en espacios junto a las comas.`,
+        field: "keywordField",
+        ranges: [...field.matchAll(/,\s+|\s+,/g)].map((m): Range => [m.index, m.index + m[0].length]),
+      });
+    }
     const visible = new Set([...tokens(draft.title), ...tokens(draft.subtitle)]);
     const kwWords = tokens(field);
     const repeated = [...new Set(kwWords.filter((w) => visible.has(w)))];
     if (repeated.length > 0) {
-      issues.push({ level: "warn", text: `Ya están en el nombre o el subtítulo, quítalas del campo de keywords: ${repeated.join(", ")}.` });
+      issues.push({
+        level: "warn",
+        text: `Ya están en el nombre o el subtítulo, quítalas del campo de keywords: ${repeated.join(", ")}.`,
+        field: "keywordField",
+        ranges: repeated.flatMap((w) => phraseRanges(field, w)),
+      });
     }
     const dupes = [...new Set(kwWords.filter((w, i) => kwWords.indexOf(w) !== i))];
-    if (dupes.length > 0) issues.push({ level: "warn", text: `Palabras repetidas en el campo de keywords: ${dupes.join(", ")}.` });
+    if (dupes.length > 0) {
+      issues.push({
+        level: "warn",
+        text: `Palabras repetidas en el campo de keywords: ${dupes.join(", ")}.`,
+        field: "keywordField",
+        // Every copy after the first.
+        ranges: dupes.flatMap((w) => phraseRanges(field, w).slice(1)),
+      });
+    }
   }
 
   // Store policies: promo words, emojis, keyword density, health claims… (Google Play density lives there too).

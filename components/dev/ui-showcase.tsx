@@ -2,6 +2,7 @@
 
 import { Bell, KeyRound, MoreHorizontal, Plus, RefreshCw, Search, Settings, Smartphone } from "lucide-react";
 import { toast } from "sonner";
+import { ProposalDemo } from "@/components/dev/proposal-demo";
 import { Card, inputClass, PageHeader } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
@@ -337,6 +338,10 @@ export function UiShowcase({ theme }: { theme: "light" | "dark" }) {
             </CommandGroup>
           </CommandList>
         </Command>
+      </Section>
+
+      <Section title="Propuesta de la IA (ficha)">
+        <ProposalDemo />
       </Section>
 
       <Section title="Cargando">

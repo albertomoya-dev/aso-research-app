@@ -36,6 +36,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
 | 26b | Datos de la app en el producto: ficha de producto, marcas excluidas y creativos por `product_id` (migración 0020, que fusiona los países). Se conservan al dejar de seguir un país. Los borradores siguen siendo de cada país y el editor avisa si dos países tienen el mismo idioma | Hecho |
 | 27 | Navegación: barra lateral global (selector de app, Inicio, Actividad, Integraciones) y barra lateral de cada app (Resumen, Keywords, Mercado, Optimizar, Ajustes de la app), cabecera fija con selector de mercado y «Actualizar posiciones», paleta ⌘K, barra inferior en el móvil, páginas Actividad, Integraciones y Añadir app, Ajustes de la app con pestañas (Producto, Mercados, Marcas, Datos de Play Console, Zona de peligro) y redirecciones 308 de las páginas globales antiguas | Hecho |
+| 30 | Ficha de la tienda: barra superior (idiomas del mercado y «+ Añadir idioma», Publicada / Borrador / Comparar, «Optimizar con IA», «Adaptar a…», «Guardar»), editor con contador en barra, keywords subrayadas y avisos de normas en ondulado sobre las palabras exactas, panel con Vista previa de Google Play / App Store (capturas publicadas o de Creativos), Cobertura que resalta en el texto, Normas y Notas de la versión, y la propuesta de la IA como diff por palabras con «Aceptar campo» (`lib/word-diff.ts`, `phraseRanges`, `Issue.field` y `Issue.ranges`) | Hecho |
 
 ## Stack
 
@@ -143,15 +144,34 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 - Sin `ANTHROPIC_API_KEY` la pantalla lo indica y el resto de la app funciona igual.
 - «Descartar» actúa sobre todas las ideas marcadas y dice cuántas ha descartado. Las descartadas no vuelven a proponerse.
 
-## Editor de ficha
+## Ficha de la tienda
 
-La pantalla **Editor de ficha** sirve para preparar la próxima versión del texto: cuenta caracteres con los límites de cada tienda (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000), avisa de espacios y palabras repetidas en el campo de keywords y muestra qué keywords seguidas quedan cubiertas. El borrador se guarda en la base de datos, uno por idioma (ver «Fichas por idioma y país»); para publicarlo hay que copiarlo a App Store Connect o Google Play Console.
+La pantalla **Ficha de la tienda** (`/a/[app]/[país]/ficha`, antes «Editor de ficha») sirve para preparar la próxima versión del texto. El borrador se guarda en la base de datos, uno por idioma (ver «Fichas por idioma y país»); para publicarlo se copia a App Store Connect o Google Play Console, o se envía desde «Publicar» si la consola está conectada. Tiene tres zonas:
+
+- **Barra superior.** El selector de idioma muestra solo los idiomas del mercado y los que tienen borrador; el resto, y en Google Play las fichas personalizadas por país, salen de **«+ Añadir idioma»**. Al lado, el conmutador **Publicada | Borrador | Comparar** y las acciones **«Optimizar con IA»** (la principal), **«Adaptar a…»** y **«Guardar»**. «Adaptar a…» lista los idiomas del mercado en otra lengua: elegir uno abre esa ficha y empieza a adaptarla (`?adaptar=1`, que se quita de la URL al arrancar para que recargar no repita la llamada). Sin `ANTHROPIC_API_KEY` solo queda «Guardar».
+- **Editor (60 %).** Campos grandes que crecen con el texto: el título a 20 px y la descripción a toda altura. Cada campo tiene un contador con barra, ámbar desde el 90 % del límite y rojo al pasarse (App Store: nombre 30, subtítulo 30, campo de keywords 100; Google Play: título 30, descripción corta 80, descripción 4000). Las keywords cubiertas salen subrayadas en azul suave y los avisos de normas, en ondulado rojo sobre las palabras exactas, como un corrector. Los avisos de cada campo también se listan debajo, en texto.
+- **Panel (40 %)**, con pestañas:
+  - **Vista previa**: la ficha como se ve en el móvil. En Google Play, icono, título, desarrollador, «Instalar», las 3 primeras capturas y la descripción corta en «Información de la app»; en el App Store, nombre y subtítulo junto al icono y «Obtener». Las capturas son las publicadas (`meta.screenshots`) o, si el producto tiene un diseño en **Creativos**, sus 3 primeras pantallas dibujadas con el mismo motor del estudio. El texto es el del editor y cambia mientras escribes.
+  - **Cobertura**: las keywords agrupadas en «En título», «En descripción corta», «En descripción» (o los campos del App Store), «Solo palabras sueltas» y «Falta», con la cobertura ponderada. Al pulsar una se resalta en el texto (la frase o, si está suelta, cada palabra) y el editor va al campo.
+  - **Normas**: los avisos de límites y normas, con su enlace oficial.
+  - **Notas de la versión**: el generador de siempre.
+- **Publicada** muestra la ficha leída de la tienda (sustituye al antiguo bloque «Ficha publicada»). **Comparar** muestra, campo a campo, la publicada frente al borrador como diff por palabras.
+- En móvil las zonas se apilan: barra, editor y panel debajo.
+
+**Propuesta de la IA como diff.** La propuesta de «Optimizar» o «Adaptar» sale encima del editor, campo a campo, como cambios sobre el texto actual: lo añadido en verde y lo quitado tachado en rojo (`<ins>`/`<del>`). Cada campo tiene «Aceptar campo» y «Descartar»; abajo, «Aceptar todo» (secundario) y «Descartar». Dentro del bloque van la cobertura ponderada antes y después, **Gana / Pierde / Cambia de campo**, «Construida alrededor de», los avisos de la IA (por ejemplo, palabras sin traducir al adaptar) y los avisos de normas si lo aceptas todo. El aviso en rojo del candado de calidad se mantiene.
+
+**Bajo el capó.**
+- `lib/word-diff.ts`: `wordDiff(antes, después)`, un diff LCS por palabras que conserva espacios y saltos de línea (palabras, signos y espacios son unidades; se recortan primero el principio y el final comunes). Une el espacio suelto entre dos cambios y pone lo quitado antes que lo añadido. Una descripción de 4000 caracteres tarda milisegundos.
+- `phraseRanges(texto, frase)` (en `lib/text.ts`, reexportada desde `lib/metadata-check.ts`): las posiciones `[inicio, fin)` de cada aparición en el **texto original**, con la misma comparación que la cobertura (sin acentos ni mayúsculas, palabra a palabra). Usa `foldWithMap`, que ahora vive en `lib/text.ts`, así que los acentos descompuestos (NFD) quedan dentro del subrayado.
+- Los avisos (`Issue`) llevan `field` y `ranges`. Las reglas de texto de `lib/policy-check.ts` (promoción, emojis, mayúsculas, símbolos, llamadas a la acción, otras marcas, salud, precios, campo de keywords) marcan las palabras exactas; la densidad marca cada repetición de la frase y el relleno sin repeticiones, el párrafo o la ventana de 300 caracteres peor. Los límites de longitud marcan lo que sobra. Los avisos de todo el campo (declaración de salud, aviso médico) no tienen posiciones.
+- El subrayado es una capa espejo detrás de un `<textarea>` transparente, con el mismo texto y tipografía (`components/highlight-textarea.tsx`); el espejo también da la altura, así que no hay scroll que sincronizar.
+- `/dev/ui` incluye una demo de la propuesta con datos fijos, que la prueba e2e usa porque no tiene clave de IA.
 
 ### Fichas por idioma y país
 
 Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (migración `0015_listing_drafts`): `locale` (BCP 47: `es-ES`, `en-US`, `zh-Hans`…), `country` y el texto. `country` vale `""` para la ficha principal del idioma y un código de país (`mx`) para una **ficha personalizada por país** de Google Play. Se eligió `""` y no `NULL` porque en Postgres dos `NULL` nunca chocan en un índice único: con `""` basta el índice `(app_id, locale, country)` y el guardado es un upsert.
 
-- **Selector de idioma** encima del editor (`?locale=en-US&country=mx` en la URL). Ofrece la ficha principal (el `locale` del país de la app en `lib/countries.ts`), en el App Store los otros idiomas que Apple indexa en ese país (`extraLocales`), los borradores guardados y el resto de idiomas. En Google Play, además, «Ficha personalizada por país».
+- **Selector de idioma** en la barra superior (`?locale=en-US&country=mx` en la URL). Ofrece la ficha principal (el `locale` del país de la app en `lib/countries.ts`), en el App Store los otros idiomas que Apple indexa en ese país (`extraLocales`) y los borradores guardados. El resto de idiomas y, en Google Play, la «Ficha personalizada por país» están en «+ Añadir idioma».
 - `extraLocales` sale de la tabla [App Store localizations](https://developer.apple.com/help/app-store-connect/reference/app-store-localizations) de Apple, leída el **30 oct 2026**: por ejemplo, en Estados Unidos también cuentan el español (México), el chino, el francés, el coreano, el portugués (Brasil), el ruso, el árabe y el vietnamita; en España, el catalán y el inglés (Reino Unido). Apple la cambia de vez en cuando: verifícala antes de fiarte. De la India solo se guarda el hindi de sus 11 idiomas extra.
 - **Antigüedad del borrador**: «Borrador del 27 oct · la ficha publicada cambió el 29 oct…» en amarillo cuando la tienda actualizó la app (`meta.updatedAt`) después de guardar el borrador; si la tienda no da fecha, solo dice cuándo se leyó la ficha (`metaFetchedAt`).
 - **Adaptar a otro idioma** con IA (`localizeListing`, prompt `loc-4` en `lib/localize.ts`): parte de la ficha principal (borrador o publicada) y usa el autocompletado de la tienda y los títulos del TOP en el país de destino (`lib/locale-market.ts`: 1 lectura de la ficha, hasta 4 autocompletados y 2 búsquedas, con caché de 6 horas por servidor), más la ficha de producto. No es una traducción literal.
@@ -159,7 +179,7 @@ Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (mi
   - Todos los campos tienen que estar en el idioma de destino. `lib/language-detect.ts` lo comprueba con las palabras vacías de cada idioma. Hay dos fallos que bloquean: un campo en otro idioma y un campo copiado sin traducir. En ese caso se reintenta una vez; si vuelve a fallar, sale un error en lugar de la propuesta.
   - Las palabras sueltas de la ficha original que se quedan sin traducir, o las keywords copiadas, no bloquean: se piden corregir en el reintento y, si siguen, salen como aviso en la propuesta. No cuentan como palabras sin traducir los nombres propios (Google Fit, iPhone), el nombre de la app aunque no esté declarado como marca (si lo parece: palabras en mayúscula que no son corrientes, como «Pill Buddy»; un título descriptivo como «Recordatorio De Medicamentos» no cuenta), ni las palabras que usa el mercado de destino. Las palabras que se escriben igual en los dos idiomas («diabetes», «control») pueden salir como aviso: revísalo.
   - Si no sigues la app en ese país, el editor avisa antes de adaptar y ofrece «Seguir también en <país>».
-  - La propuesta sale campo a campo como la del optimizador, pasa por el comprobador de normas (con un reintento si rompe un límite, la marca declarada o una norma con nivel de error) y no se guarda hasta que pulsas «Guardar borrador».
+  - La propuesta sale como diff campo a campo, igual que la del optimizador, pasa por el comprobador de normas (con un reintento si rompe un límite, la marca declarada o una norma con nivel de error) y no se guarda hasta que pulsas «Guardar».
 - **Idioma sin borrador**: si un idioma no tiene borrador (también después de «Borrar borrador»), el editor parte de la ficha publicada solo cuando es el mismo idioma. Si no, los campos quedan vacíos con el aviso «Aún no hay ficha en <idioma>: usa «Adaptar a <locale>»». Nunca se precarga texto de otro idioma.
 - Tus keywords son las del país de la app: en un borrador de otro idioma el editor no las mide y lo dice. Para medir otro idioma, añade ese país en **Ajustes de la app › Mercados**.
 - **Cobertura por idioma**: cuando hay más de una ficha, una tabla con tus 25 keywords relevantes de más oportunidad × cada ficha guardada, con la cobertura ponderada de cada una y el campo que cubre cada keyword.
@@ -168,7 +188,7 @@ Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (mi
 
 ### Notas de la versión
 
-La tarjeta **Notas de la versión** del editor escribe el texto de «Novedades de esta versión» en el idioma abierto (`writeReleaseNotes`, prompt `rn-1` en `lib/release-notes.ts`).
+La pestaña **Notas de la versión** del panel de la ficha escribe el texto de «Novedades de esta versión» en el idioma abierto (`writeReleaseNotes`, prompt `rn-1` en `lib/release-notes.ts`).
 
 - Parte de las funciones **Próxima versión** de la ficha de producto, las notas de la última versión declarada y el CHANGELOG que pegues (hasta 10.000 caracteres). Usa el tono de la marca y, solo si encajan con naturalidad, tus 10 keywords relevantes de más oportunidad (si el idioma es el de tus keywords).
 - Límites: Google Play, **500** caracteres por idioma; App Store, **4000**. Si la IA se pasa, el texto se corta en la última línea completa, se avisa y se pide una segunda versión más corta.
@@ -184,13 +204,13 @@ Una propuesta de la IA no puede salir como recomendada si cubre peor tus keyword
 - El editor, el optimizador y el aviso al guardar usan la misma función, así que ven la misma cifra.
 - **Optimizar con IA** envía al modelo todas las keywords relevantes (hasta 150, las mejores primero), con dónde las cubre hoy la ficha y una lista «no pierdas estas» con las 20 cubiertas de más oportunidad. Pide repetir cada frase 2 o 3 veces en la descripción, el mismo umbral que el comprobador de densidad, y no cerrar la descripción con un párrafo que solo resume keywords. Solo conserva al principio del título la **marca declarada** en la ficha de producto; sin marca declarada, el título se puede reescribir entero. Prompt `lst-4`.
 - Si la primera propuesta baja la puntuación, pierde una keyword con oportunidad 40 o más, rompe una norma con nivel de error, se pasa de un límite o quita la marca del título, se pide **una segunda** con la lista concreta de lo que perdió y de las normas rotas. Se queda la mejor de las dos (primero la que respeta los límites, luego la que tiene menos errores de normas y luego la de más puntuación).
-- Si aun así es peor, sale con un aviso en rojo y «Aplicar todo» pasa a botón secundario: puedes aplicar campo a campo lo que te convenza.
+- Si aun así es peor, sale con un aviso en rojo: puedes aceptar campo a campo lo que te convenza.
 - La propuesta enseña la puntuación antes y después, las keywords que **gana**, **pierde** y las que **cambian de campo** (ordenadas por oportunidad) y sus propios avisos de normas, antes de aplicarla.
 - Al guardar un borrador que cubre peor que el anterior (o que la ficha publicada si no había borrador), se guarda igual pero aparece un aviso con lo que deja de cubrir.
 
 ### Comprobador de normas
 
-`lib/policy-check.ts` revisa la ficha contra las normas de Google Play y App Store. Cada regla tiene id, tienda, campo, nivel (**error**: la norma lo prohíbe; **aviso**: probable problema de revisión o de posicionamiento; **info**: conviene saberlo), mensaje en español, enlace a la norma oficial y fecha de revisión. Los avisos salen en el panel **Avisos** del editor y en el de la propuesta, y los errores se envían al modelo en el reintento.
+`lib/policy-check.ts` revisa la ficha contra las normas de Google Play y App Store. Cada regla tiene id, tienda, campo, nivel (**error**: la norma lo prohíbe; **aviso**: probable problema de revisión o de posicionamiento; **info**: conviene saberlo), mensaje en español, enlace a la norma oficial y fecha de revisión. Los avisos salen en la pestaña **Normas** de la ficha, subrayados en ondulado sobre las palabras exactas (`Issue.field` y `Issue.ranges`) y en el bloque de la propuesta, y los errores se envían al modelo en el reintento.
 
 Fuentes leídas el **30 oct 2026** (descargadas y leídas, no de memoria):
 [Google Play, política de metadatos](https://support.google.com/googleplay/android-developer/answer/9898842),
@@ -237,7 +257,7 @@ La IA evita las marcas de otras apps en la ficha y en las ideas. El detector (`c
 
 Los nombres de desarrollador van en un grupo aparte, «Desarrolladores», plegado. La IA y el comprobador de normas siguen evitando las dos listas.
 
-**Ajustes de la app › Marcas** muestra la lista **Marcas detectadas** (con las keywords del mercado en el que estás) con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo. El editor de la ficha solo dice cuántas hay y avisa, entre los avisos de normas, si una aparece en tu texto.
+**Ajustes de la app › Marcas** muestra la lista **Marcas detectadas** (con las keywords del mercado en el que estás) con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo. La ficha de la tienda no las lista: solo avisa, entre los avisos de normas y subrayada en el texto, si una aparece en tu texto.
 
 ## Ficha de producto
 
@@ -246,7 +266,7 @@ La ficha publicada en la tienda siempre va por detrás del producto: si la IA so
 - Resumen: **marca** (opcional), qué es, para quién, diferenciales, lo que la ficha nunca debe decir (por ejemplo, «no hacer afirmaciones médicas»), tono e idiomas.
 - La **marca** es lo único que el optimizador y «Adaptar» conservan sin traducir al principio del título. Se propone a partir del título publicado, pero solo se guarda si la confirmas. Muchos títulos de Google Play son solo keywords: en ese caso déjala vacía. Migración `0018_product_brand`.
 - Funciones con estado: **publicada**, **próxima versión**, **planeada** o **retirada**, la versión en que llegó y si se puede anunciar. Las planeadas y las retiradas nunca se describen como disponibles: llegan a la IA solo en una línea «no las menciones», para que las quite si la ficha actual aún las nombra. Las que no se anuncian no llegan nunca.
-- En el editor de ficha eliges «Ficha para la versión publicada» (solo funciones publicadas) o «Ficha para la próxima versión» (también las de la próxima). Ideas y Creativos usan la próxima versión; las reseñas, la publicada. Al analizar un competidor también se pasan, marcadas, las funciones de la próxima versión, para detectar qué quejas resolverá (prompt `rv-6`).
+- En la ficha de la tienda, en «Para la IA», eliges «Versión publicada» (solo funciones publicadas) o «Próxima versión» (también las de la próxima). Ideas y Creativos usan la próxima versión; las reseñas, la publicada. Al analizar un competidor también se pasan, marcadas, las funciones de la próxima versión, para detectar qué quejas resolverá (prompt `rv-6`).
 - **Importar desde CHANGELOG**: pegas el texto, Claude propone las funciones con su estado y las versiones, y tú marcas qué se guarda. Nada se guarda sin tu confirmación.
 - Sin ficha de producto todo funciona como antes (la IA solo usa la ficha publicada) y el editor lo avisa.
 - La lógica está en `lib/product-facts.ts` (`factsForPrompt`); al cambiar los prompts se subieron sus versiones (`lst-2`, `kw-2`, `crt-2`, `rv-2`).
@@ -267,7 +287,7 @@ La clave solo se usa en el servidor: Rankeo firma con ella un JWT (RS256, con `n
 
 ### Publicar el borrador
 
-En el editor de ficha, **Publicar en Google Play** (botón secundario) abre una vista previa con lo que hay **ahora mismo** en la consola (leído en una edición temporal que se borra) frente al **borrador guardado**, campo a campo: título, descripción corta y descripción. Solo se publica lo guardado, no lo que estés escribiendo.
+En la ficha de la tienda, **Publicar en Google Play** (botón secundario) abre una vista previa con lo que hay **ahora mismo** en la consola (leído en una edición temporal que se borra) frente al **borrador guardado**, campo a campo: título, descripción corta y descripción. Solo se publica lo guardado, no lo que estés escribiendo.
 
 - Al confirmar: `edits.insert` → `edits.listings.patch` → `edits.validate` → `edits.commit`. Si un paso falla, se borra la edición y no queda nada a medias. Se usa `patch` y no `update` para no borrar el vídeo promocional, que Rankeo no edita; si ese idioma aún no tiene ficha, se crea con `update` (PUT), que es el método que la crea. Si la consola ya tiene ese texto, no se envía nada.
 - Si Google acepta la publicación pero no se puede guardar el historial, se muestra como publicada y se avisa de que falta el registro.
@@ -530,6 +550,7 @@ Las páginas globales antiguas también responden con un **308**, conservando la
 - **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Falla si el documento hace scroll horizontal a 390 o 1440 px, salvo en Creativos y su vídeo (fase 32), que solo se informan. El desbordamiento de `<main>` se mide y se deja en `test-results/overflow.md`.
 - **`e2e/navigation.spec.ts`**: la navegación de la fase 27. Redirecciones 308 de las páginas globales, sin pestañas horizontales, «Dejar de seguir» solo en la zona de peligro (abre el diálogo, nunca lo envía), cambio de mercado con la misma subpágina, ⌘K y la barra inferior del móvil.
 - **`e2e/axe.spec.ts`**: `/dev/ui` en los dos temas debe pasar WCAG 2.1 AA. De las pantallas actuales solo se informa en `test-results/axe-routes.json`.
+- **`e2e/ficha.spec.ts`**: la ficha de la tienda de «recordatorio» en España. La vista previa enseña icono, título, descripción corta y 3 capturas; pulsar una keyword de Cobertura la resalta; Publicada y Comparar; la propuesta de la IA se acepta campo a campo (con la demo de `/dev/ui`); sin scroll horizontal a 390 y 1440 px, y sin fallos graves de axe en los dos temas. No guarda nada.
 
 ## Comandos
 

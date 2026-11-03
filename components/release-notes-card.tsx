@@ -22,6 +22,8 @@ type Props = {
   latestVersion: string | null;
   /** Language and category for the checks, and the competitor brands. */
   policy: { lang: string; category: string | null; brands: string[] };
+  /** Inside another panel (the «Notas de la versión» tab of the listing editor): no card of its own and no title. */
+  bare?: boolean;
 };
 
 const TONE: Record<Issue["level"], string> = {
@@ -30,8 +32,17 @@ const TONE: Record<Issue["level"], string> = {
   info: "bg-surface-muted text-ink-soft",
 };
 
+function Frame({ bare, children }: { bare: boolean; children: React.ReactNode }) {
+  if (bare) return <div>{children}</div>;
+  return (
+    <Card aria-label="Notas de la versión" className="px-5 py-4">
+      {children}
+    </Card>
+  );
+}
+
 /** «Notas de la versión»: Claude writes the «What's new» text; the user edits and copies it. Nothing is stored. */
-export function ReleaseNotesCard({ appId, productHref, store, target, targetName, aiEnabled, nextCount, latestVersion, policy }: Props) {
+export function ReleaseNotesCard({ appId, productHref, store, target, targetName, aiEnabled, nextCount, latestVersion, policy, bare = false }: Props) {
   const [state, action, pending] = useActionState<ReleaseNotesState, FormData>(generateReleaseNotes, null);
   // The generated text, editable. Reset when a new result arrives.
   const [edited, setEdited] = useState<{ from?: ReleaseNotesState; text: string }>({ text: "" });
@@ -54,11 +65,11 @@ export function ReleaseNotesCard({ appId, productHref, store, target, targetName
   };
 
   return (
-    <Card aria-label="Notas de la versión" className="px-5 py-4">
-      <h2 className="text-[15px] font-semibold">Notas de la versión</h2>
+    <Frame bare={bare}>
+      {!bare && <h2 className="text-[15px] font-semibold">Notas de la versión</h2>}
       <p className="mt-1 text-[13px] text-muted">
         El texto de «Novedades de esta versión» en {targetName}, a partir de las {nextCount} funciones «Próxima versión» de tu{" "}
-        <Link href={productHref} className="text-link hover:underline">
+        <Link href={productHref} className="text-link underline">
           ficha de producto
         </Link>
         {latestVersion ? `, las notas de la versión ${latestVersion}` : ""} y el CHANGELOG que pegues. Límite de{" "}
@@ -145,6 +156,6 @@ export function ReleaseNotesCard({ appId, productHref, store, target, targetName
           </div>
         </div>
       )}
-    </Card>
+    </Frame>
   );
 }

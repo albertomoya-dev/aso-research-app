@@ -1,7 +1,7 @@
 import type { FieldKey, Issue, IssueLevel, MetadataDraft } from "./metadata-check";
 import { stopwordsFor } from "./stopwords";
 import type { Store } from "./stores/types";
-import { fold } from "./text";
+import { fold, foldWithMap, phraseRanges, type Range } from "./text";
 
 /*
  * Store policy checker. Each rule keeps the link to the official text and the date it was checked.
@@ -72,6 +72,12 @@ export type PolicyRule = {
   test: (text: string, ctx: RuleContext) => string[];
   /** Spanish text for the «Avisos» panel. */
   message: (matches: string[], fieldLabel: string) => string;
+  /**
+   * Where the matches are in the text, for the editor's underline. Defaults to `locateTerms` (each match
+   * looked up as a whole term, folded); rules whose matches are not quotes of the text bring their own,
+   * or `() => []` when the issue is about the whole field.
+   */
+  locate?: (text: string, matches: string[], ctx: RuleContext) => Range[];
   link: string;
   reviewedAt: string;
 };
@@ -111,7 +117,43 @@ function matcher(terms: string[]): (text: string) => string[] {
   return (text) => unique([...fold(text).matchAll(re)].map((m) => m[0]));
 }
 
-const NUMBER_ONE = /(?<![\p{L}\p{N}])(?:#\s?1|n\s?[º°]\s?1|n\.\s?º\s?1|no\.\s?1|nr\.?\s?1|numero\s(?:1|uno|um|un)|number\s(?:1|one)|nummer\s(?:1|eins)|top\s?1)(?!\p{N})/gu;
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+/** Separators between the words of a match: any run of spaces or punctuation («descarga ya», «descarga, ya»). */
+const GAP = "[^\\p{L}\\p{N}]+";
+
+/**
+ * Ranges of the matches in the original text, looked up on the folded text as whole terms, with any run
+ * of spaces or punctuation between their words. A match clipped with «…» (`clip`) is looked up by its
+ * beginning. Matches that are not quotes of the text («3 veces») simply give no range.
+ */
+export function locateTerms(text: string, matches: string[]): Range[] {
+  const { folded, at } = foldWithMap(text);
+  const out: Range[] = [];
+  for (const m of unique(matches)) {
+    const clipped = m.endsWith("…");
+    const needle = fold(clipped ? m.slice(0, -1) : m).trim();
+    if (!needle) continue;
+    const body = needle.split(/\s+/).map(escape).join(GAP);
+    const before = WORD_CHAR.test(needle[0]) ? "(?<![\\p{L}\\p{N}])" : "";
+    const after = !clipped && WORD_CHAR.test(needle.at(-1) ?? "") ? "(?![\\p{L}\\p{N}])" : "";
+    for (const hit of folded.matchAll(new RegExp(`${before}${body}${after}`, "gu"))) out.push([at[hit.index], at[hit.index + hit[0].length]]);
+  }
+  return out;
+}
+
+/** Sorted, with overlapping or touching ranges joined. */
+export function mergeRanges(ranges: Range[]): Range[] {
+  const sorted = [...ranges].filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+  const out: Range[] = [];
+  for (const r of sorted) {
+    const last = out.at(-1);
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else out.push([r[0], r[1]]);
+  }
+  return out;
+}
+
+const NUMBER_ONE =/(?<![\p{L}\p{N}])(?:#\s?1|n\s?[º°]\s?1|n\.\s?º\s?1|no\.\s?1|nr\.?\s?1|numero\s(?:1|uno|um|un)|number\s(?:1|one)|nummer\s(?:1|eins)|top\s?1)(?!\p{N})/gu;
 const numberOne = (text: string) => unique([...fold(text).matchAll(NUMBER_ONE)].map((m) => m[0]));
 
 type Lang = "es" | "en" | "pt" | "fr" | "de" | "it";
@@ -224,40 +266,33 @@ function sustainedCaps(text: string, ctx: RuleContext): string[] {
   return out;
 }
 
+/** The runs found by `sustainedCaps`, in the original text and with its case (the lower-case words elsewhere are fine). */
+function locateCaps(text: string, runs: string[]): Range[] {
+  return unique(runs).flatMap((run) => {
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${run.split(" ").map(escape).join(GAP)}(?![\\p{L}\\p{N}])`, "gu");
+    return [...text.matchAll(re)].map((m): Range => [m.index, m.index + m[0].length]);
+  });
+}
+
 /** Keyword phrases repeated too often in the description (Google Play reads it as stuffing). */
-function densityMatches(text: string, ctx: RuleContext): string[] {
+function denseKeywords(text: string, ctx: RuleContext): { keyword: string; count: number; per1000: number }[] {
   const chars = Math.max(charLength(text), 1000);
   return unique(ctx.keywords ?? [])
-    .map((k) => {
-      const count = countPhrase(text, k);
+    .map((keyword) => {
+      const count = countPhrase(text, keyword);
       const per1000 = (count * 1000) / chars;
-      const single = words(k).length === 1;
+      const single = words(keyword).length === 1;
       const over = single ? count > 6 && per1000 > WORD_DENSITY_PER_1000 : count > MAX_DESCRIPTION_REPEATS;
-      return over ? `${k} (${count} veces, ${per1000.toLocaleString("es-ES", { maximumFractionDigits: 1 })} por cada 1000 caracteres)` : null;
+      return over ? { keyword, count, per1000 } : null;
     })
-    .filter((m): m is string => m != null);
+    .filter((d) => d != null);
 }
+const densityMatches = (text: string, ctx: RuleContext) =>
+  denseKeywords(text, ctx).map(
+    (d) => `${d.keyword} (${d.count} veces, ${d.per1000.toLocaleString("es-ES", { maximumFractionDigits: 1 })} por cada 1000 caracteres)`,
+  );
 
 type Token = { word: string; start: number; end: number; content: boolean; keyword: boolean };
-
-/**
- * `fold(text)` with, for each of its positions (and one past the end), the position in `text` it comes
- * from. fold() changes the length of decomposed letters («e» + combining accent) and of some lower-case
- * forms, so positions in the folded text are only valid there; this maps them back to quote the original.
- */
-function foldWithMap(text: string): { folded: string; at: number[] } {
-  let folded = "";
-  const at: number[] = [];
-  let i = 0;
-  for (const ch of text) {
-    const f = fold(ch);
-    folded += f;
-    for (let k = 0; k < f.length; k++) at.push(i);
-    i += ch.length;
-  }
-  at.push(text.length);
-  return { folded, at };
-}
 
 /** Words of a folded text with their position in it, whether they are meaningful (not a stopword) and whether a tracked phrase covers them. */
 function keywordTokens(folded: string, ctx: RuleContext): Token[] {
@@ -291,13 +326,13 @@ const percent = (x: number) => `${Math.round(x * 100)} %`;
  * Paragraphs (or, failing that, ~300-character stretches) where tracked keyword phrases make up more than
  * MAX_KEYWORD_SHARE of the meaningful words, even if no phrase repeats: many variants packed together.
  */
-function keywordShare(text: string, ctx: RuleContext): string[] {
+function keywordShare(text: string, ctx: RuleContext): { label: string; range: Range }[] {
   if (!ctx.keywords?.length) return [];
   // Paragraphs, tokens and windows are all cut on the folded text; `at` maps back to quote the original.
   const { folded, at } = foldWithMap(text);
   const original = (from: number, to: number) => text.slice(at[from], at[to]);
   const tokens = keywordTokens(folded, ctx);
-  const out: string[] = [];
+  const out: { label: string; range: Range }[] = [];
   const flagged: [number, number][] = [];
   let offset = 0;
   for (const para of folded.split(/\n\s*\n/)) {
@@ -306,7 +341,11 @@ function keywordShare(text: string, ctx: RuleContext): string[] {
     const inside = tokens.filter((t) => t.start >= start && t.end <= start + para.length);
     const s = share(inside);
     if (s != null && s > MAX_KEYWORD_SHARE) {
-      out.push(`«${clip(original(start, start + para.length).trim())}» (${percent(s)} de las palabras son keywords)`);
+      // The range runs from the paragraph's first word to its last.
+      out.push({
+        label: `«${clip(original(start, start + para.length).trim())}» (${percent(s)} de las palabras son keywords)`,
+        range: [at[inside[0].start], at[inside[inside.length - 1].end]],
+      });
       flagged.push([start, start + para.length]);
     }
   }
@@ -319,7 +358,10 @@ function keywordShare(text: string, ctx: RuleContext): string[] {
     if (s != null && s > MAX_KEYWORD_SHARE && (!worst || s > worst.s)) worst = { s, from: tokens[i].start, to: tokens[j].end };
   }
   if (worst && !flagged.some(([a, b]) => worst.from >= a && worst.to <= b)) {
-    out.push(`«${clip(original(worst.from, worst.to))}» (${percent(worst.s)} de las palabras son keywords)`);
+    out.push({
+      label: `«${clip(original(worst.from, worst.to))}» (${percent(worst.s)} de las palabras son keywords)`,
+      range: [at[worst.from], at[worst.to]],
+    });
   }
   return out;
 }
@@ -390,6 +432,11 @@ function brandsIn(text: string, ctx: RuleContext, wholeWordsOnly = false): strin
       return words(b).every((w) => have.has(w));
     }),
   );
+}
+
+/** Where the brands are: the whole name, or each of its words when they only count as whole words (App Store keyword field). */
+function locateBrands(text: string, brands: string[], wholeWordsOnly = false): Range[] {
+  return brands.flatMap((b) => (wholeWordsOnly ? words(b).flatMap((w) => phraseRanges(text, w)) : phraseRanges(text, b)));
 }
 
 // ---------- Health ----------
@@ -485,6 +532,7 @@ export const POLICY_RULES: PolicyRule[] = [
     level: "warn",
     test: (t, ctx) => sustainedCaps(t, ctx),
     message: (m, f) => `${f}: evita las MAYÚSCULAS sostenidas si no son parte de la marca: ${quote(m)}.`,
+    locate: (t, m) => locateCaps(t, m),
     link: L.playMetadata,
     reviewedAt: reviewed,
   },
@@ -538,6 +586,8 @@ export const POLICY_RULES: PolicyRule[] = [
     test: (t, ctx) => densityMatches(t, ctx),
     message: (m, f) =>
       `${f}: densidad alta de keywords (Google puede verlo como relleno; más de ${MAX_DESCRIPTION_REPEATS} veces por frase): ${m.join("; ")}.`,
+    // Every repetition of the phrases over the limit.
+    locate: (t, _m, ctx) => denseKeywords(t, ctx).flatMap((d) => phraseRanges(t, d.keyword)),
     link: L.playMetadata,
     reviewedAt: reviewed,
   },
@@ -546,7 +596,9 @@ export const POLICY_RULES: PolicyRule[] = [
     store: "android",
     field: "description",
     level: "warn",
-    test: (t, ctx) => keywordShare(t, ctx),
+    test: (t, ctx) => keywordShare(t, ctx).map((s) => s.label),
+    // The stuffed paragraph, or the worst window of KEYWORD_WINDOW_CHARS characters.
+    locate: (t, _m, ctx) => keywordShare(t, ctx).map((s) => s.range),
     message: (m, f) =>
       `${f}: demasiadas keywords juntas (relleno de keywords, aunque no se repitan; más del ${percent(MAX_KEYWORD_SHARE)} de las palabras). Google Play lo trata como spam de metadatos: repártelas en frases normales. ${m.join("; ")}.`,
     link: L.playMetadata,
@@ -579,6 +631,7 @@ export const POLICY_RULES: PolicyRule[] = [
     level: "warn",
     test: (t, ctx) => brandsIn(t, ctx),
     message: (m, f) => `${f}: menciona otras apps o marcas (${quote(m)}). Quítalas salvo que tengas permiso.`,
+    locate: (t, m) => locateBrands(t, m),
     link: L.playMetadata,
     reviewedAt: reviewed,
   },
@@ -590,6 +643,7 @@ export const POLICY_RULES: PolicyRule[] = [
     test: (_t, ctx) => (isHealthCategory(ctx.category) ? ["salud"] : []),
     message: () =>
       "App de salud: Google exige rellenar la declaración de apps de salud en Play Console (Supervisar y mejorar › Política › Contenido de la app).",
+    locate: () => [],
     link: L.playHealth,
     reviewedAt: reviewed,
   },
@@ -611,6 +665,7 @@ export const POLICY_RULES: PolicyRule[] = [
     test: (t, ctx) => (isHealthCategory(ctx.category) && t.trim() && !hasDisclaimer(t) ? ["aviso"] : []),
     message: (_m, f) =>
       `${f}: añade un aviso de que la app no es un dispositivo médico y no sustituye el consejo médico, y recuerda consultar a un profesional sanitario.`,
+    locate: () => [],
     link: L.playHealth,
     reviewedAt: reviewed,
   },
@@ -671,6 +726,7 @@ export const POLICY_RULES: PolicyRule[] = [
     level: "error",
     test: (t, ctx) => brandsIn(t, ctx, true),
     message: (m, f) => `${f}: Apple no permite nombres de otras apps o marcas en las keywords: ${m.join(", ")}.`,
+    locate: (t, m) => locateBrands(t, m, true),
     link: L.appleMetadata,
     reviewedAt: reviewed,
   },
@@ -685,8 +741,18 @@ export function policyCheck(store: Store, draft: MetadataDraft, ctx: PolicyConte
     for (const field of fields) {
       if (!STORE_FIELDS[store].includes(field)) continue;
       const text = draft[field] ?? "";
-      const matches = text.trim() || rule.id === "play.health.declaration" ? rule.test(text, { ...ctx, store, draft, field }) : [];
-      if (matches.length) issues.push({ level: rule.level, text: rule.message(matches, LABELS[field][store]), ruleId: rule.id, link: rule.link });
+      const ruleCtx: RuleContext = { ...ctx, store, draft, field };
+      const matches = text.trim() || rule.id === "play.health.declaration" ? rule.test(text, ruleCtx) : [];
+      if (!matches.length) continue;
+      const ranges = mergeRanges((rule.locate ?? ((t, m) => locateTerms(t, m)))(text, matches, ruleCtx));
+      issues.push({
+        level: rule.level,
+        text: rule.message(matches, LABELS[field][store]),
+        ruleId: rule.id,
+        link: rule.link,
+        field,
+        ...(ranges.length ? { ranges } : {}),
+      });
     }
   }
   return issues;

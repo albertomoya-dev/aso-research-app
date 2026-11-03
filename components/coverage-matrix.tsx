@@ -28,7 +28,7 @@ export function CoverageMatrix({ editorHref, store, matrix, hrefs }: Props) {
       {matrix.rows.length === 0 ? (
         <p className="px-5 py-4 text-sm text-muted">Aún no hay keywords relevantes que medir.</p>
       ) : (
-        <div className="relative overflow-x-auto">
+        <div tabIndex={0} role="region" aria-label="Tabla de cobertura por idioma" className="relative overflow-x-auto focus-visible:outline-2 focus-visible:outline-brand">
           <table className="w-full text-sm" style={{ minWidth: `${240 + matrix.columns.length * 120}px` }}>
             <thead>
               <tr className="border-b border-line text-left text-xs font-semibold tracking-wide text-muted uppercase">
