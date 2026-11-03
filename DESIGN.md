@@ -96,7 +96,7 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 | `StatusDot` | Estado de la salud ASO, siempre con texto |
 | `EmptyState` | Cuando no hay nada: icono, título, una frase y un botón |
 | `Skeleton`, `SkeletonText`, `SkeletonKpi`, `SkeletonTable`, `SkeletonChart` | Carga con la forma del contenido real |
-| `DataTable` | Tablas nuevas. Hoy solo la estructura (barra, cabecera fija, filas de 44 px); la fase 29 la completa |
+| `DataTable` (+ `TableSearch`, `FacetFilter`, `ViewOptions`, `useTableView`, `SelectionBar`) | Toda tabla de datos: buscador y facetas en la barra, «Vistas» (columnas y densidad, en localStorage), cabecera fija, cifras a la derecha, filas de 44 o 36 px, selección con barra flotante y `card` para el móvil. La lógica de filtros está en `lib/data-table.ts`. Ejemplo: Keywords › Seguimiento |
 
 ### Navegación (`components/nav/`)
 
@@ -115,7 +115,7 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 
 - **Puntos de corte:** móvil por debajo de 640 px (`sm`), tablet de 640 a 1024 y escritorio desde 1024 (`lg`). Por debajo de `sm` la barra lateral pasa a una barra inferior (`MobileNav`) y las secciones de la app se abren desde la cabecera en una `Sheet`. De `sm` a `lg` la barra lateral muestra solo iconos (los textos quedan para los lectores de pantalla con `sm:max-lg:sr-only`).
 - **Objetivos táctiles de 44 px** en móvil (`min-h-11`). Se compactan a 32 px desde `md`.
-- **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (fase 29). `npm run test:e2e` lo comprueba en todas las rutas a 390 y 1440 px.
+- **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (`card` de `DataTable`). `npm run test:e2e` lo comprueba en todas las rutas a 390 y 1440 px.
 - **Contraste AA** en los dos temas. `/dev/ui` se comprueba con axe en `npm run test:e2e`.
 - Foco visible siempre (`outline` de 2 px en `brand`).
 

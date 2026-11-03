@@ -158,7 +158,14 @@ export async function getKeywordDetail(
   const historySince = shiftDate(since, -ANNOTATION_WINDOW);
   const [keyword, snapshots, annotations] = await Promise.all([
     db
-      .select({ id: schema.keywords.id, term: schema.keywords.term, relevance: schema.appKeywords.relevance })
+      .select({
+        id: schema.keywords.id,
+        term: schema.keywords.term,
+        relevance: schema.appKeywords.relevance,
+        relevanceSource: schema.appKeywords.relevanceSource,
+        intent: schema.appKeywords.intent,
+        source: schema.appKeywords.source,
+      })
       .from(schema.appKeywords)
       .innerJoin(schema.keywords, eq(schema.keywords.id, schema.appKeywords.keywordId))
       .where(and(eq(schema.appKeywords.appId, appId), eq(schema.appKeywords.keywordId, keywordId)))
@@ -169,6 +176,7 @@ export async function getKeywordDetail(
         position: schema.rankSnapshots.position,
         depth: schema.rankSnapshots.depth,
         top5: schema.rankSnapshots.top5,
+        top10: schema.rankSnapshots.top10,
       })
       .from(schema.rankSnapshots)
       .where(

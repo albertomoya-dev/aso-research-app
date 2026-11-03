@@ -1,152 +1,118 @@
 "use client";
 
-import { createContext, use, useEffect, useState, useTransition } from "react";
+import { Download, Sparkles, Trash2 } from "lucide-react";
+import { useTransition } from "react";
+import { toast } from "sonner";
 import { removeKeywords, restoreKeywords, type RemovedKeyword } from "@/app/actions";
-import { buttonSecondary } from "./ui";
+import { recalculateSelected, setKeywordsRelevance } from "@/app/keyword-actions";
+import { Button } from "@/components/ui/button";
+import { SelectionBar } from "@/components/ui/data-table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { downloadCsv } from "@/lib/download";
+import { keywordsCsv, type TableRow } from "@/lib/keyword-table";
 
 /** Seconds «Deshacer» stays on screen after removing keywords. */
-const UNDO_SECONDS = 15;
+export const UNDO_SECONDS = 15;
 
-type Selection = {
-  selected: Set<number>;
-  toggle: (id: number) => void;
-  setMany: (ids: number[], on: boolean) => void;
-};
+const LEVELS = [
+  { value: 5, label: "5 · Exacta" },
+  { value: 4, label: "4 · Muy relevante" },
+  { value: 3, label: "3 · Relacionada" },
+  { value: 2, label: "2 · Poco" },
+  { value: 1, label: "1 · Nada" },
+];
 
-const SelectionContext = createContext<Selection | null>(null);
-
-function useSelection(): Selection {
-  const ctx = use(SelectionContext);
-  if (!ctx) throw new Error("KeywordSelection missing");
-  return ctx;
+/** «Quitar» with «Deshacer» in a toast for UNDO_SECONDS: the position history is kept, so nothing is lost. */
+export function useRemoveKeywords(appId: number) {
+  const [pending, startTransition] = useTransition();
+  const remove = (ids: number[], onDone?: () => void) =>
+    startTransition(async () => {
+      const result = await removeKeywords(appId, ids);
+      if (result.error) return void toast.error(result.error);
+      onDone?.();
+      const rows: RemovedKeyword[] = result.removed;
+      toast(rows.length === 1 ? `«${rows[0].term}» quitada` : `${rows.length} keywords quitadas`, {
+        description: "Su histórico de posiciones se conserva.",
+        duration: UNDO_SECONDS * 1000,
+        action: {
+          label: "Deshacer",
+          onClick: async () => {
+            const restored = await restoreKeywords(appId, rows);
+            if (restored.error) toast.error(restored.error);
+            else toast.success(restored.restored === 1 ? "1 keyword recuperada" : `${restored.restored} keywords recuperadas`);
+          },
+        },
+      });
+    });
+  return { remove, pending };
 }
 
 /**
- * Multi-select for the keyword table, which stays a server component: the provider wraps it and
- * only the checkboxes and the action bar are client components.
+ * The floating bar of the keyword table when rows are ticked: «Cambiar relevancia», «Recalcular con IA»,
+ * «Exportar CSV» and «Quitar» (with «Deshacer»). Evolves the old BulkRemoveBar.
  */
-export function KeywordSelection({ children }: { children: React.ReactNode }) {
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const toggle = (id: number) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const setMany = (ids: number[], on: boolean) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (on) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  return <SelectionContext value={{ selected, toggle, setMany }}>{children}</SelectionContext>;
-}
-
-export function RowCheckbox({ id, term }: { id: number; term: string }) {
-  const { selected, toggle } = useSelection();
-  return (
-    <input
-      type="checkbox"
-      aria-label={`Seleccionar ${term}`}
-      checked={selected.has(id)}
-      onChange={() => toggle(id)}
-      className="size-5 accent-[var(--brand)] md:size-4"
-    />
-  );
-}
-
-/** Ticks or unticks every row shown with the current filter. */
-export function SelectAllCheckbox({ ids }: { ids: number[] }) {
-  const { selected, setMany } = useSelection();
-  const all = ids.length > 0 && ids.every((id) => selected.has(id));
-  return (
-    <input
-      type="checkbox"
-      aria-label={all ? "Quitar selección" : "Seleccionar todas las visibles"}
-      checked={all}
-      disabled={ids.length === 0}
-      onChange={() => setMany(ids, !all)}
-      className="size-5 accent-[var(--brand)] md:size-4"
-    />
-  );
-}
-
-/** «Quitar seleccionadas» with confirmation, and «Deshacer» for a few seconds afterwards. */
-export function BulkRemoveBar({ appId, terms }: { appId: number; terms: Record<number, string> }) {
-  const { selected, setMany } = useSelection();
+export function KeywordSelectionBar({
+  appId,
+  rows,
+  aiEnabled,
+  fileName,
+  onClear,
+}: {
+  appId: number;
+  rows: TableRow[];
+  aiEnabled: boolean;
+  fileName: string;
+  onClear: () => void;
+}) {
   const [pending, startTransition] = useTransition();
-  const [undo, setUndo] = useState<{ rows: RemovedKeyword[]; left: number } | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const ids = [...selected].filter((id) => id in terms);
+  const { remove, pending: removing } = useRemoveKeywords(appId);
+  const ids = rows.map((r) => r.id);
+  const busy = pending || removing;
 
-  useEffect(() => {
-    if (!undo) return;
-    const timer = setTimeout(() => setUndo((u) => (u && u.left > 1 ? { ...u, left: u.left - 1 } : null)), 1000);
-    return () => clearTimeout(timer);
-  }, [undo]);
-
-  const remove = () => {
-    const names = ids.slice(0, 5).map((id) => `«${terms[id]}»`).join(", ");
-    const more = ids.length > 5 ? ` y ${ids.length - 5} más` : "";
-    if (!window.confirm(`¿Dejar de seguir ${ids.length === 1 ? "esta keyword" : `estas ${ids.length} keywords`}? ${names}${more}.\n\nPodrás deshacerlo durante ${UNDO_SECONDS} segundos.`)) return;
+  const setRelevance = (value: number) =>
     startTransition(async () => {
-      const result = await removeKeywords(appId, ids);
-      if (result.error) {
-        setMessage(result.error);
-        return;
-      }
-      setMany(ids, false);
-      setMessage(null);
-      setUndo({ rows: result.removed, left: UNDO_SECONDS });
+      const result = await setKeywordsRelevance(appId, ids, value);
+      if (result.error) toast.error(result.error);
+      else toast.success(`Relevancia ${value} en ${result.updated === 1 ? "1 keyword" : `${result.updated} keywords`}`);
     });
-  };
-
-  const restore = () => {
-    if (!undo) return;
-    const rows = undo.rows;
-    setUndo(null);
+  const recalculate = () =>
     startTransition(async () => {
-      const result = await restoreKeywords(appId, rows);
-      setMessage(result.error ?? (result.restored === 1 ? "1 keyword recuperada." : `${result.restored} keywords recuperadas.`));
+      const result = await recalculateSelected(appId, ids);
+      if (result.error) toast.error(result.error);
+      else toast.success(result.asked === 0 ? "Todas las elegidas tienen relevancia tuya: la IA no las cambia." : `${result.rated} de ${result.asked} valoradas con IA`);
     });
-  };
 
-  if (ids.length === 0 && !undo && !message) return null;
   return (
-    <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-muted px-5 py-2.5 text-[13px]" aria-live="polite">
-      {undo ? (
-        <>
-          <span className="text-ink-soft">
-            {undo.rows.length === 1 ? "1 keyword quitada" : `${undo.rows.length} keywords quitadas`}. Su histórico de posiciones se conserva.
-          </span>
-          <button type="button" onClick={restore} disabled={pending} className={buttonSecondary}>
-            Deshacer ({undo.left} s)
-          </button>
-        </>
-      ) : (
-        message && <span className="text-ink-soft">{message}</span>
+    <SelectionBar count={rows.length} onClear={onClear}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" size="sm" disabled={busy}>
+            Cambiar relevancia
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="center" side="top">
+          <DropdownMenuLabel>Tu relevancia (la IA no la cambia)</DropdownMenuLabel>
+          {LEVELS.map((l) => (
+            <DropdownMenuItem key={l.value} onSelect={() => setRelevance(l.value)}>
+              {l.label}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {aiEnabled && (
+        <Button variant="secondary" size="sm" onClick={recalculate} disabled={busy} aria-busy={pending} title="Una petición a Claude por cada 100. No cambia las que has valorado tú.">
+          <Sparkles size={16} aria-hidden="true" />
+          Recalcular con IA
+        </Button>
       )}
-      {ids.length > 0 && (
-        <>
-          <span className="ml-auto text-ink-soft">{ids.length === 1 ? "1 seleccionada" : `${ids.length} seleccionadas`}</span>
-          <button type="button" onClick={() => setMany(ids, false)} className={buttonSecondary}>
-            Quitar selección
-          </button>
-          <button
-            type="button"
-            onClick={remove}
-            disabled={pending}
-            aria-busy={pending}
-            className={`${buttonSecondary} text-danger`}
-          >
-            {pending ? "Quitando…" : "Quitar seleccionadas"}
-          </button>
-        </>
-      )}
-    </div>
+      <Button variant="secondary" size="sm" onClick={() => downloadCsv(fileName, keywordsCsv(rows))}>
+        <Download size={16} aria-hidden="true" />
+        Exportar CSV
+      </Button>
+      <Button variant="secondary" size="sm" className="text-danger" onClick={() => remove(ids, onClear)} disabled={busy} aria-busy={removing}>
+        <Trash2 size={16} aria-hidden="true" />
+        {removing ? "Quitando…" : "Quitar"}
+      </Button>
+    </SelectionBar>
   );
 }

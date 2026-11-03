@@ -19,7 +19,14 @@ describe("computeRank", () => {
   });
 
   it("handles fewer than five results", () => {
-    expect(computeRank([app("mine")], "mine")).toEqual({ position: 1, top5: [app("mine")] });
+    expect(computeRank([app("mine")], "mine")).toEqual({ position: 1, top5: [app("mine")], top10: [app("mine")] });
+  });
+
+  it("keeps the first ten results for the detail panel (rank_snapshots.top10)", () => {
+    const many = Array.from({ length: 14 }, (_, i) => app(`a${i}`));
+    const { top5, top10 } = computeRank(many, "a12");
+    expect(top5).toHaveLength(5);
+    expect(top10.map((t) => t.id)).toEqual(many.slice(0, 10).map((t) => t.id));
   });
 });
 
