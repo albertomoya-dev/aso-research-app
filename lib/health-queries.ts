@@ -18,7 +18,9 @@ import { mainLocale } from "./listing-drafts";
 import { draftFromMeta, weightedCoverage } from "./metadata-check";
 import { policyCheck } from "./policy-check";
 import { hasProductFacts } from "./product-facts";
+import { marketPath, productPath } from "./market-path";
 import { getProductFacts } from "./product-queries";
+import { sharedAppId } from "./products";
 import type { KeywordRow } from "./queries";
 import { today } from "./ranking";
 import { isLikelyIrrelevant, isRelevantKeyword, KEYWORD_BUDGET } from "./relevance";
@@ -26,13 +28,15 @@ import { analyzeSeasonality, canAnnouncePeak } from "./seasonality";
 import type { AppMeta } from "./stores/types";
 import type { TrendPoint } from "./trends";
 
-type HealthApp = { id: number; store: "ios" | "android"; country: string; storeId: string; meta: AppMeta };
+type HealthApp = { id: number; productSlug: string; store: "ios" | "android"; country: string; storeId: string; meta: AppMeta };
 
 /**
  * Only the dates and versions of the saved screenshots, computed in Postgres: the spec carries every
  * uploaded image in base64 and the home page must not download megabytes to count them.
  */
-async function screenshotDates(appId: number) {
+async function screenshotDates(marketId: number) {
+  // Creatives are the app's, not the country's: kept on the primary market.
+  const appId = await sharedAppId(marketId);
   const rows = await getDb().execute<{ uploaded: boolean; captured_at: string | null; app_version: string | null }>(sql`
     select coalesce(s->>'image', '') like 'data:%' as uploaded, s->>'capturedAt' as captured_at, s->>'appVersion' as app_version
     from ${schema.assetDesigns}, jsonb_array_elements(${schema.assetDesigns.spec}->'slides') as s
@@ -55,7 +59,6 @@ function trendPoints(app: HealthApp) {
  * the brand exceptions, never one query per keyword.
  */
 export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<HealthItem[]> {
-  const base = `/apps/${app.id}`;
   const lang = getCountry(app.country).lang;
   const [draftRow, product, slides, trends] = await Promise.all([
     getListingDraft(app.id, mainLocale(app.country), ""),
@@ -89,18 +92,18 @@ export async function loadHealth(app: HealthApp, rows: KeywordRow[]): Promise<He
   });
 
   return [
-    coverageItem({ score: coverage, source, keywords: relevant.length, href: `${base}/metadata` }),
-    irrelevantItem({ irrelevant: rows.filter((r) => isLikelyIrrelevant(r, lang)).length, total: rows.length, budget: KEYWORD_BUDGET, href: `${base}?f=noise` }),
+    coverageItem({ score: coverage, source, keywords: relevant.length, href: marketPath(app, "/ficha") }),
+    irrelevantItem({ irrelevant: rows.filter((r) => isLikelyIrrelevant(r, lang)).length, total: rows.length, budget: KEYWORD_BUDGET, href: marketPath(app, "/keywords?f=noise") }),
     listingAgeItem({
       published: { version: app.meta.version, updatedAt: app.meta.updatedAt },
       latestRelease: latest ? { version: latest.version, date: latest.date } : null,
       nextFeatures,
       hasProduct: hasProductFacts(product.facts, product.features),
-      productHref: `${base}/producto`,
-      editorHref: `${base}/metadata`,
+      productHref: productPath(app.productSlug, "/ajustes/producto"),
+      editorHref: marketPath(app, "/ficha"),
     }),
-    screenshotsItem({ stale, uploaded: uploaded.length, hasDesign: slides.length > 0, href: `${base}/creativos` }),
-    policyItem({ issues, source, href: `${base}/metadata` }),
-    seasonItem({ next: nextSeason(peaks, today()), analysed: analysed.length, href: `${base}/estacionalidad` }),
+    screenshotsItem({ stale, uploaded: uploaded.length, hasDesign: slides.length > 0, href: productPath(app.productSlug, "/creativos") }),
+    policyItem({ issues, source, href: marketPath(app, "/ficha") }),
+    seasonItem({ next: nextSeason(peaks, today()), analysed: analysed.length, href: marketPath(app, "/tendencias") }),
   ];
 }

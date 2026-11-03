@@ -3,11 +3,13 @@ import { getDb, schema } from "@/db";
 import { getCountry } from "./countries";
 import { type ProductFacts, productBrandTerms } from "./product-facts";
 import { type FeatureRow, getProductFacts } from "./product-queries";
+import { sharedAppId } from "./products";
 import type { AppSummary } from "./stores/types";
 import { competitorBrandGroups, topCompetitors } from "./suggestions";
 
-/** Words the user marked as «no es una marca» for this app. */
-export async function getBrandExceptions(appId: number): Promise<string[]> {
+/** Words the user marked as «no es una marca» for this app (any market: the list is the same in every country). */
+export async function getBrandExceptions(marketId: number): Promise<string[]> {
+  const appId = await sharedAppId(marketId);
   const rows = await getDb()
     .select({ word: schema.brandExceptions.word })
     .from(schema.brandExceptions)

@@ -1,10 +1,10 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { trackCompetitors } from "@/lib/competitors";
+import { revalidateMarket } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 const followSchema = z.object({
@@ -25,7 +25,7 @@ export async function followCompetitor(formData: FormData) {
     .returning({ id: schema.competitors.id });
   // First snapshot now, so changes show up from the next daily check.
   if (row) await trackCompetitors({ competitorId: row.id });
-  revalidatePath(`/apps/${data.appId}/competidores`);
+  await revalidateMarket(data.appId, "/competidores");
 }
 
 export async function unfollowCompetitor(formData: FormData) {
@@ -34,11 +34,11 @@ export async function unfollowCompetitor(formData: FormData) {
   await getDb()
     .delete(schema.competitors)
     .where(and(eq(schema.competitors.id, id), eq(schema.competitors.appId, appId)));
-  revalidatePath(`/apps/${appId}/competidores`);
+  await revalidateMarket(appId, "/competidores");
 }
 
 export async function refreshCompetitors(formData: FormData) {
   const appId = idSchema.parse(formData.get("appId"));
   await trackCompetitors({ appId });
-  revalidatePath(`/apps/${appId}/competidores`);
+  await revalidateMarket(appId, "/competidores");
 }

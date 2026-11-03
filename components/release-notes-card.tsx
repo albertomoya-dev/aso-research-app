@@ -11,6 +11,8 @@ import { buttonSecondary, Card, inputClass } from "./ui";
 
 type Props = {
   appId: number;
+  /** The product sheet (`/a/[app]/ajustes/producto`). */
+  productHref: string;
   store: Store;
   target: DraftTarget;
   targetName: string;
@@ -29,7 +31,7 @@ const TONE: Record<Issue["level"], string> = {
 };
 
 /** «Notas de la versión»: Claude writes the «What's new» text; the user edits and copies it. Nothing is stored. */
-export function ReleaseNotesCard({ appId, store, target, targetName, aiEnabled, nextCount, latestVersion, policy }: Props) {
+export function ReleaseNotesCard({ appId, productHref, store, target, targetName, aiEnabled, nextCount, latestVersion, policy }: Props) {
   const [state, action, pending] = useActionState<ReleaseNotesState, FormData>(generateReleaseNotes, null);
   // The generated text, editable. Reset when a new result arrives.
   const [edited, setEdited] = useState<{ from?: ReleaseNotesState; text: string }>({ text: "" });
@@ -56,7 +58,7 @@ export function ReleaseNotesCard({ appId, store, target, targetName, aiEnabled, 
       <h2 className="text-[15px] font-semibold">Notas de la versión</h2>
       <p className="mt-1 text-[13px] text-muted">
         El texto de «Novedades de esta versión» en {targetName}, a partir de las {nextCount} funciones «Próxima versión» de tu{" "}
-        <Link href={`/apps/${appId}/producto`} className="text-link hover:underline">
+        <Link href={productHref} className="text-link hover:underline">
           ficha de producto
         </Link>
         {latestVersion ? `, las notas de la versión ${latestVersion}` : ""} y el CHANGELOG que pegues. Límite de{" "}

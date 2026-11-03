@@ -11,7 +11,8 @@ import { DEFAULT_VIDEO_SETTINGS, durationWarning, getVideoPreset, totalDuration,
 import { type AudioOutcome, canEncodeMp4, drawFrame, encodeVideo, type EncodeResult } from "@/lib/assets/video-encode";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
-type Props = { appId: number; appTitle: string; spec: ScreenshotSpec | null };
+/** `creativesHref`: the screenshots page (`/a/[app]/creativos`). */
+type Props = { appTitle: string; creativesHref: string; spec: ScreenshotSpec | null };
 
 const PREVIEW_HEIGHT = 420;
 
@@ -22,7 +23,7 @@ const AUDIO_RESULT: Record<AudioOutcome, string> = {
   unsupported: " · sin sonido: tu navegador no puede codificar el audio",
 };
 
-export function VideoStudio({ appId, appTitle, spec }: Props) {
+export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
   const [settings, setSettings] = useState<VideoSettings>(DEFAULT_VIDEO_SETTINGS);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -160,7 +161,7 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
         <h2 className="font-semibold">Primero guarda un conjunto de screenshots</h2>
         <p className="mt-1.5 text-ink-soft">
           El vídeo anima las pantallas guardadas en{" "}
-          <Link href={`/apps/${appId}/creativos`} className="text-link hover:underline">
+          <Link href={creativesHref} className="text-link hover:underline">
             Screenshots
           </Link>
           : monta al menos cuatro o cinco, guarda el diseño y vuelve aquí.

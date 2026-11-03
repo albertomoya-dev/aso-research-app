@@ -205,7 +205,7 @@ describe("renderSummaryEmail", () => {
         until: "2026-10-26",
         apps: [
           {
-            app: { id: 3, title: "Run <b>", icon: "i", store: "ios", country: "es" },
+            app: { id: 3, productSlug: "run", title: "Run <b>", icon: "i", store: "ios", country: "es" },
             week: summarizeWeek([row(1, 12, 4, { term: "correr" }), row(2, null, 18, { term: "andar", beforeDepth: 30 })]),
             baselineDate: "2026-10-19",
             share: 12.5,
@@ -221,7 +221,7 @@ describe("renderSummaryEmail", () => {
       },
       "https://rankeo.example",
     );
-    expect(html).toContain('href="https://rankeo.example/apps/3"');
+    expect(html).toContain('href="https://rankeo.example/a/run/es"');
     expect(html).toContain("Run &#60;b&#62;");
     expect(html).toContain("Frente al 19 oct");
     expect(html).toContain("▲ correr: #12 → #4");

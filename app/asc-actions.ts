@@ -1,7 +1,6 @@
 "use server";
 
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { ascConfig } from "@/lib/app-store-connect/auth";
@@ -10,6 +9,7 @@ import { planAscPublish } from "@/lib/app-store-connect/plan";
 import { isKnownLocale } from "@/lib/listing-drafts";
 import { recordPublication } from "@/lib/publication-queries";
 import { ascNextFields, buildPublishPreview, fieldList, type PublishFieldKey, type PublishFields, publishedFields } from "@/lib/publications";
+import { revalidateMarket } from "@/lib/revalidate";
 
 // Writes to App Store Connect are double-gated like Google Play: ASC_ALLOW_WRITE=1 on the server and the
 // explicit confirmation of the dialog (confirm=yes) on every request.
@@ -51,7 +51,7 @@ export async function publishToAsc(_prev: AscActionState, formData: FormData): P
   const fail = async (message: string, fields: PublishFields) => {
     const attempt = buildPublishPreview("ios", null, fields);
     await recordPublication({ ...base, fields: publishedFields(attempt.changes), status: "failed", error: message }).catch(() => {});
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+    await revalidateMarket(app.id, "/ficha", "layout");
     return { error: `App Store Connect no aceptó el envío. ${message}` };
   };
 
@@ -96,7 +96,7 @@ export async function publishToAsc(_prev: AscActionState, formData: FormData): P
     if (failure && failedChanges.length) {
       await recordPublication({ ...base, fields: publishedFields(failedChanges), status: "failed", error: failure, externalRef: listing.version.id });
     }
-    revalidatePath(`/apps/${app.id}/metadata`, "layout");
+    await revalidateMarket(app.id, "/ficha", "layout");
   } catch {
     historySaved = false;
   }
@@ -127,6 +127,6 @@ export async function requestAscAnalytics(_prev: AscActionState, formData: FormD
   } catch (err) {
     return { error: ascErrorMessage(err) };
   }
-  revalidatePath(`/apps/${app.id}/metadata/publicar`);
+  await revalidateMarket(app.id, "/ficha/publicar");
   return { ok: true, message: "Petición enviada. Apple tarda 1 o 2 días en generar los primeros informes." };
 }

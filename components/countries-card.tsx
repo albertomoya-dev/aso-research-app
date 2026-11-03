@@ -3,16 +3,17 @@ import Link from "next/link";
 import { followInCountry } from "@/app/actions";
 import { getDb, schema } from "@/db";
 import { COUNTRIES, getCountry } from "@/lib/countries";
+import { marketPath } from "@/lib/market-path";
 import { SubmitButton } from "./submit-button";
 import { buttonSecondary, Card, inputClass } from "./ui";
 
-/** The same app followed in other countries, and a form to add one more. */
-export async function CountriesCard({ app }: { app: { id: number; store: "ios" | "android"; storeId: string; country: string } }) {
+/** The other markets of the app (the same product followed in other countries), and a form to add one more. */
+export async function CountriesCard({ app }: { app: { id: number; productId: number; productSlug: string; country: string } }) {
   const siblings = await getDb()
     .select({ id: schema.apps.id, country: schema.apps.country, keywords: count(schema.appKeywords.keywordId) })
     .from(schema.apps)
     .leftJoin(schema.appKeywords, eq(schema.appKeywords.appId, schema.apps.id))
-    .where(and(eq(schema.apps.store, app.store), eq(schema.apps.storeId, app.storeId), ne(schema.apps.id, app.id)))
+    .where(and(eq(schema.apps.productId, app.productId), ne(schema.apps.id, app.id)))
     .groupBy(schema.apps.id);
   const taken = new Set([app.country, ...siblings.map((s) => s.country)]);
   const available = COUNTRIES.filter((c) => !taken.has(c.code));
@@ -28,7 +29,7 @@ export async function CountriesCard({ app }: { app: { id: number; store: "ios" |
           siblings.map((s) => (
             <Link
               key={s.id}
-              href={`/apps/${s.id}`}
+              href={marketPath({ productSlug: app.productSlug, country: s.country })}
               className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line-strong px-3 text-[13px] hover:bg-surface-muted"
             >
               {getCountry(s.country).name}

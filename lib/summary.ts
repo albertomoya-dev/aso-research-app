@@ -10,7 +10,7 @@ export function competitorChanges<T extends { kind: AlertKind }>(alerts: T[]): T
 }
 
 export type AppWeek = {
-  app: { id: number; title: string; icon: string; store: "ios" | "android"; country: string };
+  app: { id: number; productSlug: string; title: string; icon: string; store: "ios" | "android"; country: string };
   week: WeekSummary;
   /** The check compared against: a week ago, or the oldest one when the app is newer. Null with a single day of data. */
   baselineDate: string | null;
@@ -31,7 +31,12 @@ export async function getWeeklySummaries(): Promise<{ since: string; until: stri
   // Extra days so a keyword not checked exactly a week ago still has a "before".
   const from = shiftDate(since, -7);
   const [apps, snapshots, alerts] = await Promise.all([
-    db.select().from(schema.apps).orderBy(schema.apps.title),
+    db
+      .select({ app: schema.apps, productSlug: schema.products.slug })
+      .from(schema.apps)
+      .innerJoin(schema.products, eq(schema.products.id, schema.apps.productId))
+      .orderBy(schema.apps.title)
+      .then((rows) => rows.map((r) => ({ ...r.app, productSlug: r.productSlug }))),
     db
       .select({
         appId: schema.rankSnapshots.appId,
@@ -98,7 +103,7 @@ export async function getWeeklySummaries(): Promise<{ since: string; until: stri
     const shareOf = (snaps: typeof before) =>
       snaps.length ? (visibilityShare(snaps, popularity).find((r) => r.app.id === app.storeId)?.share ?? 0) : null;
     return {
-      app: { id: app.id, title: app.title, icon: app.icon, store: app.store, country: app.country },
+      app: { id: app.id, productSlug: app.productSlug, title: app.title, icon: app.icon, store: app.store, country: app.country },
       week,
       baselineDate,
       share: shareOf(now),

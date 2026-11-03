@@ -1,7 +1,6 @@
 "use server";
 
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, analyzeReviews } from "@/lib/claude";
@@ -12,6 +11,7 @@ import { EMPTY_REVIEW_ANALYSIS, MAX_REVIEWS, NO_REVIEWS_MODEL, fixOpportunitySta
 import { resolveReviewTarget } from "@/lib/review-queries";
 import { getAdapter } from "@/lib/stores";
 import { STORE_LABEL } from "@/lib/stores/types";
+import { revalidateMarket } from "@/lib/revalidate";
 
 export type AnalyzeState = { error?: string; ok?: boolean } | null;
 
@@ -44,7 +44,7 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
   if (reviews.length === 0) {
     // Not an error: the store has nothing recent. Stored so the page says so after a reload.
     await db.insert(schema.reviewAnalyses).values({ ...row, result: EMPTY_REVIEW_ANALYSIS, model: NO_REVIEWS_MODEL });
-    revalidatePath(`/apps/${appId}/resenas`);
+    await revalidateMarket(appId, "/resenas");
     return { ok: true };
   }
 
@@ -72,6 +72,6 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
     if (error instanceof AiError) return { error: error.message };
     throw error;
   }
-  revalidatePath(`/apps/${appId}/resenas`);
+  await revalidateMarket(appId, "/resenas");
   return { ok: true };
 }

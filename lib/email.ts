@@ -1,5 +1,6 @@
 import { describeMove, weekPosition } from "./alerts";
 import { formatDate, formatDay } from "./format";
+import { marketPath } from "./market-path";
 import { type AppWeek, competitorChanges } from "./summary";
 
 export function emailConfigured(): boolean {
@@ -30,7 +31,7 @@ export function renderSummaryEmail(summary: { since: string; until: string; apps
       .map((a) => `<li>${esc(a.title)}${a.detail ? ` (${esc(a.detail)})` : ""}</li>`)
       .join("");
     return `
-      <h2 style="font-size:17px;margin:24px 0 6px">${link(`/apps/${app.id}`, app.title)}</h2>
+      <h2 style="font-size:17px;margin:24px 0 6px">${link(marketPath(app), app.title)}</h2>
       <p style="margin:0 0 8px;color:#555">
         ${baselineDate ? `Frente al ${formatDay(baselineDate)}` : "Aún sin una consulta anterior con la que comparar"} ·
         ${week.tracked} keywords · ${week.improved} suben · ${week.worsened} bajan${week.noBaseline ? ` · ${week.noBaseline} nuevas sin comparación` : ""} ·

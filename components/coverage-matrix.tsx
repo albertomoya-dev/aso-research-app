@@ -5,7 +5,8 @@ import type { Store } from "@/lib/stores/types";
 import { Card } from "./ui";
 
 type Props = {
-  appId: number;
+  /** The editor of this market (`/a/[app]/[market]/ficha`). */
+  editorHref: string;
   store: Store;
   matrix: Matrix;
   /** Query string of each column's editor URL, in column order. */
@@ -13,7 +14,7 @@ type Props = {
 };
 
 /** Locale × keyword: which listing covers each keyword, and in which field. Server component, no state. */
-export function CoverageMatrix({ appId, store, matrix, hrefs }: Props) {
+export function CoverageMatrix({ editorHref, store, matrix, hrefs }: Props) {
   const labels = Object.fromEntries(FIELDS[store].map((f) => [f.key, f.label])) as Record<FieldKey, string>;
   return (
     <Card aria-label="Cobertura por idioma" className="overflow-hidden">
@@ -34,7 +35,7 @@ export function CoverageMatrix({ appId, store, matrix, hrefs }: Props) {
                 <th className="px-5 py-2.5">Keyword</th>
                 {matrix.columns.map((c, i) => (
                   <th key={`${c.locale}|${c.country}`} className="px-3 py-2.5 text-right">
-                    <Link href={`/apps/${appId}/metadata${hrefs[i]}`} className="text-link normal-case hover:underline">
+                    <Link href={`${editorHref}${hrefs[i]}`} className="text-link normal-case hover:underline">
                       {c.locale}
                       {c.country ? ` · ${c.country.toUpperCase()}` : ""}
                     </Link>

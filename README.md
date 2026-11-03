@@ -32,6 +32,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 22 | Anotaciones automáticas (la consulta diaria guarda la ficha propia y anota cada cambio; también cada publicación desde Rankeo), impacto por keyword ±14 días y registro de experimentos de ficha | Hecho |
 | 23 | Creativos con capturas actuales (subida múltiple y de carpetas, fecha y versión de cada captura con aviso de capturas antiguas, script `adb` opcional), keyword por pantalla entre las relevantes y con visión, colores del icono actual y pista de audio en el vídeo | Hecho (la parte de navegador sin probar a mano) |
 | 24 | Interfaz: tabla de keywords con columna fija y scroll dentro de su tarjeta, competidores vigilados resaltados en el TOP 5, pantalla de Ajustes con el estado y la prueba de cada integración, y panel de salud ASO en la portada de cada app | Hecho (sin medir en un móvil real) |
+| 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
 
 ## Stack
 
@@ -380,7 +381,7 @@ La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyw
 - **Calendario de picos.** Los 12 meses con las keywords que están en temporada alta en cada uno, marcando el mes en que empieza.
 - **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
 
-En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país se sigue por separado, con sus posiciones y su histórico.
+En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país es un mercado del mismo producto (ver [Productos y mercados](#productos-y-mercados)), con sus posiciones y su histórico.
 
 ## Creativos: screenshots e icono
 
@@ -453,12 +454,43 @@ La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señ
 | Reseñas sin responder | Reseñas de la última semana de Google Play Console, solo si está conectada; se piden aparte para no frenar la portada | Mejorable con alguna; necesita atención con 10 o más. En App Store y sin Play Console sale «sin datos» con un enlace a Ajustes |
 | Próximo pico estacional | El pico más cercano de las keywords relevantes con popularidad suficiente (Estacionalidad) | Mejorable si está en temporada o empieza en 35 días o menos |
 
+## Productos y mercados
+
+Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus keywords, posiciones, reseñas, competidores y borradores de ficha; la app en conjunto es un **producto**, uno por tienda e id de la tienda.
+
+- **En la base de datos** (`db/schema.ts`): la tabla `products` (`store`, `store_id`, `slug` único, título e icono del primer mercado) y la tabla `apps`, que **es la de mercados**. No se ha renombrado, para no cambiar ids ni claves ajenas: cada fila de `apps` es la app en un país y apunta a su producto con `product_id`, obligatorio y con borrado en cascada. En el código, `App` y `Market` son el mismo tipo.
+- **La migración `0019_products`** crea un producto por cada par (tienda, id) que ya existía y enlaza todas las filas de `apps`, sin cambiar ningún id: las apps que se seguían en dos países (por ejemplo, Recordatorio en España y en Estados Unidos) quedan en un mismo producto con dos mercados.
+- **El slug** sale del final del id de Google Play (`com.moyalogames.recordatorio` → `recordatorio`) o, si es un número (App Store), del título. Va en minúsculas, sin tildes, con guiones y con 40 caracteres como máximo. Si ya existe, se le añade `-2`, `-3`… Se guarda y no cambia aunque cambie el título. Está en `lib/market-path.ts` (`slugify`, `productSlugBase`, `uniqueSlug`), y la migración aplica la misma regla en SQL.
+- **Seguir una app** (Buscar app) crea el producto la primera vez. **Seguir en otro país** (tarjeta «Otros países») añade un mercado al mismo producto. Al dejar de seguir el último mercado se borra también el producto.
+- **Datos de la app en conjunto:** la ficha de producto, las marcas excluidas y los creativos (diseños e imágenes generadas) son del producto. Mientras no se muevan a `product_id` (fase 26b), se leen y se escriben en el **mercado principal**, el `apps.id` más bajo del producto (`primaryMarket` y `sharedAppId` en `lib/products.ts`). Por eso España y Estados Unidos comparten la misma ficha de producto, las mismas marcas y los mismos creativos. Lo que un mercado secundario tuviera guardado antes en esas tablas se conserva en la base de datos, pero no se muestra hasta la fase 26b, que lo fusiona.
+
+### URLs
+
+| Página | URL |
+| --- | --- |
+| Keywords del mercado (el Resumen llegará en la fase 28) | `/a/[app]/[país]` y `/a/[app]/[país]/keywords` |
+| Una keyword | `/a/[app]/[país]/keywords/[id]` |
+| Descubrir, Ideas con IA, Keywords del TOP 10 | `/a/[app]/[país]/descubrir`, `/ideas`, `/top10` |
+| Reseñas, Competidores, Cambios | `/a/[app]/[país]/resenas`, `/competidores`, `/cambios` |
+| Estacionalidad | `/a/[app]/[país]/tendencias` |
+| Editor de ficha y su publicación | `/a/[app]/[país]/ficha`, `/a/[app]/[país]/ficha/publicar` |
+| Creativos (iguales en todos los países) | `/a/[app]/creativos`, `/creativos/icono`, `/creativos/logo`, `/creativos/video` |
+| Ficha de producto | `/a/[app]/ajustes/producto` |
+
+`[app]` es el slug y `[país]` el código del país en minúsculas (`es`, `us`). Los enlaces se construyen siempre con `marketPath()` y `productPath()` (`lib/market-path.ts`), y las server actions revalidan las rutas nuevas con `revalidateMarket()` y `revalidateProduct()` (`lib/revalidate.ts`). En las páginas de la app en conjunto, las pestañas del país apuntan al mercado principal.
+
+### Redirecciones
+
+Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`. Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de `app/loading.tsx`, y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como un futuro `/apps/nueva`), uno que no existe o una subpágina desconocida dan 404.
+
+Las redirecciones de las páginas globales (`/novedades`, `/resumen`, `/ajustes` y `/buscar`) ya están escritas en `next.config.ts`, pero desactivadas (`ENABLE_GLOBAL_REDIRECTS`): sus destinos llegan en la fase 27.
+
 ## Comandos
 
 | Comando | Qué hace |
 | --- | --- |
 | `npm run dev` | Servidor de desarrollo |
-| `npm test` | Tests (Vitest) |
+| `npm test` | Tests (Vitest; el de la migración 0019 ejecuta todas las migraciones en un Postgres en memoria con PGlite) |
 | `npm run typecheck` | Comprobación de tipos |
 | `npm run lint` | ESLint |
 | `npm run db:generate` | Genera una migración tras cambiar `db/schema.ts` |

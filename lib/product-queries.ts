@@ -1,13 +1,18 @@
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import { type FactsMode, factsForPrompt, type ProductFacts } from "./product-facts";
+import { sharedAppId } from "./products";
 
 export type FeatureRow = typeof schema.productFeatures.$inferSelect;
 export type ReleaseRow = typeof schema.productReleases.$inferSelect;
 
-/** The app's product sheet: facts (null until first saved), features in their order and releases, newest first. */
-export async function getProductFacts(appId: number): Promise<{ facts: ProductFacts | null; features: FeatureRow[]; releases: ReleaseRow[] }> {
+/**
+ * The app's product sheet: facts (null until first saved), features in their order and releases, newest first.
+ * `marketId` is any market of the app: the sheet is the same in every country (kept on the primary market).
+ */
+export async function getProductFacts(marketId: number): Promise<{ facts: ProductFacts | null; features: FeatureRow[]; releases: ReleaseRow[] }> {
   const db = getDb();
+  const appId = await sharedAppId(marketId);
   const [facts, features, releases] = await Promise.all([
     db.query.productFacts.findFirst({ where: eq(schema.productFacts.appId, appId) }),
     db

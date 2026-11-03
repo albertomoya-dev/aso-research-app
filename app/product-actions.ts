@@ -1,7 +1,6 @@
 "use server";
 
 import { and, eq, inArray, max } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import { AiError, importChangelog } from "@/lib/claude";
@@ -14,11 +13,18 @@ import {
   MAX_CHANGELOG_CHARS,
   releaseInputSchema,
 } from "@/lib/product-facts";
+import { sharedAppId } from "@/lib/products";
+import { revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 
-// The sheet feeds every AI screen of the app (editor, ideas, creatives, reviews), so refresh them all.
-const refresh = (appId: number) => revalidatePath(`/apps/${appId}`, "layout");
+// The sheet feeds every AI screen of the app (editor, ideas, creatives, reviews) in every country, so refresh them all.
+const refresh = (appId: number) => revalidateProduct(appId, "", "layout");
+
+/** The sheet is the app's, not the country's: it lives on the primary market (lib/products.ts `sharedAppId`). */
+async function productAppId(formData: FormData) {
+  return sharedAppId(idSchema.parse(formData.get("appId")));
+}
 
 async function appExists(appId: number) {
   return Boolean(await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId), columns: { id: true } }));
@@ -27,7 +33,7 @@ async function appExists(appId: number) {
 export type FactsState = { savedAt?: string; error?: string } | null;
 
 export async function saveFacts(_prev: FactsState, formData: FormData): Promise<FactsState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const fields = Object.fromEntries(Object.keys(factsFormSchema.shape).map((k) => [k, formData.get(k) ?? ""]));
   const parsed = factsFormSchema.safeParse(fields);
   if (!parsed.success) return { error: "Algún campo es demasiado largo para guardarlo." };
@@ -37,7 +43,7 @@ export async function saveFacts(_prev: FactsState, formData: FormData): Promise<
     .insert(schema.productFacts)
     .values({ appId, ...values })
     .onConflictDoUpdate({ target: schema.productFacts.appId, set: values });
-  refresh(appId);
+  await refresh(appId);
   return { savedAt: new Date().toISOString() };
 }
 
@@ -60,17 +66,17 @@ async function nextSort(appId: number) {
 }
 
 export async function addFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const parsed = featureFromForm(formData);
   if (!parsed.success || !(await appExists(appId))) return;
   await getDb()
     .insert(schema.productFeatures)
     .values({ appId, ...parsed.data, sort: await nextSort(appId) });
-  refresh(appId);
+  await refresh(appId);
 }
 
 export async function updateFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const id = idSchema.parse(formData.get("featureId"));
   const parsed = featureFromForm(formData);
   if (!parsed.success) return;
@@ -78,16 +84,16 @@ export async function updateFeature(formData: FormData) {
     .update(schema.productFeatures)
     .set(parsed.data)
     .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.appId, appId)));
-  refresh(appId);
+  await refresh(appId);
 }
 
 export async function deleteFeature(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const id = idSchema.parse(formData.get("featureId"));
   await getDb()
     .delete(schema.productFeatures)
     .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.appId, appId)));
-  refresh(appId);
+  await refresh(appId);
 }
 
 function releaseFromForm(formData: FormData) {
@@ -99,17 +105,17 @@ function releaseFromForm(formData: FormData) {
 }
 
 export async function addRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const parsed = releaseFromForm(formData);
   if (!parsed.success || !(await appExists(appId))) return;
   await getDb()
     .insert(schema.productReleases)
     .values({ appId, ...parsed.data });
-  refresh(appId);
+  await refresh(appId);
 }
 
 export async function updateRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const id = idSchema.parse(formData.get("releaseId"));
   const parsed = releaseFromForm(formData);
   if (!parsed.success) return;
@@ -117,23 +123,23 @@ export async function updateRelease(formData: FormData) {
     .update(schema.productReleases)
     .set(parsed.data)
     .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.appId, appId)));
-  refresh(appId);
+  await refresh(appId);
 }
 
 export async function deleteRelease(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const id = idSchema.parse(formData.get("releaseId"));
   await getDb()
     .delete(schema.productReleases)
     .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.appId, appId)));
-  refresh(appId);
+  await refresh(appId);
 }
 
 export type ChangelogState = { proposal?: ChangelogProposal; model?: string; error?: string } | null;
 
 /** Asks Claude for the features in a pasted CHANGELOG. Nothing is saved: the owner ticks what to keep. */
 export async function proposeChangelog(_prev: ChangelogState, formData: FormData): Promise<ChangelogState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   const text = z.string().trim().catch("").parse(formData.get("changelog"));
   if (!text) return { error: "Pega el CHANGELOG o las notas de versión." };
   if (text.length > MAX_CHANGELOG_CHARS) return { error: `El texto es demasiado largo: como mucho ${MAX_CHANGELOG_CHARS.toLocaleString("es-ES")} caracteres.` };
@@ -162,7 +168,7 @@ export type ApplyState = { features?: number; releases?: number; error?: string 
 
 /** Saves only the items the owner ticked in the import review. */
 export async function applyChangelog(_prev: ApplyState, formData: FormData): Promise<ApplyState> {
-  const appId = idSchema.parse(formData.get("appId"));
+  const appId = await productAppId(formData);
   let payload: unknown;
   try {
     payload = JSON.parse(String(formData.get("payload") ?? ""));
@@ -201,6 +207,6 @@ export async function applyChangelog(_prev: ApplyState, formData: FormData): Pro
     if (id) await db.update(schema.productReleases).set(r).where(eq(schema.productReleases.id, id));
     else await db.insert(schema.productReleases).values({ appId, ...r });
   }
-  refresh(appId);
+  await refresh(appId);
   return { features: features.length, releases: releases.length };
 }

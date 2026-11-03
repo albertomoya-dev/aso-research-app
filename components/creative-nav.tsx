@@ -10,10 +10,9 @@ const SECTIONS = [
   { path: "/video", label: "Vídeo" },
 ];
 
-/** Segmented control between the creative tools of an app. */
-export function CreativeNav({ appId }: { appId: number }) {
+/** Segmented control between the creative tools of an app. `base` is `/a/[app]/creativos`. */
+export function CreativeNav({ base }: { base: string }) {
   const pathname = usePathname();
-  const base = `/apps/${appId}/creativos`;
   return (
     <nav aria-label="Creativos" className="inline-flex rounded-md border border-line-strong bg-surface-muted p-0.5">
       {SECTIONS.map((s) => {

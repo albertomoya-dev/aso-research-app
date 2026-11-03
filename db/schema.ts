@@ -34,11 +34,38 @@ export const storeEnum = pgEnum("store", ["ios", "android"]);
 export const keywordSourceEnum = pgEnum("keyword_source", KEYWORD_SOURCES);
 export const suggestionStatusEnum = pgEnum("suggestion_status", ["pending", "accepted", "dismissed"]);
 
-/** A followed app in one store and one country. */
+/**
+ * An app of one store, followed in one or more countries (its markets: rows of `apps`). Holds what is
+ * the same in every country: the URL slug (`/a/[slug]/[country]`), and the title and icon of the first
+ * market followed.
+ */
+export const products = pgTable(
+  "products",
+  {
+    id: serial("id").primaryKey(),
+    store: storeEnum("store").notNull(),
+    storeId: text("store_id").notNull(),
+    /** URL name, unique: lower case, no accents, hyphens (lib/market-path.ts `slugify`). */
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    icon: text("icon").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("products_store_store_id_idx").on(t.store, t.storeId)],
+);
+
+/**
+ * A MARKET: a followed app in one store and one country. The table keeps its old name (`apps`, type
+ * `App`, alias `Market`) so ids and foreign keys stay; the app as a whole is its `products` row.
+ */
 export const apps = pgTable(
   "apps",
   {
     id: serial("id").primaryKey(),
+    /** The product this market belongs to: one per (store, store_id), shared by every country. */
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
     store: storeEnum("store").notNull(),
     storeId: text("store_id").notNull(),
     country: text("country").notNull(),
@@ -467,6 +494,9 @@ export const searchTermStats = pgTable(
 );
 
 export type App = typeof apps.$inferSelect;
+/** A row of `apps`: the app in one country. */
+export type Market = App;
+export type Product = typeof products.$inferSelect;
 export type Keyword = typeof keywords.$inferSelect;
 export type Annotation = typeof annotations.$inferSelect;
 export type Experiment = typeof experiments.$inferSelect;

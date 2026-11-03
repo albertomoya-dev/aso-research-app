@@ -1,7 +1,6 @@
 "use server";
 
 import { and, eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
 import {
@@ -22,6 +21,8 @@ import { getCountry } from "@/lib/countries";
 import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { isRelevantKeyword } from "@/lib/relevance";
+import { sharedAppId } from "@/lib/products";
+import { revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
 
@@ -61,7 +62,7 @@ export type SaveState = { savedAt?: string; error?: string } | null;
 
 /** Upserts the one design of this kind for the app. The spec is validated and size-capped. */
 export async function saveDesign(appId: number, kind: "screenshots" | "icon", spec: unknown): Promise<SaveState> {
-  const id = idSchema.parse(appId);
+  const id = await sharedAppId(idSchema.parse(appId));
   const parsed = kind === "screenshots" ? screenshotSpecSchema.safeParse(spec) : iconSpecSchema.safeParse(spec);
   if (!parsed.success) return { error: "El diseño tiene un formato no válido." };
   if (kind === "screenshots" && specBytes(parsed.data as ScreenshotSpec) > MAX_SPEC_BYTES) {
@@ -72,16 +73,16 @@ export async function saveDesign(appId: number, kind: "screenshots" | "icon", sp
     .insert(schema.assetDesigns)
     .values({ appId: id, kind, spec: parsed.data })
     .onConflictDoUpdate({ target: [schema.assetDesigns.appId, schema.assetDesigns.kind], set: { spec: parsed.data, updatedAt: new Date() } });
-  revalidatePath(`/apps/${id}/creativos`);
+  await revalidateProduct(id, "/creativos");
   return { savedAt: new Date().toISOString() };
 }
 
 export async function deleteDesign(appId: number, kind: "screenshots" | "icon"): Promise<void> {
-  const id = idSchema.parse(appId);
+  const id = await sharedAppId(idSchema.parse(appId));
   await getDb()
     .delete(schema.assetDesigns)
     .where(and(eq(schema.assetDesigns.appId, id), eq(schema.assetDesigns.kind, kind)));
-  revalidatePath(`/apps/${id}/creativos`);
+  await revalidateProduct(id, "/creativos");
 }
 
 export type CopyResult = { slides: { headline: string; subheadline: string; keyword: string }[]; notes: string[]; model: string } | { error: string };
@@ -153,7 +154,7 @@ export type LogoImagesResult = { ids: number[]; provider: string; model: string 
 
 /** Calls the image provider and stores the results; the page reloads them through /api/assets/generated/[id]. */
 export async function generateLogoImages(appId: number, prompt: string, count: number): Promise<LogoImagesResult> {
-  const id = idSchema.parse(appId);
+  const id = await sharedAppId(idSchema.parse(appId));
   const text = z.string().trim().min(10).max(2000).safeParse(prompt);
   if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
   await loadAppOrThrow(id);
@@ -167,7 +168,7 @@ export async function generateLogoImages(appId: number, prompt: string, count: n
         .returning({ id: schema.generatedImages.id });
       ids.push(row.id);
     }
-    revalidatePath(`/apps/${id}/creativos/logo`);
+    await revalidateProduct(id, "/creativos/logo");
     return { ids, provider, model };
   } catch (err) {
     if (err instanceof ImageGenError) return { error: err.message };
@@ -177,12 +178,12 @@ export async function generateLogoImages(appId: number, prompt: string, count: n
 }
 
 export async function deleteGeneratedImage(appId: number, imageId: number): Promise<void> {
-  const id = idSchema.parse(appId);
+  const id = await sharedAppId(idSchema.parse(appId));
   await getDb()
     .delete(schema.generatedImages)
     .where(and(eq(schema.generatedImages.id, idSchema.parse(imageId)), eq(schema.generatedImages.appId, id)));
-  revalidatePath(`/apps/${id}/creativos/logo`);
-  revalidatePath(`/apps/${id}/creativos`);
+  await revalidateProduct(id, "/creativos/logo");
+  await revalidateProduct(id, "/creativos");
 }
 
 const hexColour = z.string().regex(/^#[0-9a-f]{6}$/i);
@@ -206,7 +207,7 @@ export type BackgroundImageResult = { id: number; url: string; provider: string;
 
 /** Generates one portrait backdrop and stores it; the screenshot spec references it by URL. */
 export async function generateBackgroundImage(appId: number, prompt: string, palette?: string[]): Promise<BackgroundImageResult> {
-  const id = idSchema.parse(appId);
+  const id = await sharedAppId(idSchema.parse(appId));
   const text = z.string().trim().min(10).max(2000).safeParse(prompt);
   if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
   await loadAppOrThrow(id);
@@ -217,7 +218,7 @@ export async function generateBackgroundImage(appId: number, prompt: string, pal
       .insert(schema.generatedImages)
       .values({ appId: id, kind: "background", prompt: finalPrompt, provider, model, mime: images[0].mime, data: images[0].base64 })
       .returning({ id: schema.generatedImages.id });
-    revalidatePath(`/apps/${id}/creativos`);
+    await revalidateProduct(id, "/creativos");
     return { id: row.id, url: generatedImageUrl(row.id), provider, model };
   } catch (err) {
     if (err instanceof ImageGenError) return { error: err.message };

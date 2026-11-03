@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { getDb, hasDatabase, schema } from "@/db";
+import { hasDatabase } from "@/db";
 import { unreadAlertCount } from "@/lib/alert-jobs";
+import { listProducts, marketPath } from "@/lib/products";
 import { AppIcon } from "./app-icon";
 import { NavLink } from "./nav-link";
 import { ThemeToggle } from "./theme-toggle";
@@ -18,10 +19,7 @@ async function unreadAlerts() {
 async function followedApps() {
   if (!hasDatabase()) return [];
   try {
-    return await getDb()
-      .select({ id: schema.apps.id, title: schema.apps.title, icon: schema.apps.icon, store: schema.apps.store })
-      .from(schema.apps)
-      .orderBy(schema.apps.title);
+    return await listProducts();
   } catch {
     return [];
   }
@@ -94,10 +92,26 @@ async function FollowedApps() {
     <div className="mt-5 hidden md:block">
       <div className="px-2.5 pb-1 text-xs font-medium text-muted">Mis apps</div>
       {apps.map((app) => (
-        <NavLink key={app.id} href={`/apps/${app.id}`}>
-          <AppIcon src={app.icon} size={18} />
-          <span className="truncate">{app.title}</span>
-        </NavLink>
+        <div key={app.id}>
+          <NavLink href={marketPath({ productSlug: app.slug, country: app.markets[0].country })}>
+            <AppIcon src={app.icon} size={18} />
+            <span className="truncate">{app.title}</span>
+          </NavLink>
+          {/* One chip per market when the app is followed in more than one country. */}
+          {app.markets.length > 1 && (
+            <div className="flex flex-wrap gap-1 pb-1 pl-9">
+              {app.markets.map((m) => (
+                <Link
+                  key={m.id}
+                  href={marketPath({ productSlug: app.slug, country: m.country })}
+                  className="rounded px-1.5 py-0.5 font-mono text-[11px] text-muted uppercase hover:bg-surface-muted hover:text-ink"
+                >
+                  {m.country}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );

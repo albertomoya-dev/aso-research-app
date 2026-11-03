@@ -2,13 +2,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { type HealthItem, type HealthStatus, healthSummary, reviewsItem } from "@/lib/health";
 import { loadHealth } from "@/lib/health-queries";
+import { marketPath } from "@/lib/market-path";
 import { playConfig } from "@/lib/play-console/auth";
 import { getPlayClient, playErrorMessage } from "@/lib/play-console/client";
 import type { KeywordRow } from "@/lib/queries";
 import type { AppMeta } from "@/lib/stores/types";
 import { Card, Skeleton } from "./ui";
 
-type PanelApp = { id: number; store: "ios" | "android"; country: string; storeId: string; meta: AppMeta };
+type PanelApp = { id: number; productSlug: string; store: "ios" | "android"; country: string; storeId: string; meta: AppMeta };
 
 const STATUS: Record<HealthStatus, { label: string; dot: string }> = {
   good: { label: "Bien", dot: "bg-up" },
@@ -56,7 +57,7 @@ async function HealthCard({ app, rows }: { app: PanelApp; rows: KeywordRow[] }) 
             <ReviewsRow app={app} />
           </Suspense>
         ) : (
-          <HealthRow item={reviewsItem({ store: app.store, configured: false, unanswered: null, reviewsHref: `/apps/${app.id}/resenas` })} />
+          <HealthRow item={reviewsItem({ store: app.store, configured: false, unanswered: null, reviewsHref: marketPath(app, "/resenas") })} />
         )}
       </ul>
     </Card>
@@ -74,10 +75,10 @@ async function ReviewsRow({ app }: { app: PanelApp }) {
       configured: true,
       unanswered: reviews.filter((r) => !r.reply).length,
       total: reviews.length,
-      reviewsHref: `/apps/${app.id}/resenas`,
+      reviewsHref: marketPath(app, "/resenas"),
     });
   } catch (err) {
-    item = reviewsItem({ store: "android", configured: true, unanswered: null, error: playErrorMessage(err), reviewsHref: `/apps/${app.id}/resenas` });
+    item = reviewsItem({ store: "android", configured: true, unanswered: null, error: playErrorMessage(err), reviewsHref: marketPath(app, "/resenas") });
   }
   return <HealthRow item={item} />;
 }
