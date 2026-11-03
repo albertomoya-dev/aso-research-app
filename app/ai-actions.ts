@@ -43,7 +43,7 @@ import { cleanReleaseNotes, hasReleaseMaterial, MAX_PASTED_CHANGELOG, type Relea
 import { rateAppKeywords, rateNewKeywords, relevanceContextFor, type RelevanceStatus } from "@/lib/relevance-jobs";
 import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
-import { competitorBrands, filterSuggestions, PROMPT_VERSION, seedWords, topCompetitors } from "@/lib/suggestions";
+import { competitorBrands, filterSuggestions, parseDismissRequest, PROMPT_VERSION, seedWords, topCompetitors } from "@/lib/suggestions";
 import { fold } from "@/lib/text";
 
 const idSchema = z.coerce.number().int().positive();
@@ -183,16 +183,28 @@ export async function acceptSuggestions(_prev: AcceptState, formData: FormData):
   return { added, trackingFailed, relevance };
 }
 
-export async function dismissSuggestions(formData: FormData) {
-  const appId = idSchema.parse(formData.get("appId"));
-  // One id from a row's button, or every pending one for "Descartar todas".
-  const ids = z.array(idSchema).max(200).parse(formData.getAll(formData.has("dismissId") ? "dismissId" : "suggestionId"));
-  if (ids.length === 0) return;
-  await getDb()
-    .update(schema.aiSuggestions)
-    .set({ status: "dismissed" })
-    .where(and(eq(schema.aiSuggestions.appId, appId), inArray(schema.aiSuggestions.id, ids)));
-  revalidatePath(`/apps/${appId}/ideas`);
+export type DismissState = { dismissed: number; error?: string };
+
+/**
+ * Marks the given pending ideas as dismissed and says how many changed. The client sends the ids it
+ * has selected (one from a row's button, or the whole selection), not the form's checkboxes.
+ */
+export async function dismissSuggestions(appIdValue: number, idValues: number[]): Promise<DismissState> {
+  const parsed = parseDismissRequest(appIdValue, idValues);
+  if ("error" in parsed) return { dismissed: 0, error: parsed.error };
+  const { appId, ids } = parsed;
+  try {
+    const changed = await getDb()
+      .update(schema.aiSuggestions)
+      .set({ status: "dismissed" })
+      .where(and(eq(schema.aiSuggestions.appId, appId), eq(schema.aiSuggestions.status, "pending"), inArray(schema.aiSuggestions.id, ids)))
+      .returning({ id: schema.aiSuggestions.id });
+    revalidatePath(`/apps/${appId}/ideas`);
+    return { dismissed: changed.length };
+  } catch (err) {
+    console.error("dismissSuggestions", err);
+    return { dismissed: 0, error: "No se han podido descartar las ideas. Inténtalo de nuevo." };
+  }
 }
 
 const draftSchema = z.object({

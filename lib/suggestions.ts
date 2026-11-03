@@ -366,3 +366,24 @@ export function relevanceFactor(relevance: number | null | undefined): number {
   if (relevance == null) return UNRATED_RELEVANCE_FACTOR;
   return 0.5 + Math.min(5, Math.max(1, relevance)) / 10;
 }
+
+/** Most ideas one dismiss can touch: several generations of MAX_SUGGESTIONS fit with room to spare. */
+export const MAX_DISMISS = 500;
+
+const positiveId = z.coerce.number().int().positive();
+
+/** Validates a dismiss request: the app id and the distinct idea ids, or a message for the user. */
+export function parseDismissRequest(appId: unknown, ids: unknown): { appId: number; ids: number[] } | { error: string } {
+  const app = positiveId.safeParse(appId);
+  const list = z.array(positiveId).max(MAX_DISMISS).safeParse(ids);
+  if (!app.success || !list.success) return { error: "La petición para descartar no es válida." };
+  const unique = [...new Set(list.data)];
+  if (unique.length === 0) return { error: "Marca al menos una idea." };
+  return { appId: app.data, ids: unique };
+}
+
+/** "1 idea descartada" / "38 ideas descartadas", shown after a dismiss. */
+export function dismissedMessage(count: number): string {
+  if (count === 0) return "No se ha descartado ninguna idea: ya no estaban pendientes.";
+  return count === 1 ? "1 idea descartada" : `${count} ideas descartadas`;
+}

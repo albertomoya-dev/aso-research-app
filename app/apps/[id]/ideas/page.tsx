@@ -59,22 +59,19 @@ export default async function IdeasPage({ params }: Props) {
         </Card>
       )}
 
-      {pending.length > 0 && (
-        <Card aria-label="Ideas pendientes" className="overflow-hidden">
-          <IdeasList
-            appId={app.id}
-            ideas={pending.map((s) => ({
-              id: s.id,
-              term: s.term,
-              intent: s.intent,
-              relevance: s.relevance,
-              competition: s.estimatedCompetition,
-              reason: s.reason,
-            }))}
-            generatedBy={`${pending[0].model} · prompt ${pending[0].promptVersion}`}
-          />
-        </Card>
-      )}
+      {/* Always mounted: once the last idea is dismissed it still shows how many were dismissed. */}
+      <IdeasList
+        appId={app.id}
+        ideas={pending.map((s) => ({
+          id: s.id,
+          term: s.term,
+          intent: s.intent,
+          relevance: s.relevance,
+          competition: s.estimatedCompetition,
+          reason: s.reason,
+        }))}
+        generatedBy={pending[0] ? `${pending[0].model} · prompt ${pending[0].promptVersion}` : ""}
+      />
       {enabled && pending.length === 0 && (
         <p className="text-center text-sm text-muted">No hay ideas pendientes. Genera unas cuantas y elige las que quieras seguir.</p>
       )}
