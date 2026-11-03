@@ -21,10 +21,21 @@ import { getCountry } from "@/lib/countries";
 import { productFactsPrompt } from "@/lib/product-queries";
 import { getKeywordRows } from "@/lib/queries";
 import { isRelevantKeyword } from "@/lib/relevance";
-import { sharedAppId } from "@/lib/products";
+import { marketProductId } from "@/lib/products";
 import { revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
+
+/**
+ * The market an action was called from (any country of the app: revalidation and AI context) and its
+ * product, which owns the creatives.
+ */
+async function creativeOwner(appId: number): Promise<{ marketId: number; productId: number }> {
+  const marketId = idSchema.parse(appId);
+  const productId = await marketProductId(marketId);
+  if (productId === null) throw new Error("App no encontrada.");
+  return { marketId, productId };
+}
 
 async function loadAppOrThrow(appId: number) {
   const app = await getDb().query.apps.findFirst({ where: eq(schema.apps.id, appId) });
@@ -62,7 +73,7 @@ export type SaveState = { savedAt?: string; error?: string } | null;
 
 /** Upserts the one design of this kind for the app. The spec is validated and size-capped. */
 export async function saveDesign(appId: number, kind: "screenshots" | "icon", spec: unknown): Promise<SaveState> {
-  const id = await sharedAppId(idSchema.parse(appId));
+  const { marketId: id, productId } = await creativeOwner(appId);
   const parsed = kind === "screenshots" ? screenshotSpecSchema.safeParse(spec) : iconSpecSchema.safeParse(spec);
   if (!parsed.success) return { error: "El diseño tiene un formato no válido." };
   if (kind === "screenshots" && specBytes(parsed.data as ScreenshotSpec) > MAX_SPEC_BYTES) {
@@ -71,17 +82,17 @@ export async function saveDesign(appId: number, kind: "screenshots" | "icon", sp
   const db = getDb();
   await db
     .insert(schema.assetDesigns)
-    .values({ appId: id, kind, spec: parsed.data })
-    .onConflictDoUpdate({ target: [schema.assetDesigns.appId, schema.assetDesigns.kind], set: { spec: parsed.data, updatedAt: new Date() } });
+    .values({ productId, kind, spec: parsed.data })
+    .onConflictDoUpdate({ target: [schema.assetDesigns.productId, schema.assetDesigns.kind], set: { spec: parsed.data, updatedAt: new Date() } });
   await revalidateProduct(id, "/creativos");
   return { savedAt: new Date().toISOString() };
 }
 
 export async function deleteDesign(appId: number, kind: "screenshots" | "icon"): Promise<void> {
-  const id = await sharedAppId(idSchema.parse(appId));
+  const { marketId: id, productId } = await creativeOwner(appId);
   await getDb()
     .delete(schema.assetDesigns)
-    .where(and(eq(schema.assetDesigns.appId, id), eq(schema.assetDesigns.kind, kind)));
+    .where(and(eq(schema.assetDesigns.productId, productId), eq(schema.assetDesigns.kind, kind)));
   await revalidateProduct(id, "/creativos");
 }
 
@@ -154,7 +165,7 @@ export type LogoImagesResult = { ids: number[]; provider: string; model: string 
 
 /** Calls the image provider and stores the results; the page reloads them through /api/assets/generated/[id]. */
 export async function generateLogoImages(appId: number, prompt: string, count: number): Promise<LogoImagesResult> {
-  const id = await sharedAppId(idSchema.parse(appId));
+  const { marketId: id, productId } = await creativeOwner(appId);
   const text = z.string().trim().min(10).max(2000).safeParse(prompt);
   if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
   await loadAppOrThrow(id);
@@ -164,7 +175,7 @@ export async function generateLogoImages(appId: number, prompt: string, count: n
     for (const img of images) {
       const [row] = await getDb()
         .insert(schema.generatedImages)
-        .values({ appId: id, kind: "logo", prompt: text.data, provider, model, mime: img.mime, data: img.base64 })
+        .values({ productId, kind: "logo", prompt: text.data, provider, model, mime: img.mime, data: img.base64 })
         .returning({ id: schema.generatedImages.id });
       ids.push(row.id);
     }
@@ -178,10 +189,10 @@ export async function generateLogoImages(appId: number, prompt: string, count: n
 }
 
 export async function deleteGeneratedImage(appId: number, imageId: number): Promise<void> {
-  const id = await sharedAppId(idSchema.parse(appId));
+  const { marketId: id, productId } = await creativeOwner(appId);
   await getDb()
     .delete(schema.generatedImages)
-    .where(and(eq(schema.generatedImages.id, idSchema.parse(imageId)), eq(schema.generatedImages.appId, id)));
+    .where(and(eq(schema.generatedImages.id, idSchema.parse(imageId)), eq(schema.generatedImages.productId, productId)));
   await revalidateProduct(id, "/creativos/logo");
   await revalidateProduct(id, "/creativos");
 }
@@ -207,7 +218,7 @@ export type BackgroundImageResult = { id: number; url: string; provider: string;
 
 /** Generates one portrait backdrop and stores it; the screenshot spec references it by URL. */
 export async function generateBackgroundImage(appId: number, prompt: string, palette?: string[]): Promise<BackgroundImageResult> {
-  const id = await sharedAppId(idSchema.parse(appId));
+  const { marketId: id, productId } = await creativeOwner(appId);
   const text = z.string().trim().min(10).max(2000).safeParse(prompt);
   if (!text.success) return { error: "Escribe un prompt de al menos 10 caracteres." };
   await loadAppOrThrow(id);
@@ -216,7 +227,7 @@ export async function generateBackgroundImage(appId: number, prompt: string, pal
     const { images, provider, model } = await generateImages({ prompt: finalPrompt, count: 1, aspect: "9:16" });
     const [row] = await getDb()
       .insert(schema.generatedImages)
-      .values({ appId: id, kind: "background", prompt: finalPrompt, provider, model, mime: images[0].mime, data: images[0].base64 })
+      .values({ productId, kind: "background", prompt: finalPrompt, provider, model, mime: images[0].mime, data: images[0].base64 })
       .returning({ id: schema.generatedImages.id });
     await revalidateProduct(id, "/creativos");
     return { id: row.id, url: generatedImageUrl(row.id), provider, model };

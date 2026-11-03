@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, notExists } from "drizzle-orm";
+import { and, asc, eq, inArray, notExists } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -201,9 +201,12 @@ export async function restoreKeywords(appId: number, rows: RemovedKeyword[]): Pr
 export async function unfollowApp(formData: FormData) {
   const appId = appIdSchema.parse(formData.get("appId"));
   const db = getDb();
+  // Only the market goes (its keywords, rankings, reviews, drafts…). The app-wide data (product sheet,
+  // brand exceptions, creatives) belongs to the product and stays while another country is followed.
   const [removed] = await db.delete(schema.apps).where(eq(schema.apps.id, appId)).returning({ productId: schema.apps.productId });
-  // The last market gone: the product goes too (its slug is free again).
+  let next = "/";
   if (removed) {
+    // The last market gone: the product goes too, and its data with it by cascade (its slug is free again).
     await db
       .delete(schema.products)
       .where(
@@ -212,9 +215,18 @@ export async function unfollowApp(formData: FormData) {
           notExists(db.select({ id: schema.apps.id }).from(schema.apps).where(eq(schema.apps.productId, removed.productId))),
         ),
       );
+    // Otherwise, on to the product's next market.
+    const [other] = await db
+      .select({ productSlug: schema.products.slug, country: schema.apps.country })
+      .from(schema.apps)
+      .innerJoin(schema.products, eq(schema.products.id, schema.apps.productId))
+      .where(eq(schema.apps.productId, removed.productId))
+      .orderBy(asc(schema.apps.id))
+      .limit(1);
+    if (other) next = marketPath(other);
   }
   revalidatePath("/", "layout");
-  redirect("/");
+  redirect(next);
 }
 
 export async function refreshRankings(formData: FormData) {

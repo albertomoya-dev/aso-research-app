@@ -15,7 +15,7 @@ import { Difficulty, OpportunityBadge, PopularityBar } from "@/components/scores
 import { StoreBadge } from "@/components/store-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { buttonPrimary, buttonSecondary, Card } from "@/components/ui";
-import { loadMarketParams, marketPath } from "@/lib/products";
+import { loadMarketParams, marketPath, productMarkets, unfollowConfirmation } from "@/lib/products";
 import { watchedStoreIds } from "@/lib/competitor-queries";
 import { getCountry } from "@/lib/countries";
 import { formatDate } from "@/lib/format";
@@ -69,11 +69,17 @@ export default async function AppPage({ params, searchParams }: Props) {
   const sort: KeywordSort = isKeywordSort(s) ? s : "opportunity";
   const dir: SortDir = d === "asc" || d === "desc" ? d : KEYWORD_SORTS[sort].dir;
   const { lang } = getCountry(app.country);
-  const [rows, official, watched] = await Promise.all([
+  const [rows, official, watched, markets] = await Promise.all([
     getKeywordRows(app),
     app.store === "android" ? getOfficialStats(app.id) : null,
     watchedStoreIds(app.id),
+    productMarkets(app.productId),
   ]);
+  const unfollowMessage = unfollowConfirmation(
+    app.title,
+    getCountry(app.country).name,
+    markets.filter((m) => m.id !== app.id).map((m) => getCountry(m.country).name),
+  );
   const top5HasWatched = rows.some((r) => r.top5.some((t) => watched.has(t.id)));
   const visible = sortKeywordRows(rows.filter((r) => filter.test(r, lang)), sort, dir);
   const unratedByUser = rows.filter((r) => r.relevanceSource !== "user").length;
@@ -127,7 +133,7 @@ export default async function AppPage({ params, searchParams }: Props) {
           <form action={unfollowApp}>
             <input type="hidden" name="appId" value={app.id} />
             <ConfirmButton
-              message={`¿Dejar de seguir ${app.title}? Se borrarán sus keywords y su histórico.`}
+              message={unfollowMessage}
               className={`${buttonSecondary} text-danger`}
             >
               Dejar de seguir

@@ -18,7 +18,7 @@ export const maxDuration = 120;
 export default async function IconPage({ params }: Props) {
   const app = await loadPrimaryParams(params);
   const saved = await getDb().query.assetDesigns.findFirst({
-    where: and(eq(schema.assetDesigns.appId, app.id), eq(schema.assetDesigns.kind, "icon")),
+    where: and(eq(schema.assetDesigns.productId, app.productId), eq(schema.assetDesigns.kind, "icon")),
   });
   const parsed = saved ? iconSpecSchema.safeParse(saved.spec) : null;
   const initial: IconSpec = parsed?.success ? parsed.data : defaultIconSpec(app.title);

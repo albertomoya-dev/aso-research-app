@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Vídeo" };
 export default async function VideoPage({ params }: Props) {
   const app = await loadPrimaryParams(params);
   const saved = await getDb().query.assetDesigns.findFirst({
-    where: and(eq(schema.assetDesigns.appId, app.id), eq(schema.assetDesigns.kind, "screenshots")),
+    where: and(eq(schema.assetDesigns.productId, app.productId), eq(schema.assetDesigns.kind, "screenshots")),
   });
   const parsed = saved ? screenshotSpecSchema.safeParse(saved.spec) : null;
 

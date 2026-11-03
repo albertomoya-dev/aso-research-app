@@ -7,6 +7,7 @@ import {
   productPath,
   productSlugBase,
   slugify,
+  unfollowConfirmation,
   uniqueSlug,
 } from "@/lib/market-path";
 
@@ -148,5 +149,20 @@ describe("groupMarkets", () => {
       { id: 1, country: "es", keywords: 30 },
       { id: 4, country: "us", keywords: 7 },
     ]);
+  });
+});
+
+describe("unfollowConfirmation", () => {
+  it("keeps the product's data while other countries are followed", () => {
+    expect(unfollowConfirmation("Recordatorio", "España", ["Estados Unidos"])).toBe(
+      "¿Dejar de seguir Recordatorio en España? Se borrarán las keywords y el histórico de España. La ficha de producto, las marcas excluidas y los creativos se conservan porque sigues la app en Estados Unidos.",
+    );
+    expect(unfollowConfirmation("Recordatorio", "España", ["Estados Unidos", "México", "Chile"])).toMatch(/en Estados Unidos, México y Chile\.$/);
+  });
+
+  it("warns that the last country takes the product's data with it", () => {
+    expect(unfollowConfirmation("Recordatorio", "España", [])).toBe(
+      "¿Dejar de seguir Recordatorio? Es el último país que sigues: se borrarán sus keywords, su histórico, la ficha de producto, las marcas excluidas y los creativos.",
+    );
   });
 });

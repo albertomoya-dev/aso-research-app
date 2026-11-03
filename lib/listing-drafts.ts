@@ -87,6 +87,23 @@ export function targetLabel(target: DraftTarget): string {
   return target.country ? `${label} · ficha personalizada para ${getCountry(target.country).name}` : label;
 }
 
+/** A saved draft of any market of the product: `market` is that market's country code. */
+export type MarketDraft = DraftTarget & { market: string };
+
+/**
+ * Drafts stay per market (`listing_drafts.app_id`), but the store console has a single listing per app
+ * and language. The notice when other markets of the product have a draft for the same listing as
+ * `target` (publishing both, the last one wins), or null. `market` is the open market's country.
+ */
+export function sharedListingNotice(target: DraftTarget, market: string, drafts: readonly MarketDraft[]): string | null {
+  const others = [...new Set(drafts.filter((d) => d.market !== market && d.locale === target.locale && d.country === target.country).map((d) => d.market))];
+  if (others.length === 0) return null;
+  const names = others.map((c) => getCountry(c).name).sort((a, b) => a.localeCompare(b, "es"));
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  const verb = names.length === 1 ? "tiene" : "tienen";
+  return `${list} también ${verb} un borrador de ${targetLabel(target)}. La tienda solo guarda una ficha por idioma: si publicas desde más de un país, la última publicación sustituye a la anterior.`;
+}
+
 export type LocaleOption = DraftTarget & { label: string; kind: "main" | "extra" | "current" | "draft" | "other"; hasDraft: boolean };
 
 /**

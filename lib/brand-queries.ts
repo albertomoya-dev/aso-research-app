@@ -3,17 +3,18 @@ import { getDb, schema } from "@/db";
 import { getCountry } from "./countries";
 import { type ProductFacts, productBrandTerms } from "./product-facts";
 import { type FeatureRow, getProductFacts } from "./product-queries";
-import { sharedAppId } from "./products";
+import { marketProductId } from "./products";
 import type { AppSummary } from "./stores/types";
 import { competitorBrandGroups, topCompetitors } from "./suggestions";
 
-/** Words the user marked as «no es una marca» for this app (any market: the list is the same in every country). */
+/** Words the user marked as «no es una marca» for this app (any market: the list is the product's, the same in every country). */
 export async function getBrandExceptions(marketId: number): Promise<string[]> {
-  const appId = await sharedAppId(marketId);
+  const productId = await marketProductId(marketId);
+  if (productId === null) return [];
   const rows = await getDb()
     .select({ word: schema.brandExceptions.word })
     .from(schema.brandExceptions)
-    .where(eq(schema.brandExceptions.appId, appId))
+    .where(eq(schema.brandExceptions.productId, productId))
     .orderBy(schema.brandExceptions.word);
   return rows.map((r) => r.word);
 }

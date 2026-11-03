@@ -33,6 +33,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 23 | Creativos con capturas actuales (subida múltiple y de carpetas, fecha y versión de cada captura con aviso de capturas antiguas, script `adb` opcional), keyword por pantalla entre las relevantes y con visión, colores del icono actual y pista de audio en el vídeo | Hecho (la parte de navegador sin probar a mano) |
 | 24 | Interfaz: tabla de keywords con columna fija y scroll dentro de su tarjeta, competidores vigilados resaltados en el TOP 5, pantalla de Ajustes con el estado y la prueba de cada integración, y panel de salud ASO en la portada de cada app | Hecho (sin medir en un móvil real) |
 | 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
+| 26b | Datos de la app en el producto: ficha de producto, marcas excluidas y creativos por `product_id` (migración 0020, que fusiona los países). Se conservan al dejar de seguir un país. Los borradores siguen siendo de cada país y el editor avisa si dos países tienen el mismo idioma | Hecho |
 
 ## Stack
 
@@ -461,8 +462,18 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 - **En la base de datos** (`db/schema.ts`): la tabla `products` (`store`, `store_id`, `slug` único, título e icono del primer mercado) y la tabla `apps`, que **es la de mercados**. No se ha renombrado, para no cambiar ids ni claves ajenas: cada fila de `apps` es la app en un país y apunta a su producto con `product_id`, obligatorio y con borrado en cascada. En el código, `App` y `Market` son el mismo tipo.
 - **La migración `0019_products`** crea un producto por cada par (tienda, id) que ya existía y enlaza todas las filas de `apps`, sin cambiar ningún id: las apps que se seguían en dos países (por ejemplo, Recordatorio en España y en Estados Unidos) quedan en un mismo producto con dos mercados.
 - **El slug** sale del final del id de Google Play (`com.moyalogames.recordatorio` → `recordatorio`) o, si es un número (App Store), del título. Va en minúsculas, sin tildes, con guiones y con 40 caracteres como máximo. Si ya existe, se le añade `-2`, `-3`… Se guarda y no cambia aunque cambie el título. Está en `lib/market-path.ts` (`slugify`, `productSlugBase`, `uniqueSlug`), y la migración aplica la misma regla en SQL.
-- **Seguir una app** (Buscar app) crea el producto la primera vez. **Seguir en otro país** (tarjeta «Otros países») añade un mercado al mismo producto. Al dejar de seguir el último mercado se borra también el producto.
-- **Datos de la app en conjunto:** la ficha de producto, las marcas excluidas y los creativos (diseños e imágenes generadas) son del producto. Mientras no se muevan a `product_id` (fase 26b), se leen y se escriben en el **mercado principal**, el `apps.id` más bajo del producto (`primaryMarket` y `sharedAppId` en `lib/products.ts`). Por eso España y Estados Unidos comparten la misma ficha de producto, las mismas marcas y los mismos creativos. Lo que un mercado secundario tuviera guardado antes en esas tablas se conserva en la base de datos, pero no se muestra hasta la fase 26b, que lo fusiona.
+- **Seguir una app** (Buscar app) crea el producto la primera vez. **Seguir en otro país** (tarjeta «Otros países») añade un mercado al mismo producto.
+- **Datos de la app en conjunto:** la ficha de producto (`product_facts`, `product_features`, `product_releases`), las marcas excluidas (`brand_exceptions`) y los creativos (`asset_designs`, `generated_images`) cuelgan de `product_id`, así que son los mismos en todos los países. Las consultas y las acciones reciben el id de cualquier mercado y lo traducen con `marketProductId()` (`lib/products.ts`).
+- **La migración `0020_product_owned_data`** movió esas tablas de `app_id` a `product_id` y fusionó lo que cada país tenía guardado. Se queda lo del mercado principal (el `apps.id` más bajo con datos) y de los demás solo se toma lo que falta:
+  - en la ficha, los campos vacíos;
+  - las funciones con un nombre que no estuviera ya (sin distinguir mayúsculas, tildes ni espacios), al final de la lista;
+  - las versiones que no estuvieran;
+  - todas las marcas excluidas;
+  - el diseño de cada tipo que el principal no tuviera;
+  - todas las imágenes generadas.
+- **La columna `app_id` antigua** sigue en esas tablas, opcional y sin usarse, para que el código anterior a la 0020 pueda seguir leyendo. Ya no se escribe y pasa a `NULL` si se deja de seguir su país. Una migración de limpieza posterior la quitará.
+- **Dejar de seguir un país** borra solo ese mercado: sus keywords, posiciones, reseñas, competidores, borradores y publicaciones. Los datos del producto se conservan mientras sigas la app en otro país, y la confirmación lo dice. Al dejar de seguir el último país se borra el producto y, en cascada, su ficha, sus marcas excluidas y sus creativos.
+- **Los borradores de ficha y las publicaciones** (`listing_drafts`, `publications`) se quedan en el mercado (`app_id`). Cada uno se escribe y se mide con las keywords de su país. Pero la consola de la tienda tiene una sola ficha por app e idioma. Por eso el editor avisa cuando otro país del mismo producto tiene un borrador del mismo idioma y la misma ficha (`sharedListingNotice` en `lib/listing-drafts.ts`): si publicas desde los dos, la última publicación sustituye a la anterior.
 
 ### URLs
 
@@ -477,7 +488,7 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 | Creativos (iguales en todos los países) | `/a/[app]/creativos`, `/creativos/icono`, `/creativos/logo`, `/creativos/video` |
 | Ficha de producto | `/a/[app]/ajustes/producto` |
 
-`[app]` es el slug y `[país]` el código del país en minúsculas (`es`, `us`). Los enlaces se construyen siempre con `marketPath()` y `productPath()` (`lib/market-path.ts`), y las server actions revalidan las rutas nuevas con `revalidateMarket()` y `revalidateProduct()` (`lib/revalidate.ts`). En las páginas de la app en conjunto, las pestañas del país apuntan al mercado principal.
+`[app]` es el slug y `[país]` el código del país en minúsculas (`es`, `us`). Los enlaces se construyen siempre con `marketPath()` y `productPath()` (`lib/market-path.ts`), y las server actions revalidan las rutas nuevas con `revalidateMarket()` y `revalidateProduct()` (`lib/revalidate.ts`). En las páginas de la app en conjunto, las pestañas del país apuntan al mercado principal, que también da el contexto (ficha publicada y keywords) a la IA de los creativos.
 
 ### Redirecciones
 

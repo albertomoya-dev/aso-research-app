@@ -5,7 +5,15 @@ import { getDb, schema } from "@/db";
 import type { App, Product } from "@/db/schema";
 import { groupMarkets, type MarketRef, productSlugBase, type ProductWithMarkets, uniqueSlug } from "./market-path";
 
-export { legacyAppRedirect, marketPath, productPath, slugify, type MarketRef, type ProductWithMarkets } from "./market-path";
+export {
+  legacyAppRedirect,
+  marketPath,
+  productPath,
+  slugify,
+  unfollowConfirmation,
+  type MarketRef,
+  type ProductWithMarkets,
+} from "./market-path";
 export type { Market, Product } from "@/db/schema";
 
 /** A market row (`apps`) with the slug of its product: everything `marketPath()` needs. */
@@ -39,9 +47,9 @@ export async function productMarkets(productId: number): Promise<App[]> {
 }
 
 /**
- * The primary market: the lowest `apps.id` of the product. Until phase 26b the app-wide tables
- * (product sheet, brand exceptions, creatives) are read and written through it, so every country
- * shares them. Cached per request.
+ * The primary market: the lowest `apps.id` of the product. The app-wide pages (creatives, product
+ * settings) use it only as the market whose listing and keywords feed the AI and the links; the
+ * app-wide data itself is keyed by `product_id` (migration 0020). Cached per request.
  */
 export const primaryMarket = cache(async (productId: number): Promise<MarketApp> => {
   const [row] = await getDb()
@@ -56,22 +64,15 @@ export const primaryMarket = cache(async (productId: number): Promise<MarketApp>
 });
 
 /**
- * The `apps.id` that holds the app-wide data for the market `appId` (its product's primary market).
- * The market itself when it is unknown, so a bad id still finds nothing rather than another app's data.
+ * The product of the market `marketId`: the key of the app-wide data (product sheet, brand exceptions,
+ * creatives), the same in every country. Null when the market does not exist. Cached per request.
  */
-export const sharedAppId = cache(async (appId: number): Promise<number> => {
+export const marketProductId = cache(async (marketId: number): Promise<number | null> => {
   const [row] = await getDb()
     .select({ productId: schema.apps.productId })
     .from(schema.apps)
-    .where(eq(schema.apps.id, appId));
-  if (!row) return appId;
-  const [first] = await getDb()
-    .select({ id: schema.apps.id })
-    .from(schema.apps)
-    .where(eq(schema.apps.productId, row.productId))
-    .orderBy(asc(schema.apps.id))
-    .limit(1);
-  return first?.id ?? appId;
+    .where(eq(schema.apps.id, marketId));
+  return row?.productId ?? null;
 });
 
 /** Slug and country of a market, for links and revalidation when only its id is known. Null if it does not exist. */
@@ -116,7 +117,7 @@ export async function loadMarketParams(params: Promise<{ app: string; market: st
 
 /**
  * For the app-wide pages (`/a/[app]/creativos`, `/a/[app]/ajustes/…`): the product's primary market,
- * which holds the app-wide data until phase 26b.
+ * the context for the AI and the links. Their data is read by `productId`, which every market shares.
  */
 export async function loadPrimaryParams(params: Promise<{ app: string }>): Promise<MarketApp> {
   const product = await loadProduct((await params).app);

@@ -60,7 +60,7 @@ export default async function ScreenshotsPage({ params }: Props) {
   const app = await loadPrimaryParams(params);
   const saved = await getDb().query.assetDesigns.findFirst({
     where: and(
-      eq(schema.assetDesigns.appId, app.id),
+      eq(schema.assetDesigns.productId, app.productId),
       eq(schema.assetDesigns.kind, "screenshots"),
     ),
   });
@@ -73,7 +73,7 @@ export default async function ScreenshotsPage({ params }: Props) {
     .from(schema.generatedImages)
     .where(
       and(
-        eq(schema.generatedImages.appId, app.id),
+        eq(schema.generatedImages.productId, app.productId),
         eq(schema.generatedImages.kind, "background"),
       ),
     )

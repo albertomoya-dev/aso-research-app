@@ -128,3 +128,16 @@ export function groupMarkets(rows: readonly MarketRow[]): ProductWithMarkets[] {
   for (const p of byId.values()) p.markets.sort((a, b) => a.id - b.id);
   return [...byId.values()];
 }
+
+/**
+ * The confirmation before unfollowing a market. The app-wide data (product sheet, brand exceptions,
+ * creatives) belongs to the product: it is kept while another country is followed, and goes only with
+ * the last one. Country names, not codes; `others` are the other markets still followed.
+ */
+export function unfollowConfirmation(title: string, country: string, others: readonly string[]): string {
+  if (others.length === 0) {
+    return `¿Dejar de seguir ${title}? Es el último país que sigues: se borrarán sus keywords, su histórico, la ficha de producto, las marcas excluidas y los creativos.`;
+  }
+  const list = others.length === 1 ? others[0] : `${others.slice(0, -1).join(", ")} y ${others[others.length - 1]}`;
+  return `¿Dejar de seguir ${title} en ${country}? Se borrarán las keywords y el histórico de ${country}. La ficha de producto, las marcas excluidas y los creativos se conservan porque sigues la app en ${list}.`;
+}

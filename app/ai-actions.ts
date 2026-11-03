@@ -44,7 +44,7 @@ import { shiftDate, today } from "@/lib/ranking";
 import { getAdapter } from "@/lib/stores";
 import { competitorBrands, filterSuggestions, PROMPT_VERSION, seedWords, topCompetitors } from "@/lib/suggestions";
 import { fold } from "@/lib/text";
-import { sharedAppId } from "@/lib/products";
+import { marketProductId } from "@/lib/products";
 import { revalidateMarket, revalidateProduct } from "@/lib/revalidate";
 
 const idSchema = z.coerce.number().int().positive();
@@ -350,14 +350,16 @@ export async function setBrandException(formData: FormData): Promise<void> {
   });
   if (!parsed.success) return;
   const { exception } = parsed.data;
-  // Same list in every country: kept on the primary market.
-  const appId = await sharedAppId(parsed.data.appId);
+  // Same list in every country: it belongs to the product.
+  const { appId } = parsed.data;
+  const productId = await marketProductId(appId);
+  if (productId === null) return;
   const word = fold(parsed.data.word).replace(/\s+/g, " ");
   const db = getDb();
   if (exception === "1") {
-    await db.insert(schema.brandExceptions).values({ appId, word }).onConflictDoNothing();
+    await db.insert(schema.brandExceptions).values({ productId, word }).onConflictDoNothing();
   } else {
-    await db.delete(schema.brandExceptions).where(and(eq(schema.brandExceptions.appId, appId), eq(schema.brandExceptions.word, word)));
+    await db.delete(schema.brandExceptions).where(and(eq(schema.brandExceptions.productId, productId), eq(schema.brandExceptions.word, word)));
   }
   await revalidateProduct(appId, "", "layout");
 }

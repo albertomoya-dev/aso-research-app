@@ -14,7 +14,7 @@ import { loadMarketParams, marketPath, productPath } from "@/lib/products";
 import { detectBrands } from "@/lib/brand-queries";
 import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
-import { getListingDrafts } from "@/lib/listing-draft-queries";
+import { getListingDrafts, getProductDraftTargets } from "@/lib/listing-draft-queries";
 import {
   baseDraftFor,
   coverageMatrix,
@@ -28,6 +28,7 @@ import {
   type MatrixColumn,
   missingListingNotice,
   resolveTarget,
+  sharedListingNotice,
   sharesMainLanguage,
   targetLabel,
   targetQuery,
@@ -53,7 +54,13 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   const query = await searchParams;
   // ?locale=en-US&country=mx: which listing to edit. Unknown values fall back to the main listing.
   const target = resolveTarget(app.country, app.store, { locale: one(query.locale), country: one(query.country) });
-  const [rows, product, drafts] = await Promise.all([getKeywordRows(app), getProductFacts(app.id), getListingDrafts(app.id)]);
+  const [rows, product, drafts, productDrafts] = await Promise.all([
+    getKeywordRows(app),
+    getProductFacts(app.id),
+    getListingDrafts(app.id),
+    getProductDraftTargets(app.productId),
+  ]);
+  const sharedNotice = sharedListingNotice(target, app.country, productDrafts);
   const { lang } = getCountry(app.country);
   const { brands, titleBrands, developers, exceptions } = await detectBrands(app, rows, product);
   // The weighted score counts only keywords worth building on, the same set the optimizer uses.
@@ -121,6 +128,11 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         hasDraft={row != null}
         href={marketPath(app, `/ficha/publicar${targetQuery(app.country, target)}`)}
       />
+      {sharedNotice && (
+        <p role="note" className="rounded-lg bg-warn-bg px-4 py-3 text-[13px] text-warn-fg">
+          {sharedNotice}
+        </p>
+      )}
       {aiEnabled && !isMain && !sameLanguage && !followedThere && (
         <div role="note" className="flex flex-col gap-2 rounded-lg bg-warn-bg px-4 py-3 text-[13px] text-warn-fg">
           <p>

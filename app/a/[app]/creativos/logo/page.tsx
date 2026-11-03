@@ -27,7 +27,7 @@ export default async function LogoPage({ params }: Props) {
       createdAt: schema.generatedImages.createdAt,
     })
     .from(schema.generatedImages)
-    .where(and(eq(schema.generatedImages.appId, app.id), eq(schema.generatedImages.kind, "logo")))
+    .where(and(eq(schema.generatedImages.productId, app.productId), eq(schema.generatedImages.kind, "logo")))
     .orderBy(desc(schema.generatedImages.createdAt))
     .limit(60);
   const provider = imageProvider();

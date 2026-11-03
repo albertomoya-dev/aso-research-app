@@ -20,7 +20,7 @@ import { policyCheck } from "./policy-check";
 import { hasProductFacts } from "./product-facts";
 import { marketPath, productPath } from "./market-path";
 import { getProductFacts } from "./product-queries";
-import { sharedAppId } from "./products";
+import { marketProductId } from "./products";
 import type { KeywordRow } from "./queries";
 import { today } from "./ranking";
 import { isLikelyIrrelevant, isRelevantKeyword, KEYWORD_BUDGET } from "./relevance";
@@ -35,12 +35,13 @@ type HealthApp = { id: number; productSlug: string; store: "ios" | "android"; co
  * uploaded image in base64 and the home page must not download megabytes to count them.
  */
 async function screenshotDates(marketId: number) {
-  // Creatives are the app's, not the country's: kept on the primary market.
-  const appId = await sharedAppId(marketId);
+  // Creatives are the app's, not the country's: keyed by product.
+  const productId = await marketProductId(marketId);
+  if (productId === null) return [];
   const rows = await getDb().execute<{ uploaded: boolean; captured_at: string | null; app_version: string | null }>(sql`
     select coalesce(s->>'image', '') like 'data:%' as uploaded, s->>'capturedAt' as captured_at, s->>'appVersion' as app_version
     from ${schema.assetDesigns}, jsonb_array_elements(${schema.assetDesigns.spec}->'slides') as s
-    where ${schema.assetDesigns.appId} = ${appId} and ${schema.assetDesigns.kind} = 'screenshots'
+    where ${schema.assetDesigns.productId} = ${productId} and ${schema.assetDesigns.kind} = 'screenshots'
   `);
   return rows.rows;
 }

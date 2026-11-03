@@ -12,6 +12,7 @@ import {
   marketCountryFor,
   missingListingNotice,
   resolveTarget,
+  sharedListingNotice,
   sharesMainLanguage,
   storeLangFor,
   targetLabel,
@@ -185,5 +186,29 @@ describe("coverageMatrix", () => {
     expect(matrix.columns[0].score).toBeGreaterThan(0);
     expect(matrix.columns[1]).toMatchObject({ locale: "en-US", score: 0, saved: true });
     expect(matrix.columns[1]).not.toHaveProperty("draft");
+  });
+});
+
+describe("sharedListingNotice", () => {
+  const drafts = [
+    { market: "es", locale: "es-ES", country: "" },
+    { market: "us", locale: "en-US", country: "" },
+    { market: "us", locale: "es-ES", country: "" },
+    { market: "mx", locale: "es-ES", country: "" },
+    { market: "mx", locale: "es-419", country: "mx" },
+  ];
+
+  it("names the other markets with a draft of the same listing", () => {
+    expect(sharedListingNotice({ locale: "es-ES", country: "" }, "es", drafts)).toBe(
+      "Estados Unidos y México también tienen un borrador de español (España). La tienda solo guarda una ficha por idioma: si publicas desde más de un país, la última publicación sustituye a la anterior.",
+    );
+    expect(sharedListingNotice({ locale: "es-ES", country: "" }, "mx", drafts)).toMatch(/^España y Estados Unidos también tienen/);
+  });
+
+  it("is null when only this market has it, and tells a custom listing apart from the main one", () => {
+    expect(sharedListingNotice({ locale: "en-US", country: "" }, "us", drafts)).toBeNull();
+    expect(sharedListingNotice({ locale: "es-419", country: "mx" }, "mx", drafts)).toBeNull();
+    expect(sharedListingNotice({ locale: "es-419", country: "" }, "es", drafts)).toBeNull();
+    expect(sharedListingNotice({ locale: "en-US", country: "" }, "es", drafts)).toMatch(/^Estados Unidos también tiene un borrador/);
   });
 });

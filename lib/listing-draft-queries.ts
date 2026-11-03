@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import type { DraftTarget } from "./listing-drafts";
+import type { DraftTarget, MarketDraft } from "./listing-drafts";
 import type { MetadataDraft } from "./metadata-check";
 
 export type ListingDraftRow = typeof schema.listingDrafts.$inferSelect;
@@ -12,6 +12,15 @@ export function getListingDrafts(appId: number): Promise<ListingDraftRow[]> {
     .from(schema.listingDrafts)
     .where(eq(schema.listingDrafts.appId, appId))
     .orderBy(asc(schema.listingDrafts.locale), asc(schema.listingDrafts.country));
+}
+
+/** Which listings have a draft in each market of the product (no draft bodies): for `sharedListingNotice`. */
+export function getProductDraftTargets(productId: number): Promise<MarketDraft[]> {
+  return getDb()
+    .select({ locale: schema.listingDrafts.locale, country: schema.listingDrafts.country, market: schema.apps.country })
+    .from(schema.listingDrafts)
+    .innerJoin(schema.apps, eq(schema.apps.id, schema.listingDrafts.appId))
+    .where(eq(schema.apps.productId, productId));
 }
 
 /**
