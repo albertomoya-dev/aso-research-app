@@ -32,7 +32,7 @@ export function Sidebar() {
   return (
     <nav
       aria-label="Principal"
-      className="flex shrink-0 flex-col gap-0.5 border-b border-line px-3 py-3 md:w-56 md:overflow-y-auto md:border-b-0 md:py-4"
+      className="flex shrink-0 flex-col gap-0.5 border-b border-line bg-surface px-3 py-3 md:w-56 md:overflow-y-auto md:border-r md:border-b-0 md:py-4"
     >
       <Link href="/" className="flex items-center gap-2 px-2.5 pb-3 md:pb-4">
         <svg width="22" height="22" viewBox="0 0 28 28" aria-hidden="true">

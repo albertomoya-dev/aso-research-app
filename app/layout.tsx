@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Sidebar } from "@/components/sidebar";
+import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
 const inter = Inter({
@@ -19,8 +20,9 @@ export const metadata: Metadata = {
   description: "Seguimiento de keywords y posiciones en App Store y Google Play",
 };
 
-// Applies the saved theme before first paint so light-mode users never see a dark flash.
-const themeScript = `try{if(localStorage.getItem("theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}`;
+// Light is the default. Before first paint: dark if it was chosen in the toggle or, with no stored
+// choice, if the system prefers it. Nothing to fix up after hydration, so no flash.
+const themeScript = `try{var t=localStorage.getItem("theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.dataset.theme="dark"}catch(e){}`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
@@ -31,10 +33,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <div className="flex min-h-screen flex-col md:h-screen md:flex-row">
           <Sidebar />
-          <main className="min-w-0 flex-1 bg-panel px-4 py-6 md:my-2 md:mr-2 md:overflow-y-auto md:rounded-xl md:border md:border-line md:px-8 md:py-7 md:shadow-[inset_0_1px_0_0_var(--edge)]">
-            {children}
-          </main>
+          <main className="min-w-0 flex-1 px-4 py-6 md:overflow-y-auto md:px-8 md:py-7">{children}</main>
         </div>
+        <Toaster />
       </body>
     </html>
   );

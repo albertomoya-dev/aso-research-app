@@ -14,7 +14,7 @@ export function PublicationHistory({ rows }: { rows: Publication[] }) {
         <h2 className="text-[15px] font-semibold">Historial de publicaciones</h2>
         <p className="mt-1 text-[13px] text-muted">Cada envío desde Rankeo queda registrado, también los que fallaron, con los campos que cambiaban.</p>
       </div>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="text-left text-xs tracking-wider text-muted uppercase">

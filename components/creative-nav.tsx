@@ -25,7 +25,7 @@ export function CreativeNav({ appId }: { appId: number }) {
             href={href}
             aria-current={active ? "page" : undefined}
             className={`inline-flex min-h-9 items-center rounded px-3 text-[13px] font-medium md:min-h-7 ${
-              active ? "bg-surface text-ink shadow-[inset_0_1px_0_0_var(--edge)]" : "text-muted hover:text-ink"
+              active ? "bg-surface text-ink" : "text-muted hover:text-ink"
             }`}
           >
             {s.label}

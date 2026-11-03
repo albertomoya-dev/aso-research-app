@@ -225,7 +225,7 @@ export default async function AppPage({ params, searchParams }: Props) {
           ) : visible.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-muted">Ninguna keyword cumple este filtro.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[1380px] border-collapse text-sm">
                 <thead>
                   <tr className="text-left text-xs tracking-wider text-muted uppercase">

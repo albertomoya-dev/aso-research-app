@@ -32,10 +32,11 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 22 | Anotaciones automáticas (la consulta diaria guarda la ficha propia y anota cada cambio; también cada publicación desde Rankeo), impacto por keyword ±14 días y registro de experimentos de ficha | Hecho |
 | 23 | Creativos con capturas actuales (subida múltiple y de carpetas, fecha y versión de cada captura con aviso de capturas antiguas, script `adb` opcional), keyword por pantalla entre las relevantes y con visión, colores del icono actual y pista de audio en el vídeo | Hecho (la parte de navegador sin probar a mano) |
 | 24 | Interfaz: tabla de keywords con columna fija y scroll dentro de su tarjeta, competidores vigilados resaltados en el TOP 5, pantalla de Ajustes con el estado y la prueba de cada integración, y panel de salud ASO en la portada de cada app | Hecho (sin medir en un móvil real) |
+| 25 | Sistema visual: claro por defecto con oscuro opcional, tokens nuevos, componentes base en `components/ui/` (Radix, cmdk, sonner, lucide), escaparate `/dev/ui` y pruebas e2e con Playwright y axe | Hecho |
 
 ## Stack
 
-Next.js (App Router) y TypeScript, Postgres con Drizzle ORM, Tailwind, Vitest. Pensado para desplegarse en Vercel con el plan gratuito.
+Next.js (App Router) y TypeScript, Postgres con Drizzle ORM, Tailwind 4, componentes sobre Radix (`radix-ui`), cmdk, sonner y lucide-react, Vitest y Playwright. Pensado para desplegarse en Vercel con el plan gratuito.
 
 Datos de las tiendas (`lib/stores/`):
 
@@ -137,6 +138,7 @@ La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Ant
 - Cada idea guarda el modelo que respondió y la versión del prompt (`PROMPT_VERSION` en `lib/suggestions.ts`).
 - Si el modelo rechaza una petición, la API la reintenta con el modelo alternativo que recomienda Anthropic (fallback del lado del servidor).
 - Sin `ANTHROPIC_API_KEY` la pantalla lo indica y el resto de la app funciona igual.
+- «Descartar» actúa sobre todas las ideas marcadas y dice cuántas ha descartado. Las descartadas no vuelven a proponerse.
 
 ## Editor de ficha
 
@@ -453,12 +455,28 @@ La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señ
 | Reseñas sin responder | Reseñas de la última semana de Google Play Console, solo si está conectada; se piden aparte para no frenar la portada | Mejorable con alguna; necesita atención con 10 o más. En App Store y sin Play Console sale «sin datos» con un enlace a Ajustes |
 | Próximo pico estacional | El pico más cercano de las keywords relevantes con popularidad suficiente (Estacionalidad) | Mejorable si está en temporada o empieza en 35 días o menos |
 
+## Desarrollo: interfaz y pruebas e2e
+
+### Componentes y diseño
+- Las reglas visuales están en `DESIGN.md` y los tokens en `app/globals.css`. Los componentes base viven en `components/ui/`.
+- **`/dev/ui`** muestra todos los componentes en claro y en oscuro, uno al lado del otro. Solo existe con `npm run dev`: en producción responde 404, salvo que el servidor se arranque con `ENABLE_DEV_UI=1` (lo hace la prueba e2e).
+- El tema claro es el predeterminado. El oscuro se elige en la barra lateral; sin elección guardada se sigue la preferencia del sistema.
+
+### Pruebas e2e (Playwright y axe)
+- Necesitan una **base de datos de prueba**: una rama de Neon creada a partir de producción. **Nunca la de producción**: las pruebas pulsan botones y pueden cambiar datos.
+- Se le pasa con `E2E_DATABASE_URL` o con `E2E_DATABASE_URL_FILE` (un archivo con la URL). Si coincide con el `DATABASE_URL` de `.env.local`, la prueba se niega a arrancar.
+- La primera vez: `npx playwright install chromium`.
+- `E2E_DATABASE_URL_FILE=ruta/al/archivo npm run test:e2e` compila la app y la arranca con `next start -p 3200`, sin contraseña y sin claves de IA, correo ni consolas de las tiendas. Para repetir sin compilar: `npx playwright test`.
+- **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Mide el desbordamiento horizontal del documento y de `<main>`, y lo deja en `test-results/overflow.md` sin fallar (las fases del rediseño lo corrigen).
+- **`e2e/axe.spec.ts`**: `/dev/ui` en los dos temas debe pasar WCAG 2.1 AA. De las pantallas actuales solo se informa en `test-results/axe-routes.json`.
+
 ## Comandos
 
 | Comando | Qué hace |
 | --- | --- |
 | `npm run dev` | Servidor de desarrollo |
 | `npm test` | Tests (Vitest) |
+| `npm run test:e2e` | Compila y recorre la app con Playwright contra una base de datos de prueba (ver «Desarrollo: interfaz y pruebas e2e») |
 | `npm run typecheck` | Comprobación de tipos |
 | `npm run lint` | ESLint |
 | `npm run db:generate` | Genera una migración tras cambiar `db/schema.ts` |
@@ -468,10 +486,11 @@ La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señ
 
 ```
 app/            páginas y server actions
-components/     UI
+components/     UI (components/ui/: componentes base del sistema visual)
 db/             esquema Drizzle y migraciones
 lib/stores/     adaptadores de App Store y Google Play
 lib/            utilidades (países, keywords, formato)
 scripts/        utilidades opcionales de línea de comandos (capturas con adb)
 tests/          tests de Vitest
+e2e/            pruebas de Playwright y axe
 ```

@@ -87,7 +87,7 @@ export function IdeasList({ appId, ideas, generatedBy }: { appId: number; ideas:
           )}
           {dismissNote && <span className={`mt-3 block ${dismissNote.error ? "text-danger" : "text-ink-soft"}`}>{dismissNote.text}</span>}
         </p>
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs font-semibold tracking-wide text-muted uppercase">

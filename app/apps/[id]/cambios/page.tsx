@@ -169,7 +169,7 @@ function AnnotationCard({ appId, note }: { appId: number; note: AnnotationWithIm
         {!complete && ` Faltan días: la comparación se completa el ${formatDate(shiftDate(a.date, IMPACT_WINDOW))}.`}
       </div>
       {rows.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="text-left text-xs tracking-wider text-muted uppercase">

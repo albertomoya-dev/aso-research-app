@@ -1,78 +1,90 @@
 @import "tailwindcss";
 
-@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+/* Dark is opt-in: <html data-theme="dark">, set before first paint by the script in app/layout.tsx
+   (stored choice, or prefers-color-scheme when there is none). `dark:` targets it. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
-  /* Linear-inspired palette, see DESIGN.md. Dark is the default, as in Linear;
-     light is opt-in through the theme toggle (data-theme="light" on <html>). */
-  color-scheme: dark;
-  --bg: #08090a;
-  --panel: #0f1011;
-  --surface: #141516;
-  --surface-muted: #1c1d1f;
-  --line: #23252a;
-  --line-strong: #34343a;
-  --edge: rgb(255 255 255 / 0.05);
-  --ink: #f7f8f8;
-  --ink-soft: #d0d6e0;
-  --muted: #8a8f98;
-  --brand: #5e6ad2;
-  --brand-hover: #6d78e0;
-  --brand-strong: #c7cbf5;
-  --brand-soft: #1e2140;
-  --on-brand: #ffffff;
-  --link: #828fff;
-  --ios-bg: #1e2140;
-  --ios-fg: #c7cbf5;
-  --android-bg: #11291a;
-  --android-fg: #8fdba5;
-  --danger: #ff7b72;
-  --danger-soft: #2d1414;
-  --warn-bg: #2e2210;
-  --warn-fg: #ffcc80;
-  --up: #4cc26b;
-  --down: #ff7b72;
-  /* Chart series, fixed order (validated for colour-blind separation). */
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
-  --series-5: #d55181;
-}
-
-:root[data-theme="light"] {
+/* Token names are kept from the previous system (about 1,200 classes use them); the values follow
+   docs/REDISENO_UX.md §7.1. See DESIGN.md for what each one is for. */
+:root,
+[data-theme="light"] {
   color-scheme: light;
-  --bg: #f1f2f4;
-  --panel: #fcfcfd;
+  --bg: #f6f7f9;
+  --panel: var(--bg);
   --surface: #ffffff;
-  --surface-muted: #f1f2f4;
-  --line: #e4e5e8;
-  --line-strong: #d3d5da;
-  --edge: rgb(255 255 255 / 0);
-  --ink: #0f1011;
-  --ink-soft: #3c3f45;
-  --muted: #62666d;
-  --brand: #5e6ad2;
-  --brand-hover: #4f5bc4;
-  --brand-strong: #3d48a8;
-  --brand-soft: #eceefb;
+  --surface-muted: #f0f2f5;
+  --line: #e3e6eb;
+  --line-strong: #cfd4dc;
+  --edge: transparent;
+  --ink: #14171c;
+  --ink-soft: #5b6370;
+  /* Tertiary text: lighter than ink-soft, still ≥ 4.5:1 on bg, surface and surface-muted (12 px). */
+  --muted: #656d7a;
+  --brand: #3b5bdb;
+  --brand-hover: #3250c4;
+  --brand-strong: #2b44b0;
+  --brand-soft: #eaeefd;
   --on-brand: #ffffff;
-  --link: #4f5bc4;
-  --ios-bg: #eceefb;
-  --ios-fg: #3d48a8;
-  --android-bg: #e3f4e7;
-  --android-fg: #1b6e30;
-  --danger: #c52828;
-  --danger-soft: #fcebeb;
-  --warn-bg: #fff3e0;
-  --warn-fg: #8a4b00;
-  --up: #1f8a3b;
-  --down: #c52828;
+  --link: var(--brand);
+  --ios-bg: #eaeefd;
+  --ios-fg: #2b44b0;
+  --android-bg: #e3f4ea;
+  --android-fg: #1f6f43;
+  --danger: #b42318;
+  --danger-soft: #fcecea;
+  --warn-bg: #fff4e0;
+  /* #b26a00 (the document's value) gives 3.9:1 on white; this is the closest that passes AA as text. */
+  --warn-fg: #9a5b00;
+  --up: #12805c;
+  --down: #c2362b;
+  /* Chart series, fixed order (validated for colour-blind separation). Your app always uses --series-own. */
+  --series-own: var(--brand);
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
+  --overlay: rgb(20 23 28 / 0.4);
+  --float-shadow: 0 12px 32px -8px rgb(20 23 28 / 0.18), 0 2px 6px rgb(20 23 28 / 0.08);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1013;
+  --panel: var(--bg);
+  --surface: #16191e;
+  --surface-muted: #1d2127;
+  --line: #2a2f37;
+  --line-strong: #3a414b;
+  --edge: transparent;
+  --ink: #eceff3;
+  --ink-soft: #9aa3af;
+  --muted: #858e9b;
+  --brand: #7b93ff;
+  --brand-hover: #91a5ff;
+  --brand-strong: #b9c6ff;
+  --brand-soft: #1e2647;
+  /* White on #7b93ff is 2.9:1; near-black passes AA on the primary button. */
+  --on-brand: #0e1013;
+  --link: var(--brand);
+  --ios-bg: #1e2647;
+  --ios-fg: #b9c6ff;
+  --android-bg: #11291a;
+  --android-fg: #8fdba5;
+  --danger: #ff7b72;
+  --danger-soft: #2d1414;
+  --warn-bg: #2e2210;
+  --warn-fg: #f5b54a;
+  --up: #3dd68c;
+  --down: #ff6b5f;
+  --series-own: var(--brand);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --overlay: rgb(0 0 0 / 0.6);
+  --float-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -80,10 +92,12 @@
   --color-panel: var(--panel);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-surface-2: var(--surface-muted);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
+  --color-ink-2: var(--ink-soft);
   --color-muted: var(--muted);
   --color-brand: var(--brand);
   --color-brand-hover: var(--brand-hover);
@@ -99,19 +113,45 @@
   --color-danger-soft: var(--danger-soft);
   --color-warn-bg: var(--warn-bg);
   --color-warn-fg: var(--warn-fg);
+  --color-warn: var(--warn-fg);
   --color-up: var(--up);
-  /* Watched competitors in the TOP 5 column: a series colour, distinct from the lavender of your own app. */
-  --color-watched: var(--series-2);
   --color-down: var(--down);
+  --color-series-own: var(--series-own);
+  /* Watched competitors in the TOP 5 column: a series colour, distinct from the brand blue of your own app. */
+  --color-watched: var(--series-2);
   --font-sans: var(--font-inter), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  --color-overlay: var(--overlay);
+  --shadow-float: var(--float-shadow);
+}
+
+/* Type scale (docs/REDISENO_UX.md §7.2): text-label 12 · text-table 13 · text-body 14 · text-card-title 16
+   · text-page-title 20 · text-kpi 28 · text-kpi-lg 32. */
+@theme {
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-table: 13px;
+  --text-table--line-height: 20px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-card-title: 16px;
+  --text-card-title--line-height: 24px;
+  --text-page-title: 20px;
+  --text-page-title--line-height: 28px;
+  --text-kpi: 28px;
+  --text-kpi--line-height: 32px;
+  --text-kpi-lg: 32px;
+  --text-kpi-lg--line-height: 36px;
+  --radius-card: 10px;
+  --radius-control: 8px;
 }
 
 body {
   background: var(--bg);
   color: var(--ink);
   font-size: 14px;
-  font-feature-settings: "cv01", "ss03";
+  /* Tabular figures everywhere (rankings, deltas, counters line up) and Inter's open digits. */
+  font-feature-settings: "tnum", "cv11";
 }
 
 h1,

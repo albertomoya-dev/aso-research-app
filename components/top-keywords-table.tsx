@@ -117,7 +117,7 @@ export function TopKeywordsTable({ appId, terms, appCount, titles, followed, fol
           </span>
         )}
       </p>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-xs text-muted">
             <tr className="border-b border-line">

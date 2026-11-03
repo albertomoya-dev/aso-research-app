@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AUDIO_ACCEPT, audioSummary, isAudioFile } from "@/lib/assets/audio";
 import { decodeAudioFile } from "@/lib/assets/audio-encode";
 import { downloadBlob, slug } from "@/lib/assets/download";
@@ -14,6 +14,7 @@ import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 type Props = { appId: number; appTitle: string; spec: ScreenshotSpec | null };
 
 const PREVIEW_HEIGHT = 420;
+const noSubscribe = () => () => {};
 
 const AUDIO_RESULT: Record<AudioOutcome, string> = {
   aac: " · con sonido (AAC)",
@@ -41,7 +42,8 @@ export function VideoStudio({ appId, appTitle, spec }: Props) {
   const slideCount = spec?.slides.length ?? 0;
   const seconds = totalDuration(settings, slideCount);
   const warning = durationWarning(settings, slideCount);
-  const mp4 = typeof window !== "undefined" && canEncodeMp4();
+  // The server cannot know the browser's encoders: false there and on the first client render, then the real answer.
+  const mp4 = useSyncExternalStore(noSubscribe, canEncodeMp4, () => false);
 
   // Load every slide image once.
   useEffect(() => {

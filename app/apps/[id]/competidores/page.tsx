@@ -114,7 +114,7 @@ export default async function CompetitorsPage({ params }: Props) {
               <h2 className="text-[17px] font-semibold">Apps en el TOP 5 de tus keywords</h2>
               <p className="mt-1 text-[13px] text-muted">Con la última posición guardada de cada keyword.</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
                   <tr className="border-b border-line text-left text-xs font-semibold tracking-wide text-muted uppercase">

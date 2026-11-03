@@ -156,7 +156,7 @@ export default async function SeasonalityPage({ params }: Props) {
                 </span>
               </p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[720px] border-separate border-spacing-0.5 px-3 py-2 text-[13px]">
                 <thead>
                   <tr>
