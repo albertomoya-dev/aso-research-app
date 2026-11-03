@@ -20,6 +20,7 @@ Cada error lleva la evidencia (lo que se vio en la web), la causa en el código,
 | H21 | Baja | Creativos | Error de hidratación de React (#418) en la consola |
 | H22 | Baja | Editor de ficha | Al borrar el borrador de un idioma, el editor se rellena con el texto de la ficha principal en otro idioma |
 | H23 | Baja | Creativos | Las propuestas de fondo comparten estilo con las plantillas, y una plantilla borra los colores sin avisar |
+| H24 | Baja | Ideas con IA | Tras «Seleccionar todas» → «Descartar», las ideas siguen pendientes (el 03-11 seguían las 38 del 30-10) |
 
 ---
 
@@ -299,6 +300,25 @@ Después de borrar el borrador de en-US, los campos quedan vacíos o con la fich
 **Criterio de aceptación**
 
 Con colores personalizados y fondo de IA aplicados, al pulsar «Clásico» se mantienen los dos, o aparece un aviso que permite cancelar.
+
+---
+
+## H24 · Las ideas descartadas siguen pendientes (baja)
+
+**Evidencia**
+- El 30-10, en la app 1, se pulsó «Seleccionar todas» y después «Descartar» en Ideas con IA, después de seguir las 20 que interesaban.
+- El 03-11 la pestaña sigue mostrando «Ideas pendientes (38)», con las mismas ideas del 30-10.
+- No se sabe si el clic falló en la automatización o si la acción no guarda. Hay que reproducirlo a mano.
+
+**Solución propuesta**
+- Comprobar la acción de descartar en lote, en `ideas-list.tsx` y su server action:
+  - que actúa sobre todas las seleccionadas;
+  - que, al terminar, muestra cuántas ideas se han descartado.
+- Añadir un test de la acción.
+
+**Criterio de aceptación**
+
+Después de «Seleccionar todas» y «Descartar», la lista queda vacía y sigue vacía al recargar la página.
 
 ---
 
