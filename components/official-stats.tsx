@@ -57,7 +57,7 @@ export function OfficialStatsCard({ appId, stats, tracked }: { appId: number; st
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-muted">Añádelas arriba si encajan con tu app: ya sabes que la gente las busca y llega a tu ficha.</p>
+          <p className="mt-2 text-xs text-muted">Añádelas en Keywords › Seguimiento si encajan con tu app: ya sabes que la gente las busca y llega a tu ficha.</p>
         </div>
       )}
     </Card>

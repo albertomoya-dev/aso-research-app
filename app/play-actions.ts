@@ -17,7 +17,7 @@ import { buildPublishPreview, fieldList, publishedFields } from "@/lib/publicati
 import { fitReply } from "@/lib/review-replies";
 import { saveSearchTermStats } from "@/lib/search-term-queries";
 import { PeriodRequiredError, statRowsFrom } from "@/lib/search-terms";
-import { revalidateMarket } from "@/lib/revalidate";
+import { revalidateMarket, revalidateProduct } from "@/lib/revalidate";
 
 // Writes to Google Play are double-gated: the server needs GOOGLE_PLAY_ALLOW_WRITE=1 and every request
 // carries the explicit confirmation of the dialog (confirm=yes). Credentials never leave the server.
@@ -149,6 +149,8 @@ export async function importSearchTerms(_prev: PlayActionState, formData: FormDa
     if (rows.length === 0) return { error: "El archivo no tiene ningún término de búsqueda con datos." };
     await saveSearchTermStats(app.id, rows);
     await revalidateMarket(app.id, "", "layout");
+    // The import card lives in the app settings (Ajustes › Datos de Play Console).
+    await revalidateProduct(app.id, "/ajustes", "layout");
     const terms = new Set(rows.map((r) => r.term)).size;
     const range = parsed.hasDates ? `del ${formatDay(parsed.from)} al ${formatDay(parsed.to)}` : `del ${formatDay(start.data)} al ${formatDay(end.data)}`;
     return {

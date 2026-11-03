@@ -5,8 +5,8 @@ import { ChangelogImport } from "@/components/changelog-import";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ProductFactsForm } from "@/components/product-facts-form";
 import { SubmitButton } from "@/components/submit-button";
-import { buttonSecondary, Card, inputClass, PageHeader } from "@/components/ui";
-import { loadPrimaryParams, marketPath } from "@/lib/products";
+import { buttonSecondary, Card, inputClass } from "@/components/ui";
+import { loadPrimaryParams } from "@/lib/products";
 import { hasAnthropicKey } from "@/lib/claude";
 import { brandOf } from "@/lib/listing-optimizer";
 import {
@@ -40,17 +40,13 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Ficha de producto
-      </nav>
-      <PageHeader title="Ficha de producto">
-        Lo que hace tu app, contado por ti. La ficha publicada en la tienda siempre va por detrás del producto, así que la IA (optimizador de
-        ficha, ideas de keywords, textos de creativos y análisis de reseñas) usa esta ficha como fuente de verdad: solo anuncia las funciones
-        publicadas, y las de la próxima versión cuando preparas la ficha para ella. Las planeadas y las retiradas no se anuncian nunca: la IA solo recibe sus nombres para no mencionarlas.
-      </PageHeader>
+      <div>
+        <h2 className="text-card-title font-semibold">Ficha de producto</h2>
+        <p className="mt-1 max-w-3xl text-table text-ink-soft">
+          Lo que hace tu app, contado por ti. La IA (ficha, ideas, creativos y reseñas) la usa como fuente de verdad: solo anuncia las funciones
+          publicadas, y las de la próxima versión cuando preparas la ficha para ella. Las planeadas y las retiradas no se anuncian nunca.
+        </p>
+      </div>
 
       {!hasProductFacts(facts, features) && (
         <p className="rounded-lg bg-warn-bg px-4 py-3 text-sm text-warn-fg">
@@ -100,7 +96,7 @@ export default async function ProductPage({ params }: Props) {
             <h3 className="font-semibold">Falta la clave de Anthropic</h3>
             <p className="mt-1.5 text-ink-soft">
               Añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno (en Vercel: Settings → Environment
-              Variables) y vuelve a desplegar; en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir las funciones a mano.
+              Variables) y vuelve a desplegar; en <Link href="/integraciones" className="text-link underline">Integraciones</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir las funciones a mano.
             </p>
           </div>
         )}

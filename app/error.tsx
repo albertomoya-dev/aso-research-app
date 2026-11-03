@@ -1,15 +1,12 @@
 "use client";
 
-import { buttonPrimary, Card } from "@/components/ui";
+import { ErrorCard } from "@/components/error-card";
 
-export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+// Errors outside the shells. The shells have their own error.tsx inside their layout, so the sidebar stays.
+export default function Error(props: { error: Error & { digest?: string }; reset: () => void }) {
   return (
-    <Card className="max-w-xl p-6">
-      <h1 className="text-xl font-semibold">Algo ha fallado</h1>
-      <p className="mt-2 text-sm text-ink-soft">{error.message || "Error inesperado."}</p>
-      <button type="button" onClick={reset} className={`${buttonPrimary} mt-4`}>
-        Reintentar
-      </button>
-    </Card>
+    <main className="px-4 py-10 md:px-8">
+      <ErrorCard {...props} />
+    </main>
   );
 }

@@ -35,6 +35,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 25 | Sistema visual: claro por defecto con oscuro opcional, tokens nuevos, componentes base en `components/ui/` (Radix, cmdk, sonner, lucide), escaparate `/dev/ui` y pruebas e2e con Playwright y axe | Hecho |
 | 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
 | 26b | Datos de la app en el producto: ficha de producto, marcas excluidas y creativos por `product_id` (migración 0020, que fusiona los países). Se conservan al dejar de seguir un país. Los borradores siguen siendo de cada país y el editor avisa si dos países tienen el mismo idioma | Hecho |
+| 27 | Navegación: barra lateral global (selector de app, Inicio, Actividad, Integraciones) y barra lateral de cada app (Resumen, Keywords, Mercado, Optimizar, Ajustes de la app), cabecera fija con selector de mercado y «Actualizar posiciones», paleta ⌘K, barra inferior en el móvil, páginas Actividad, Integraciones y Añadir app, Ajustes de la app con pestañas (Producto, Mercados, Marcas, Datos de Play Console, Zona de peligro) y redirecciones 308 de las páginas globales antiguas | Hecho |
 
 ## Stack
 
@@ -82,7 +83,7 @@ La consulta diaria va en este orden: posiciones → avisos → picos de temporad
 
 Si un paso falla, los demás siguen y su error aparece en la respuesta JSON.
 
-En la tabla de keywords, la columna **TOP 5** marca tu app con un borde lavanda y los competidores que vigilas (pestaña Competidores) con uno naranja; la leyenda está encima de la tabla y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. La tabla es ancha: en el móvil o en una ventana estrecha hace scroll dentro de su tarjeta, nunca la página, y la casilla y la keyword se quedan fijas a la izquierda para no perder de vista qué fila estás leyendo. Las pestañas de cada app también hacen scroll en horizontal cuando no caben.
+En la tabla de keywords, la columna **TOP 5** marca tu app con un borde lavanda y los competidores que vigilas (pestaña Competidores) con uno naranja; la leyenda está encima de la tabla y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. La tabla es ancha: en el móvil o en una ventana estrecha hace scroll dentro de su tarjeta, nunca la página, y la casilla y la keyword se quedan fijas a la izquierda para no perder de vista qué fila estás leyendo. 
 
 ## Popularidad, dificultad y oportunidad
 
@@ -160,7 +161,7 @@ Cada app tiene un borrador por idioma, guardado en la tabla `listing_drafts` (mi
   - Si no sigues la app en ese país, el editor avisa antes de adaptar y ofrece «Seguir también en <país>».
   - La propuesta sale campo a campo como la del optimizador, pasa por el comprobador de normas (con un reintento si rompe un límite, la marca declarada o una norma con nivel de error) y no se guarda hasta que pulsas «Guardar borrador».
 - **Idioma sin borrador**: si un idioma no tiene borrador (también después de «Borrar borrador»), el editor parte de la ficha publicada solo cuando es el mismo idioma. Si no, los campos quedan vacíos con el aviso «Aún no hay ficha en <idioma>: usa «Adaptar a <locale>»». Nunca se precarga texto de otro idioma.
-- Tus keywords son las del país de la app: en un borrador de otro idioma el editor no las mide y lo dice. Para medir otro idioma, sigue la app en ese país desde «Otros países».
+- Tus keywords son las del país de la app: en un borrador de otro idioma el editor no las mide y lo dice. Para medir otro idioma, añade ese país en **Ajustes de la app › Mercados**.
 - **Cobertura por idioma**: cuando hay más de una ficha, una tabla con tus 25 keywords relevantes de más oportunidad × cada ficha guardada, con la cobertura ponderada de cada una y el campo que cubre cada keyword.
 - `apps.draft` se copió a `listing_drafts` en la migración (con el locale del país de la app) y ya no se escribe; se borrará en una versión posterior.
 - Para leer un borrador desde otro módulo (la publicación en Google Play de la fase 20): `getListingDraft(appId, locale, country = "")` en `lib/listing-draft-queries.ts`, o `getListingDrafts(appId)` para todos. El `locale` es BCP 47 con región; Play Console usa algunos códigos propios (`es-419` para Latinoamérica), el mapeo está en `lib/play-console/locales.ts` (ver «Google Play Console»).
@@ -236,7 +237,7 @@ La IA evita las marcas de otras apps en la ficha y en las ideas. El detector (`c
 
 Los nombres de desarrollador van en un grupo aparte, «Desarrolladores», plegado. La IA y el comprobador de normas siguen evitando las dos listas.
 
-El editor muestra la lista **Marcas detectadas** con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo.
+**Ajustes de la app › Marcas** muestra la lista **Marcas detectadas** (con las keywords del mercado en el que estás) con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo. El editor de la ficha solo dice cuántas hay y avisa, entre los avisos de normas, si una aparece en tu texto.
 
 ## Ficha de producto
 
@@ -287,7 +288,7 @@ En **Reseñas**, con tu app seleccionada, la tarjeta **Responder reseñas** (dat
 
 ### Términos de búsqueda reales (dato oficial)
 
-En la portada de la app (solo Google Play), **Términos de búsqueda reales** importa el CSV de Play Console con los visitantes de la ficha y las adquisiciones (visitantes que instalaron) por término de búsqueda. Es la única cifra oficial de Rankeo; la popularidad sigue siendo una estimación del autocompletado y nunca se mezclan.
+En **Ajustes de la app › Datos de Play Console** (solo Google Play), **Términos de búsqueda reales** importa el CSV de Play Console con los visitantes de la ficha y las adquisiciones (visitantes que instalaron) por término de búsqueda. Es la única cifra oficial de Rankeo; la popularidad sigue siendo una estimación del autocompletado y nunca se mezclan.
 
 - Formatos: el informe mensual de Cloud Storage `store_performance_[paquete]_[aaaaMM]_traffic_source.csv` (UTF-16, una fila por día; [formato documentado](https://support.google.com/googleplay/android-developer/answer/6135870), leído el 30 oct 2026) o la descarga de la pantalla de términos de búsqueda, en UTF-8 o UTF-16, con comas, punto y coma o tabuladores y cabeceras en español o inglés. Si el CSV no tiene fecha, indica el periodo que elegiste al descargarlo. El formato exacto de la descarga desde las pantallas no está documentado: el lector reconoce las columnas por palabras («término», «visitantes», «adquisiciones»…), y si no las encuentra lo dice.
 - Se ignoran las filas sin término y el cajón «Other», donde Google agrupa los términos con pocas visitas.
@@ -384,7 +385,7 @@ La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyw
 - **Calendario de picos.** Los 12 meses con las keywords que están en temporada alta en cada uno, marcando el mes en que empieza.
 - **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
 
-En la página de keywords, **Otros países** sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia sus keywords. Cada país es un mercado del mismo producto (ver [Productos y mercados](#productos-y-mercados)), con sus posiciones y su histórico.
+En **Ajustes de la app › Mercados**, «Añadir mercado» sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia las keywords de uno de sus mercados. Cada país es un mercado del mismo producto (ver [Productos y mercados](#productos-y-mercados)), con sus posiciones y su histórico.
 
 ## Creativos: screenshots e icono
 
@@ -406,7 +407,7 @@ El diseño de cada tipo se guarda en la tabla `asset_designs` (uno por app y tip
 
 ## Novedades y resumen semanal
 
-Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») compara cada keyword con su consulta anterior y crea avisos en **Novedades**:
+Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») compara cada keyword con su consulta anterior y crea avisos, que se ven en **Actividad** (`/actividad`, antes Novedades):
 
 - entra o sale del TOP 10;
 - sube o baja 5 posiciones o más dentro de las 50 primeras;
@@ -420,19 +421,19 @@ Para que no se llene de ruido:
 - Las keywords con relevancia por debajo del mínimo (3 por defecto) o cuya búsqueda busca otro tipo de app solo avisan cuando entras o sales del TOP 10 o ganas o pierdes el nº 1. Las que aún no tienen relevancia cuentan como relevantes.
 - Los cambios de nº 1 de otras apps de un mismo día van juntos en un único aviso, «7 keywords cambiaron de nº 1», con el detalle de cada una. Si vuelves a consultar posiciones ese día, el aviso se actualiza en lugar de repetirse.
 - Dentro de cada día aparece primero lo que le pasa a tu app y después los cambios de nº 1 y de fichas de competidores.
-- En **Qué avisos quieres recibir** eliges, por app, qué tipos de aviso quieres y la relevancia mínima (tabla `alert_prefs`). Se aplica desde la siguiente consulta.
+- En **Qué avisos quieres recibir** (el engranaje de Actividad) eliges, por app, qué tipos de aviso quieres y la relevancia mínima (tabla `alert_prefs`). Se aplica desde la siguiente consulta.
 
-El menú lateral muestra cuántos avisos quedan sin leer.
+Actividad filtra por periodo (hoy, 7 o 30 días), por app y por tipo (posición, competidor o temporada), y arriba muestra el resumen de la semana de cada app en una tabla compacta. La barra lateral muestra cuántos avisos quedan sin leer, y la entrada Resumen de cada app los de su mercado.
 
-**Resumen semanal** compara la última posición de cada keyword con la de hace una semana: cuántas suben y bajan, cuántas están en el TOP 10, la cuota de visibilidad y las que más se mueven. Si la app lleva menos de una semana, compara con la consulta más antigua y lo dice («frente al 26 oct»). Distingue «sin datos» de «fuera de los N»: pasar de «> 30» a #18 se cuenta como «entra en los primeros 30», no como una subida de 183 puestos que no podemos medir, y las keywords sin consulta en la fecha de referencia salen aparte como «nuevas sin comparación». Para recibirlo por email cada lunes:
+**Resumen semanal** (`/actividad?vista=semana`, antes `/resumen`) compara la última posición de cada keyword con la de hace una semana: cuántas suben y bajan, cuántas están en el TOP 10, la cuota de visibilidad y las que más se mueven. Si la app lleva menos de una semana, compara con la consulta más antigua y lo dice («frente al 26 oct»). Distingue «sin datos» de «fuera de los N»: pasar de «> 30» a #18 se cuenta como «entra en los primeros 30», no como una subida de 183 puestos que no podemos medir, y las keywords sin consulta en la fecha de referencia salen aparte como «nuevas sin comparación». Para recibirlo por email cada lunes:
 
 1. Crea una cuenta gratuita en [Resend](https://resend.com) y una API key.
 2. Añade `RESEND_API_KEY` y `ALERT_EMAIL` (tu correo) en Vercel. Sin dominio propio, Resend solo deja enviar al correo de tu cuenta desde `onboarding@resend.dev`; con dominio verificado, define también `EMAIL_FROM`.
 3. Opcional: `APP_URL` con la dirección pública de la app para los enlaces del email (en Vercel se detecta sola).
 
-## Ajustes
+## Integraciones
 
-La pantalla **Ajustes** (menú lateral) muestra el estado de cada integración: base de datos, contraseña de la app, consulta diaria, Claude (Anthropic), imágenes generativas, email (Resend), Google Play Console y App Store Connect. Para cada una dice si está configurada, sin configurar o mal configurada (con el motivo, por ejemplo «Falta ALERT_EMAIL» o «no es un JSON válido»), qué permite hacer en Rankeo, qué variables de entorno usa y cuáles están puestas, y si las consolas están en solo lectura o con escritura activada (`GOOGLE_PLAY_ALLOW_WRITE`, `ASC_ALLOW_WRITE`). **Nunca muestra el valor de una variable**, solo si existe: el cálculo (`lib/settings.ts`) es puro, recibe el entorno y no devuelve más que nombres y presencia, y los tests comprueban que ningún secreto aparece en la salida.
+La pantalla **Integraciones** (`/integraciones`, antes Ajustes) muestra una tarjeta por integración con su estado: base de datos, contraseña de la app, consulta diaria, Claude (Anthropic), imágenes generativas, email (Resend), Google Play Console y App Store Connect. Para cada una dice si está configurada, sin configurar o mal configurada (con el motivo, por ejemplo «Falta ALERT_EMAIL» o «no es un JSON válido»), qué permite hacer en Rankeo, qué variables de entorno usa y cuáles están puestas, y si las consolas están en solo lectura o con escritura activada (`GOOGLE_PLAY_ALLOW_WRITE`, `ASC_ALLOW_WRITE`). **Nunca muestra el valor de una variable**, solo si existe: el cálculo (`lib/settings.ts`) es puro, recibe el entorno y no devuelve más que nombres y presencia, y los tests comprueban que ningún secreto aparece en la salida.
 
 Las pruebas son de solo lectura y se muestran en la misma tarjeta:
 
@@ -442,6 +443,8 @@ Las pruebas son de solo lectura y se muestran en la misma tarjeta:
 - **Email**: «Enviar email de prueba» manda un correo corto a `ALERT_EMAIL` con Resend.
 
 Las imágenes generativas no tienen prueba porque cada imagen se cobra. Los avisos de «falta tal clave» del resto de pantallas enlazan aquí.
+
+Cada tarjeta muestra «Probar» cuando está conectada y «Cómo conectar» cuando no: un panel con los pasos numerados y los nombres de las variables, con un botón para copiarlos y pegarlos en Vercel (`lib/integration-guides.ts`). Las variables y si están puestas quedan dentro de «Detalles técnicos».
 
 ## Panel de salud
 
@@ -464,7 +467,7 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 - **En la base de datos** (`db/schema.ts`): la tabla `products` (`store`, `store_id`, `slug` único, título e icono del primer mercado) y la tabla `apps`, que **es la de mercados**. No se ha renombrado, para no cambiar ids ni claves ajenas: cada fila de `apps` es la app en un país y apunta a su producto con `product_id`, obligatorio y con borrado en cascada. En el código, `App` y `Market` son el mismo tipo.
 - **La migración `0019_products`** crea un producto por cada par (tienda, id) que ya existía y enlaza todas las filas de `apps`, sin cambiar ningún id: las apps que se seguían en dos países (por ejemplo, Recordatorio en España y en Estados Unidos) quedan en un mismo producto con dos mercados.
 - **El slug** sale del final del id de Google Play (`com.moyalogames.recordatorio` → `recordatorio`) o, si es un número (App Store), del título. Va en minúsculas, sin tildes, con guiones y con 40 caracteres como máximo. Si ya existe, se le añade `-2`, `-3`… Se guarda y no cambia aunque cambie el título. Está en `lib/market-path.ts` (`slugify`, `productSlugBase`, `uniqueSlug`), y la migración aplica la misma regla en SQL.
-- **Seguir una app** (Buscar app) crea el producto la primera vez. **Seguir en otro país** (tarjeta «Otros países») añade un mercado al mismo producto.
+- **Seguir una app** (Añadir app, `/apps/nueva`) crea el producto la primera vez. **Añadir mercado** (Ajustes de la app › Mercados) añade otro país al mismo producto.
 - **Datos de la app en conjunto:** la ficha de producto (`product_facts`, `product_features`, `product_releases`), las marcas excluidas (`brand_exceptions`) y los creativos (`asset_designs`, `generated_images`) cuelgan de `product_id`, así que son los mismos en todos los países. Las consultas y las acciones reciben el id de cualquier mercado y lo traducen con `marketProductId()` (`lib/products.ts`).
 - **La migración `0020_product_owned_data`** movió esas tablas de `app_id` a `product_id` y fusionó lo que cada país tenía guardado. Se queda lo del mercado principal (el `apps.id` más bajo con datos) y de los demás solo se toma lo que falta:
   - en la ficha, los textos vacíos. Las listas (diferenciadores, restricciones, idiomas) se unen: primero las del principal y después las de los otros países que no estuvieran ya, sin distinguir mayúsculas, tildes ni espacios;
@@ -481,22 +484,36 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 
 | Página | URL |
 | --- | --- |
-| Keywords del mercado (el Resumen llegará en la fase 28) | `/a/[app]/[país]` y `/a/[app]/[país]/keywords` |
-| Una keyword | `/a/[app]/[país]/keywords/[id]` |
-| Descubrir, Ideas con IA, Keywords del TOP 10 | `/a/[app]/[país]/descubrir`, `/ideas`, `/top10` |
-| Reseñas, Competidores, Cambios | `/a/[app]/[país]/resenas`, `/competidores`, `/cambios` |
-| Estacionalidad | `/a/[app]/[país]/tendencias` |
-| Editor de ficha y su publicación | `/a/[app]/[país]/ficha`, `/a/[app]/[país]/ficha/publicar` |
-| Creativos (iguales en todos los países) | `/a/[app]/creativos`, `/creativos/icono`, `/creativos/logo`, `/creativos/video` |
-| Ficha de producto | `/a/[app]/ajustes/producto` |
+| Inicio (todas las apps) | `/` |
+| Actividad (novedades) y resumen semanal | `/actividad` y `/actividad?vista=semana` (filtros `periodo`, `app`, `tipo`) |
+| Integraciones | `/integraciones` |
+| Añadir app (buscar en las tiendas) | `/apps/nueva` |
+| Resumen del mercado (hasta la fase 28 muestra las keywords) | `/a/[app]/[país]` |
+| Keywords › Seguimiento y una keyword | `/a/[app]/[país]/keywords`, `/a/[app]/[país]/keywords/[id]` |
+| Keywords › Encontrar (tres fuentes hasta la fase 29) | `/a/[app]/[país]/descubrir`, `/ideas`, `/top10` |
+| Mercado › Competidores, Reseñas, Tendencias | `/a/[app]/[país]/competidores`, `/resenas`, `/tendencias` |
+| Optimizar › Ficha de la tienda y su publicación | `/a/[app]/[país]/ficha`, `/a/[app]/[país]/ficha/publicar` |
+| Optimizar › Creativos (iguales en todos los países) | `/a/[app]/creativos`, `/creativos/icono`, `/creativos/logo`, `/creativos/video` |
+| Optimizar › Cambios y pruebas | `/a/[app]/[país]/cambios` |
+| Ajustes de la app | `/a/[app]/ajustes` (= `/ajustes/producto`), `/ajustes/mercados`, `/ajustes/marcas`, `/ajustes/play`, `/ajustes/peligro` |
 
-`[app]` es el slug y `[país]` el código del país en minúsculas (`es`, `us`). Los enlaces se construyen siempre con `marketPath()` y `productPath()` (`lib/market-path.ts`), y las server actions revalidan las rutas nuevas con `revalidateMarket()` y `revalidateProduct()` (`lib/revalidate.ts`). En las páginas de la app en conjunto, las pestañas del país apuntan al mercado principal, que también da el contexto (ficha publicada y keywords) a la IA de los creativos.
+`[app]` es el slug y `[país]` el código del país en minúsculas (`es`, `us`). Los enlaces se construyen siempre con `marketPath()` y `productPath()` (`lib/market-path.ts`), y las server actions revalidan las rutas nuevas con `revalidateMarket()` y `revalidateProduct()` (`lib/revalidate.ts`).
+
+### Navegación
+
+- **Fuera de una app** (`app/(global)/layout.tsx`): barra lateral con el selector de app (búsqueda con iconos, agrupado por app con sus mercados), Inicio, Actividad (con los avisos sin leer) e Integraciones, y al pie el tema y la versión.
+- **Dentro de una app** (`app/a/[app]/layout.tsx`): la barra lateral pasa a ser la de la app, con «← Todas las apps», Resumen, los grupos KEYWORDS, MERCADO y OPTIMIZAR y Ajustes de la app al pie. La configuración está en `lib/app-nav.ts` (`NAV_GROUPS`). Los contadores (ideas pendientes y avisos sin leer del mercado) y la fecha de la última consulta salen de **una sola consulta** por producto (`marketCounters` en `lib/nav-queries.ts`) y llegan por streaming.
+- **Cabecera fija de 56 px:** icono y nombre de la app, tienda, selector de mercado (cambiar de mercado mantiene la subpágina, `switchMarketPath()`), «Posiciones del…», el botón principal «Actualizar posiciones» y el menú «⋯» (Actualizar ficha, Ver en la tienda, Ajustes de la app).
+- **El mercado en las páginas de la app en conjunto** (Creativos, Ajustes): los enlaces de la barra lateral llevan `?m=[país]`, y el último mercado visto se guarda en la cookie `rk-m-[app]`. Así «Seguimiento» vuelve al país del que venías, y Marcas y Datos de Play Console usan ese país (`loadContextMarket()`). Sin ninguno de los dos, el mercado principal.
+- **⌘K / Ctrl+K** (o «Buscar» en la cabecera) abre la paleta: apps y mercados, secciones de la app, keywords del mercado activo (búsqueda en el servidor, como mucho 8) y las acciones «Actualizar posiciones», «Optimizar ficha» y «Generar ideas».
+- **Tamaños:** por debajo de 640 px la barra lateral pasa a una barra inferior (Inicio, Actividad, Apps y Más) y las secciones de la app se abren desde la cabecera; de 640 a 1024 px la barra lateral muestra solo iconos.
+- **Dejar de seguir** un país solo está en Ajustes de la app › Zona de peligro, en un diálogo que pide escribir el nombre de la app.
 
 ### Redirecciones
 
-Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`. Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de `app/loading.tsx`, y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como un futuro `/apps/nueva`), uno que no existe o una subpágina desconocida dan 404.
+Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`. Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de `app/loading.tsx`, y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como `/apps/nueva`, que además es una ruta estática), uno que no existe o una subpágina desconocida dan 404.
 
-Las redirecciones de las páginas globales (`/novedades`, `/resumen`, `/ajustes` y `/buscar`) ya están escritas en `next.config.ts`, pero desactivadas (`ENABLE_GLOBAL_REDIRECTS`): sus destinos llegan en la fase 27.
+Las páginas globales antiguas también responden con un **308**, conservando la query: `/novedades` → `/actividad`, `/resumen` → `/actividad?vista=semana`, `/ajustes` → `/integraciones` y `/buscar` → `/apps/nueva`. El mapa está en `lib/redirects.ts` y lo aplica `next.config.ts` (`redirects()`). `/apps/nueva` es una ruta estática y gana a `app/apps/[id]/[[...rest]]/route.ts`.
 
 ## Desarrollo: interfaz y pruebas e2e
 
@@ -509,8 +526,9 @@ Las redirecciones de las páginas globales (`/novedades`, `/resumen`, `/ajustes`
 - Necesitan una **base de datos de prueba**: una rama de Neon creada a partir de producción. **Nunca la de producción**: las pruebas pulsan botones y pueden cambiar datos.
 - Se le pasa con `E2E_DATABASE_URL` o con `E2E_DATABASE_URL_FILE` (un archivo con la URL). Si coincide con el `DATABASE_URL` de `.env.local`, la prueba se niega a arrancar.
 - La primera vez: `npx playwright install chromium`.
-- `E2E_DATABASE_URL_FILE=ruta/al/archivo npm run test:e2e` compila la app y la arranca con `next start -p 3200`, sin contraseña y sin claves de IA, correo ni consolas de las tiendas. Para repetir sin compilar: `npx playwright test`.
-- **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Mide el desbordamiento horizontal del documento y de `<main>`, y lo deja en `test-results/overflow.md` sin fallar (las fases del rediseño lo corrigen).
+- `E2E_DATABASE_URL_FILE=ruta/al/archivo npm run test:e2e` compila la app y la arranca con `next start -p 3200` (otro puerto con `E2E_PORT`), sin contraseña y sin claves de IA, correo ni consolas de las tiendas. Para repetir sin compilar: `npx playwright test`.
+- **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Falla si el documento hace scroll horizontal a 390 o 1440 px, salvo en Creativos y su vídeo (fase 32), que solo se informan. El desbordamiento de `<main>` se mide y se deja en `test-results/overflow.md`.
+- **`e2e/navigation.spec.ts`**: la navegación de la fase 27. Redirecciones 308 de las páginas globales, sin pestañas horizontales, «Dejar de seguir» solo en la zona de peligro (abre el diálogo, nunca lo envía), cambio de mercado con la misma subpágina, ⌘K y la barra inferior del móvil.
 - **`e2e/axe.spec.ts`**: `/dev/ui` en los dos temas debe pasar WCAG 2.1 AA. De las pantallas actuales solo se informa en `test-results/axe-routes.json`.
 
 ## Comandos

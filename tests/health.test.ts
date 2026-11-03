@@ -118,7 +118,7 @@ describe("reviewsItem", () => {
   const h = "/a/recordatorio/es/resenas";
   it("is unknown for App Store and without Play Console, pointing to Ajustes", () => {
     expect(reviewsItem({ store: "ios", configured: false, unanswered: null, reviewsHref: h }).status).toBe("unknown");
-    expect(reviewsItem({ store: "android", configured: false, unanswered: null, reviewsHref: h })).toMatchObject({ status: "unknown", href: "/ajustes" });
+    expect(reviewsItem({ store: "android", configured: false, unanswered: null, reviewsHref: h })).toMatchObject({ status: "unknown", href: "/integraciones" });
   });
   it("shows the error when Google fails", () => {
     expect(reviewsItem({ store: "android", configured: true, unanswered: null, error: "Sin permiso.", reviewsHref: h }).hint).toContain("Sin permiso.");

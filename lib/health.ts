@@ -203,10 +203,10 @@ export function reviewsItem(input: {
     return { ...base, status: "unknown", value: "–", hint: "Rankeo aún no lee las reseñas propias de App Store Connect; respóndelas desde la consola.", href: null, action: null };
   }
   if (!input.configured) {
-    return { ...base, status: "unknown", value: "–", hint: "Conecta Google Play Console para ver las reseñas de la última semana sin responder.", href: "/ajustes", action: "Abrir Ajustes" };
+    return { ...base, status: "unknown", value: "–", hint: "Conecta Google Play Console para ver las reseñas de la última semana sin responder.", href: "/integraciones", action: "Abrir Integraciones" };
   }
   if (input.unanswered == null) {
-    return { ...base, status: "unknown", value: "–", hint: `No se pudieron leer las reseñas de Google Play${input.error ? `: ${input.error}` : "."}`, href: "/ajustes", action: "Probar la conexión" };
+    return { ...base, status: "unknown", value: "–", hint: `No se pudieron leer las reseñas de Google Play${input.error ? `: ${input.error}` : "."}`, href: "/integraciones", action: "Probar la conexión" };
   }
   if (input.unanswered === 0) {
     return { ...base, status: "good", value: "0", hint: input.total ? "Has respondido todas las reseñas de la última semana." : "No hay reseñas nuevas en la última semana.", href: null, action: null };

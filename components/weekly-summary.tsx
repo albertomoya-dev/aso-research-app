@@ -1,74 +1,93 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
-import { SendSummaryButton } from "@/components/send-summary-button";
 import { StoreBadge } from "@/components/store-badge";
-import { Card, PageHeader } from "@/components/ui";
-import { hasDatabase } from "@/db";
-import { emailConfigured } from "@/lib/email";
+import { Card } from "@/components/ui";
+import { DeltaBadge } from "@/components/ui/delta-badge";
 import { describeMove, weekPosition } from "@/lib/alerts";
-import { formatDate, formatDay } from "@/lib/format";
+import { getCountry } from "@/lib/countries";
+import { formatDay } from "@/lib/format";
 import { marketPath } from "@/lib/market-path";
-import { competitorChanges, getWeeklySummaries } from "@/lib/summary";
+import { type AppWeek, competitorChanges } from "@/lib/summary";
 
-export const metadata: Metadata = { title: "Resumen semanal" };
-export const dynamic = "force-dynamic";
+// The weekly summary of every market (lib/summary.ts), shown on /actividad: compact as its header,
+// full with `?vista=semana` (the old /resumen page).
 
 const pct = (v: number | null) => (v == null ? "–" : `${v.toLocaleString("es-ES", { maximumFractionDigits: 1 })}%`);
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: React.ReactNode }) {
   return (
-    <div className="rounded-lg bg-surface-muted px-3.5 py-2.5">
-      <div className="text-xs text-muted">{label}</div>
+    <div className="rounded-control bg-surface-muted px-3.5 py-2.5">
+      <div className="text-label text-muted">{label}</div>
       <div className="font-mono text-lg font-semibold">{value}</div>
-      {sub && <div className="text-xs text-muted">{sub}</div>}
+      {sub && <div className="text-label text-muted">{sub}</div>}
     </div>
   );
 }
 
-export default async function SummaryPage() {
-  if (!hasDatabase()) return null;
-  const { since, until, apps } = await getWeeklySummaries();
-  const email = emailConfigured();
-  const stores = new Set(apps.map((a) => a.app.store));
-  // Each store returns a different number of results: App Store up to 200, Google Play usually about 30.
-  const depthNote =
-    stores.size === 1
-      ? stores.has("android")
-        ? " (Google Play suele devolver unos 30)"
-        : " (App Store devuelve hasta 200)"
-      : " (hasta 200 en App Store; Google Play suele devolver unos 30)";
-
+/** One row per market: what moved this week, in a table that scrolls inside its card on phones. */
+export function WeeklyCompact({ apps }: { apps: AppWeek[] }) {
+  if (apps.length === 0) return null;
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <PageHeader title="Resumen semanal">
-          Del {formatDate(since)} al {formatDate(until)}: última posición de cada keyword frente a la de hace una semana o, si la app
-          lleva menos tiempo, frente a la consulta más antigua. «&gt; N» es fuera de los N resultados que devolvió la tienda{depthNote}:
-          pasar de ahí a #18 se cuenta como «entra en los primeros N», no como un salto que no podemos medir.
-          {email ? (
-            " Te llega por email cada lunes."
-          ) : (
-            <>
-              {" "}Para recibirlo por email cada lunes, configura RESEND_API_KEY y ALERT_EMAIL; su estado está en{" "}
-              <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link>.
-            </>
-          )}
-        </PageHeader>
-        {email && <SendSummaryButton />}
+    <Card aria-label="Resumen de la semana" className="overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] text-table">
+          <caption className="sr-only">Resumen de la semana por app</caption>
+          <thead>
+            <tr className="border-b border-line bg-surface-muted text-left text-label text-muted">
+              <th scope="col" className="px-4 py-2 font-medium">App</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Suben / bajan</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">TOP 10</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Cuota</th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">Competidores</th>
+            </tr>
+          </thead>
+          <tbody>
+            {apps.map(({ app, week, baselineDate, share, shareBefore, alerts }) => {
+              const shareDelta = share != null && shareBefore != null ? Math.round((share - shareBefore) * 10) / 10 : null;
+              return (
+                <tr key={app.id} className="border-b border-line last:border-0">
+                  <th scope="row" className="px-4 py-2 text-left font-normal">
+                    <Link href={marketPath(app)} className="flex min-h-9 items-center gap-2 hover:underline">
+                      <AppIcon src={app.icon} size={20} />
+                      <span className="truncate font-medium">{app.title}</span>
+                      <span className="text-muted">· {getCountry(app.country).name}</span>
+                    </Link>
+                  </th>
+                  <td className="px-3 py-2 text-right font-mono">
+                    <span className="text-up">▲{week.improved}</span> <span className="text-down">▼{week.worsened}</span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {week.top10}
+                    {baselineDate && <span className="text-muted"> (antes {week.top10Before})</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {pct(share)} {shareDelta != null && <DeltaBadge delta={shareDelta} noun="puntos" />}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono">{competitorChanges(alerts).length}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+    </Card>
+  );
+}
 
-      {apps.length === 0 && <Card className="px-5 py-10 text-center text-sm text-muted">Aún no sigues ninguna app.</Card>}
-
+/** The full weekly summary: one card per market with its numbers and the keywords that moved most. */
+export function WeeklyCards({ apps }: { apps: AppWeek[] }) {
+  return (
+    <>
       {apps.map(({ app, week, baselineDate, share, shareBefore, alerts }) => {
         const shareDelta = share != null && shareBefore != null ? share - shareBefore : null;
         const changes = competitorChanges(alerts).length;
         return (
-          <Card key={app.id} aria-label={app.title} className="px-5 py-4">
+          <Card key={app.id} aria-label={`${app.title} · ${getCountry(app.country).name}`} className="px-5 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Link href={marketPath(app)} className="flex items-center gap-3 hover:underline">
                 <AppIcon src={app.icon} size={36} />
-                <span className="text-[17px] font-semibold">{app.title}</span>
+                <span className="text-card-title font-semibold">{app.title}</span>
+                <span className="text-muted">· {getCountry(app.country).name}</span>
               </Link>
               <div className="flex items-center gap-3">
                 <span className="text-[13px] text-muted">
@@ -139,6 +158,6 @@ export default async function SummaryPage() {
           </Card>
         );
       })}
-    </div>
+    </>
   );
 }

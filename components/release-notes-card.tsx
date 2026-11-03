@@ -89,7 +89,7 @@ export function ReleaseNotesCard({ appId, productHref, store, target, targetName
           </div>
         </form>
       ) : (
-        <p className="mt-3 text-sm text-muted">Añade ANTHROPIC_API_KEY para generar las notas con IA (estado en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link>).</p>
+        <p className="mt-3 text-sm text-muted">Añade ANTHROPIC_API_KEY para generar las notas con IA (estado en <Link href="/integraciones" className="text-link underline">Integraciones</Link>).</p>
       )}
 
       {result && (

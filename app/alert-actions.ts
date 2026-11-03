@@ -35,7 +35,7 @@ export async function saveAlertPrefs(formData: FormData) {
     .insert(schema.alertPrefs)
     .values({ appId, kinds, minRelevance })
     .onConflictDoUpdate({ target: schema.alertPrefs.appId, set: { kinds, minRelevance, updatedAt: new Date() } });
-  revalidatePath("/novedades");
+  revalidatePath("/actividad");
 }
 
 export type SendState = { ok?: boolean; error?: string } | null;

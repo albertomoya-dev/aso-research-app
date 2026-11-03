@@ -1,11 +1,10 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CreativeNav } from "@/components/creative-nav";
 import { LogoStudio } from "@/components/logo-studio";
 import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
-import { loadPrimaryParams, marketPath, productPath } from "@/lib/products";
+import { loadPrimaryParams, productPath } from "@/lib/products";
 import { formatDayEs } from "@/lib/assets/screenshots";
 import { IMAGE_PROVIDER_LABEL, imageProvider } from "@/lib/assets/image-provider";
 import { hasAnthropicKey } from "@/lib/claude";
@@ -34,12 +33,6 @@ export default async function LogoPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Creativos / Logo con IA
-      </nav>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Logo con IA generativa">
           Un modelo de imágenes dibuja el logo a partir de un prompt; Claude puede escribir el prompt a partir de tu ficha y tus keywords. Las imágenes se guardan

@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { followInCountry } from "@/app/actions";
 import { CoverageMatrix } from "@/components/coverage-matrix";
 import { LocalePicker } from "@/components/locale-picker";
@@ -8,12 +7,14 @@ import { MetadataEditor } from "@/components/metadata-editor";
 import { ReleaseNotesCard } from "@/components/release-notes-card";
 import { PublishBar } from "@/components/publish-bar";
 import { SubmitButton } from "@/components/submit-button";
-import { buttonSecondary, PageHeader } from "@/components/ui";
+import { buttonSecondary, Card, PageHeader } from "@/components/ui";
+import { AppMetadata } from "@/components/app-metadata";
 import { getDb, schema } from "@/db";
 import { loadMarketParams, marketPath, productPath } from "@/lib/products";
 import { detectBrands } from "@/lib/brand-queries";
 import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
+import { formatDate } from "@/lib/format";
 import { getListingDrafts, getProductDraftTargets } from "@/lib/listing-draft-queries";
 import {
   baseDraftFor,
@@ -62,7 +63,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   ]);
   const sharedNotice = sharedListingNotice(target, app.country, productDrafts);
   const { lang } = getCountry(app.country);
-  const { brands, titleBrands, developers, exceptions } = await detectBrands(app, rows, product);
+  const { brands } = await detectBrands(app, rows, product);
   // The weighted score counts only keywords worth building on, the same set the optimizer uses.
   const keywords = rows.map((r) => ({ term: r.term, opportunity: r.opportunity, relevant: isRelevantKeyword(r, lang) }));
 
@@ -104,12 +105,6 @@ export default async function MetadataPage({ params, searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Editor de ficha
-      </nav>
       <PageHeader title="Editor de ficha">
         Prepara el texto de tu próxima versión, en cada idioma, y comprueba los límites de la tienda y qué keywords cubre. Los cambios se guardan aquí
         como borrador; para publicarlos, cópialos a {app.store === "ios" ? "App Store Connect" : "Google Play Console"} o, si conectas la consola, envíalos
@@ -170,13 +165,12 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         keywordNote={
           sameLanguage
             ? undefined
-            : `Tus keywords son de ${getCountry(app.country).name} (${main}): en ${localeLabel(target.locale)} no se pueden medir. Para tener keywords de ese idioma, sigue la app en ese país desde «Otros países».`
+            : `Tus keywords son de ${getCountry(app.country).name} (${main}): en ${localeLabel(target.locale)} no se pueden medir. Para tener keywords de ese idioma, añade ese país en Ajustes de la app › Mercados.`
         }
         keywords={sameLanguage ? keywords : []}
         policy={{ lang: localeLanguage(target.locale), category: app.meta.category, ownBrand: brand || undefined }}
         brands={brands}
-        brandGroups={{ titles: titleBrands, developers }}
-        brandExceptions={exceptions}
+        brandsHref={productPath(app.productSlug, `/ajustes/marcas?m=${app.country}`)}
         aiEnabled={aiEnabled}
         product={{
           empty: !hasProductFacts(product.facts, product.features),
@@ -195,6 +189,17 @@ export default async function MetadataPage({ params, searchParams }: Props) {
         latestVersion={product.releases[0]?.version ?? null}
         policy={{ lang: localeLanguage(target.locale), category: app.meta.category, brands }}
       />
+      {/* The published listing (it used to sit at the foot of the keywords page). Phase 30 turns it into the «Publicada» view. */}
+      <Card aria-label="Ficha publicada" className="px-5 py-4">
+        <details id="publicada">
+          <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-card-title font-semibold md:min-h-8">
+            Ficha publicada <span className="text-table font-normal text-muted">· leída el {formatDate(app.metaFetchedAt)}</span>
+          </summary>
+          <div className="mt-4">
+            <AppMetadata meta={app.meta} />
+          </div>
+        </details>
+      </Card>
       {columns.length > 1 && (
         <CoverageMatrix editorHref={marketPath(app, "/ficha")} store={app.store} matrix={matrix} hrefs={columns.map((c) => targetQuery(app.country, c))} />
       )}

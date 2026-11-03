@@ -98,15 +98,24 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 | `Skeleton`, `SkeletonText`, `SkeletonKpi`, `SkeletonTable`, `SkeletonChart` | Carga con la forma del contenido real |
 | `DataTable` | Tablas nuevas. Hoy solo la estructura (barra, cabecera fija, filas de 44 px); la fase 29 la completa |
 
+### Navegación (`components/nav/`)
+
+- **Dos marcos:** `app/(global)/layout.tsx` fuera de una app y `app/a/[app]/layout.tsx` dentro. Los dos usan `ShellLayout`: barra lateral, columna de contenido y `<main>`, que es lo que hace scroll.
+- **Barra lateral:** `SidebarFrame` con `SidebarLink`, con el icono a 16 px y el contador `NavCount` (`tone="brand"` solo para lo no leído). Las entradas de la app salen de `NAV_GROUPS` en `lib/app-nav.ts`: una sección nueva se añade allí, no en el JSX.
+- **Cabecera de la app** (`AppHeader`, 56 px): identidad a la izquierda, y a la derecha la fecha, «Buscar», **una** acción principal («Actualizar posiciones») y «⋯». Las páginas no repiten el nombre de la app ni un enlace «App / sección».
+- **Selector de app** (`AppSwitcher`) y **paleta** (`PaletteProvider`, ⌘K) usan `Command`. Los dos agrupan por app, con un elemento por mercado.
+- **Pestañas con URL:** Ajustes de la app usa `Tabs` con una URL por pestaña (`SettingsTabs`), con `activationMode="manual"` para que las flechas no carguen páginas. Son las únicas pestañas que navegan; el resto de `Tabs` cambia de vista sin salir de la página.
+- **Lo destructivo** va a Ajustes › Zona de peligro, en un `Dialog` que pide escribir el nombre (`UnfollowDialog`). Nunca `window.confirm` ni un menú.
+
 - Los componentes de shadcn/ui se adaptan a **nuestros** tokens. No se usa su `globals.css` ni sus nombres (`muted` es aquí un texto, no un fondo).
 - Iconos: `lucide-react`, 16 px en botones y menús, `aria-hidden` cuando hay texto al lado.
 - Gráficos: Recharts con `--series-own` para tu app y `--series-1…5` para la competencia, rejilla `--line`, ejes `--muted` y tooltip sobre `surface` con `shadow-float`. No se usa `@tremor/react`.
 
 ## 6. Responsive y accesibilidad
 
-- **Puntos de corte:** móvil por debajo de 640 px (`sm`), tablet de 640 a 1024 y escritorio desde 1024 (`lg`). La barra lateral pasa arriba por debajo de `md`.
+- **Puntos de corte:** móvil por debajo de 640 px (`sm`), tablet de 640 a 1024 y escritorio desde 1024 (`lg`). Por debajo de `sm` la barra lateral pasa a una barra inferior (`MobileNav`) y las secciones de la app se abren desde la cabecera en una `Sheet`. De `sm` a `lg` la barra lateral muestra solo iconos (los textos quedan para los lectores de pantalla con `sm:max-lg:sr-only`).
 - **Objetivos táctiles de 44 px** en móvil (`min-h-11`). Se compactan a 32 px desde `md`.
-- **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (fase 29). `npm run test:e2e` lo mide en todas las rutas a 390 y 1440 px.
+- **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (fase 29). `npm run test:e2e` lo comprueba en todas las rutas a 390 y 1440 px.
 - **Contraste AA** en los dos temas. `/dev/ui` se comprueba con axe en `npm run test:e2e`.
 - Foco visible siempre (`outline` de 2 px en `brand`).
 

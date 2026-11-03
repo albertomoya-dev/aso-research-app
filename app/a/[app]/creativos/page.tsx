@@ -1,11 +1,10 @@
 import { and, desc, eq } from "drizzle-orm";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CreativeNav } from "@/components/creative-nav";
 import { ScreenshotStudio } from "@/components/screenshot-studio";
 import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
-import { loadPrimaryParams, marketPath, productPath } from "@/lib/products";
+import { loadPrimaryParams, productPath } from "@/lib/products";
 import {
   defaultScreenshotSpec,
   formatDayEs,
@@ -101,12 +100,6 @@ export default async function ScreenshotsPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Creativos
-      </nav>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Screenshots para la tienda">
           Monta las capturas de{" "}

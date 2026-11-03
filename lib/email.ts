@@ -42,7 +42,7 @@ export function renderSummaryEmail(summary: { since: string; until: string; apps
   });
   return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;color:#1a1d24;max-width:640px;margin:0 auto;padding:16px">
     <h1 style="font-size:20px;margin:0 0 4px">Resumen semanal de ASO</h1>
-    <p style="margin:0;color:#555">Del ${formatDate(summary.since)} al ${formatDate(summary.until)} · ${link("/resumen", "Ver en Rankeo")}</p>
+    <p style="margin:0;color:#555">Del ${formatDate(summary.since)} al ${formatDate(summary.until)} · ${link("/actividad?vista=semana", "Ver en Rankeo")}</p>
     ${blocks.join("") || "<p>No sigues ninguna app todavía.</p>"}
   </body></html>`;
 }

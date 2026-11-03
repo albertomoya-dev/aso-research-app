@@ -10,7 +10,7 @@ import { DEFAULT_COUNTRY, getCountry, isCountry } from "@/lib/countries";
 import { formatRating } from "@/lib/format";
 import { getAdapter, looksLikeAppId, STORE_LABEL, STORES, type AppMeta, type AppSummary, type Store } from "@/lib/stores";
 
-export const metadata: Metadata = { title: "Buscar app" };
+export const metadata: Metadata = { title: "Añadir app" };
 
 type SearchParams = { q?: string; store?: string; country?: string; sel?: string };
 type StoreResult = { store: Store; apps: AppSummary[]; error?: string };
@@ -54,16 +54,16 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const apps = results.flatMap((r) => r.apps);
   const allFailed = results.length > 0 && results.every((r) => r.error);
   const selectHref = (app: AppSummary) =>
-    `/buscar?${new URLSearchParams({ q, store, country, sel: `${app.store}:${app.id}` })}`;
+    `/apps/nueva?${new URLSearchParams({ q, store, country, sel: `${app.store}:${app.id}` })}`;
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Buscar una app">
+      <PageHeader title="Añadir app">
         Escribe el nombre, el ID de App Store o el paquete de Google Play. Traemos su ficha tal como está publicada en la tienda.
       </PageHeader>
 
       <Card className="px-5 py-4">
-        <form className="flex flex-wrap items-end gap-2.5" action="/buscar">
+        <form className="flex flex-wrap items-end gap-2.5" action="/apps/nueva">
           <label className="flex min-w-0 flex-[1_1_320px] flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
             App
             <input type="search" name="q" defaultValue={q} required placeholder="Nombre, ID o paquete" className={inputClass} />

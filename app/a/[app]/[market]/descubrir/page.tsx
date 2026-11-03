@@ -1,11 +1,11 @@
 import { eq } from "drizzle-orm";
+import { FindTabs } from "@/components/find-tabs";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { DiscoverList } from "@/components/discover-list";
 import { StoreBadge } from "@/components/store-badge";
 import { buttonPrimary, Card, ErrorNote, inputClass, PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
-import { loadMarketParams, marketPath } from "@/lib/products";
+import { loadMarketParams } from "@/lib/products";
 import { hasAnthropicKey } from "@/lib/claude";
 import { getCountry } from "@/lib/countries";
 import { discoveryPrefixes, mergeSuggestions } from "@/lib/discover";
@@ -45,12 +45,7 @@ export default async function DiscoverPage({ params, searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Descubrir keywords
-      </nav>
+      <FindTabs market={app} active="descubrir" />
       <PageHeader title={`Descubrir keywords para ${app.title}`}>
         Escribe una palabra semilla y te mostramos lo que la gente completa en el buscador de la tienda: la semilla sola y seguida de cada letra
         de la «a» a la «z».

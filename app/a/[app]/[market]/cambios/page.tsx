@@ -36,12 +36,6 @@ export default async function ChangesPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Cambios
-      </nav>
       <PageHeader title="Cambios y experimentos">
         Cada cambio de la ficha queda anotado en los gráficos de posición: los que escribes tú, los que la consulta diaria detecta en la ficha
         publicada (título, descripciones, versión, icono o capturas) y los que envías desde Rankeo. Para cada uno comparamos la posición media de

@@ -1,4 +1,5 @@
 import { and, desc, eq } from "drizzle-orm";
+import { FindTabs } from "@/components/find-tabs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { GenerateIdeasForm } from "@/components/generate-ideas-form";
@@ -27,12 +28,7 @@ export default async function IdeasPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Ideas con IA
-      </nav>
+      <FindTabs market={app} active="ideas" />
       <PageHeader title={`Ideas de keywords para ${app.title}`}>
         Claude lee tu ficha, tus keywords, el autocompletado de la tienda y las apps que salen en tu TOP 5, y propone keywords nuevas. La
         relevancia y la competencia son estimaciones de la IA, no datos de la tienda: la popularidad real la medimos al seguir la keyword.
@@ -50,7 +46,7 @@ export default async function IdeasPage({ params }: Props) {
           <h2 className="font-semibold">Falta la clave de Anthropic</h2>
           <p className="mt-1.5 text-ink-soft">
             Añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno (en Vercel: Settings → Environment Variables) y
-            vuelve a desplegar; en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir keywords a mano o desde{" "}
+            vuelve a desplegar; en <Link href="/integraciones" className="text-link underline">Integraciones</Link> puedes comprobar si la clave funciona. Mientras tanto puedes añadir keywords a mano o desde{" "}
             <Link href={marketPath(app, "/descubrir")} className="text-link hover:underline">
               Descubrir keywords
             </Link>

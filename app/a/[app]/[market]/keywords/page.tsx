@@ -1,24 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { refreshAppMeta, refreshRankings, removeKeyword, unfollowApp } from "@/app/actions";
+import { removeKeyword } from "@/app/actions";
 import { AppIcon } from "@/components/app-icon";
-import { AppMetadata } from "@/components/app-metadata";
-import { ConfirmButton } from "@/components/confirm-button";
-import { CountriesCard } from "@/components/countries-card";
 import { HealthPanel } from "@/components/health-panel";
 import { KeywordForm } from "@/components/keyword-form";
-import { OfficialBadge, officialPeriod, OfficialStatsCard } from "@/components/official-stats";
+import { OfficialBadge, officialPeriod } from "@/components/official-stats";
 import { BulkRemoveBar, KeywordSelection, RowCheckbox, SelectAllCheckbox } from "@/components/keyword-selection";
 import { Position, PositionChange, Sparkline } from "@/components/rank";
 import { RecalculateRelevance, RefreshWhilePending, RelevanceSelect } from "@/components/relevance-select";
 import { Difficulty, OpportunityBadge, PopularityBar } from "@/components/scores";
-import { StoreBadge } from "@/components/store-badge";
-import { SubmitButton } from "@/components/submit-button";
-import { buttonPrimary, buttonSecondary, Card } from "@/components/ui";
-import { loadMarketParams, marketPath, productMarkets, unfollowConfirmation } from "@/lib/products";
+import { Card, PageHeader } from "@/components/ui";
+import { loadMarketParams, marketPath } from "@/lib/products";
 import { watchedStoreIds } from "@/lib/competitor-queries";
 import { getCountry } from "@/lib/countries";
-import { formatDate } from "@/lib/format";
 import { isKeywordSort, KEYWORD_SORTS, sortKeywordRows, type KeywordSort, type SortDir } from "@/lib/keyword-sort";
 import { SOURCE_LABEL } from "@/lib/keywords";
 import { getKeywordRows, type KeywordRow } from "@/lib/queries";
@@ -69,17 +63,11 @@ export default async function AppPage({ params, searchParams }: Props) {
   const sort: KeywordSort = isKeywordSort(s) ? s : "opportunity";
   const dir: SortDir = d === "asc" || d === "desc" ? d : KEYWORD_SORTS[sort].dir;
   const { lang } = getCountry(app.country);
-  const [rows, official, watched, markets] = await Promise.all([
+  const [rows, official, watched] = await Promise.all([
     getKeywordRows(app),
     app.store === "android" ? getOfficialStats(app.id) : null,
     watchedStoreIds(app.id),
-    productMarkets(app.productId),
   ]);
-  const unfollowMessage = unfollowConfirmation(
-    app.title,
-    getCountry(app.country).name,
-    markets.filter((m) => m.id !== app.id).map((m) => getCountry(m.country).name),
-  );
   const top5HasWatched = rows.some((r) => r.top5.some((t) => watched.has(t.id)));
   const visible = sortKeywordRows(rows.filter((r) => filter.test(r, lang)), sort, dir);
   const unratedByUser = rows.filter((r) => r.relevanceSource !== "user").length;
@@ -101,46 +89,15 @@ export default async function AppPage({ params, searchParams }: Props) {
     const next = active ? (dir === "asc" ? "desc" : "asc") : KEYWORD_SORTS[id].dir;
     return <SortHeader label={label} active={active} dir={dir} href={href({ s: id, d: next })} className={className} />;
   };
-  const lastCheck = rows.map((r) => r.checkedOn).filter(Boolean).sort().at(-1);
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3.5">
-          <AppIcon src={app.icon} size={56} />
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold break-words">{app.title}</h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted">
-              <StoreBadge store={app.store} country={app.country} />
-              <span>{getCountry(app.country).name}</span>
-              <span>· Posiciones del {lastCheck ? formatDate(lastCheck) : "– (aún sin consultar)"}</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          <form action={refreshRankings}>
-            <input type="hidden" name="appId" value={app.id} />
-            <SubmitButton className={buttonPrimary} pendingLabel="Consultando la tienda…">
-              Actualizar posiciones
-            </SubmitButton>
-          </form>
-          <form action={refreshAppMeta}>
-            <input type="hidden" name="appId" value={app.id} />
-            <SubmitButton className={buttonSecondary} pendingLabel="Leyendo ficha…">
-              Actualizar ficha
-            </SubmitButton>
-          </form>
-          <form action={unfollowApp}>
-            <input type="hidden" name="appId" value={app.id} />
-            <ConfirmButton
-              message={unfollowMessage}
-              className={`${buttonSecondary} text-danger`}
-            >
-              Dejar de seguir
-            </ConfirmButton>
-          </form>
-        </div>
-      </header>
+      <PageHeader title="Seguimiento">
+        Tus keywords en {getCountry(app.country).name}.{" "}
+        <Link href={marketPath(app, "/ficha#publicada")} className="text-link underline">
+          Ver la ficha publicada
+        </Link>
+      </PageHeader>
 
       <HealthPanel app={app} rows={rows} />
 
@@ -338,7 +295,7 @@ export default async function AppPage({ params, searchParams }: Props) {
             relevancia 5; una keyword sin valorar cuenta como 0,7). Relevancia (1–5): la estima la IA con tu ficha de producto o la fijas tú;
             la IA nunca cambia la que has puesto tú.
             {" "}TOP 5: tu app lleva un borde lavanda y los competidores vigilados uno naranja
-            {top5HasWatched ? "" : " (aún no vigilas a ninguno de los que salen; se eligen en la pestaña Competidores)"}. El nombre de cada app sale al pasar
+            {top5HasWatched ? "" : " (aún no vigilas a ninguno de los que salen; se eligen en Competidores)"}. El nombre de cada app sale al pasar
             el cursor y lo leen los lectores de pantalla.
             {official &&
               ` «Oficial»: visitantes e instalaciones reales de Google Play Console del ${officialPeriod(official)}, importados del CSV; no son estimaciones y no se mezclan con la popularidad.`}
@@ -346,14 +303,6 @@ export default async function AppPage({ params, searchParams }: Props) {
         </KeywordSelection>
       </Card>
 
-      {app.store === "android" && <OfficialStatsCard appId={app.id} stats={official} tracked={new Set(rows.map((r) => r.term))} />}
-
-      <CountriesCard app={app} />
-
-      <Card aria-label="Ficha publicada" className="p-6">
-        <div className="mb-4 text-sm text-muted">Ficha leída el {formatDate(app.metaFetchedAt)}</div>
-        <AppMetadata meta={app.meta} />
-      </Card>
     </div>
   );
 }

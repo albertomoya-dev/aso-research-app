@@ -1,9 +1,13 @@
 import { collectErrors, type E2eApp, expect, measureOverflow, recordOverflow, test, VIEWPORTS } from "./fixtures";
 
 // Every current route, for every app in the test database, at 390 and 1440 px: it answers 200 and
-// logs no errors. Horizontal overflow is measured and annotated, not asserted (phases 27–29 fix it).
+// logs no errors. The document must not scroll sideways (phase 27: the navigation shell); the
+// overflow of <main> is measured and annotated, and creativos and its video page stay report-only
+// until phase 32 reorganises them.
 
-const GLOBAL_ROUTES = ["/", "/buscar", "/novedades", "/resumen", "/ajustes"];
+const GLOBAL_ROUTES = ["/", "/apps/nueva", "/actividad", "/actividad?vista=semana", "/integraciones"];
+// Report-only overflow (phase 32).
+const OVERFLOW_REPORT_ONLY = new Set(["/a/[app]/creativos", "/a/[app]/creativos/video"]);
 
 const market = (a: E2eApp) => `/a/${a.slug}/${a.country}`;
 const product = (a: E2eApp) => `/a/${a.slug}`;
@@ -16,7 +20,18 @@ const APP_ROUTES: { route: string; path: (app: E2eApp) => string | null }[] = [
     path: (a: E2eApp) => `${market(a)}/${sub}`,
   })),
   // Product-level pages: the same for every market of a product, so they are visited once per product.
-  ...["ajustes/producto", "creativos", "creativos/icono", "creativos/logo", "creativos/video"].map((sub) => ({
+  ...[
+    "ajustes",
+    "ajustes/producto",
+    "ajustes/mercados",
+    "ajustes/marcas",
+    "ajustes/play",
+    "ajustes/peligro",
+    "creativos",
+    "creativos/icono",
+    "creativos/logo",
+    "creativos/video",
+  ].map((sub) => ({
     route: `/a/[app]/${sub}`,
     path: (a: E2eApp) => `${product(a)}/${sub}`,
   })),
@@ -67,6 +82,9 @@ async function visit(page: import("@playwright/test").Page, route: string, path:
           type: "overflow",
           description: `${path} @${vp.width}: documento ${overflow.scrollWidth}/${overflow.innerWidth}, main ${overflow.mainScrollWidth}/${overflow.mainClientWidth}${overflow.widest ? ` · ${overflow.widest}` : ""}`,
         });
+      }
+      if (!OVERFLOW_REPORT_ONLY.has(route)) {
+        expect.soft(overflow.scrollWidth, `${path} @${vp.width}: el documento no hace scroll horizontal${overflow.widest ? ` (${overflow.widest})` : ""}`).toBeLessThanOrEqual(overflow.innerWidth);
       }
       expect.soft(errors, `${path} @${vp.width} sin errores en la consola`).toEqual([]);
     });

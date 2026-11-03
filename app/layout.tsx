@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { Sidebar } from "@/components/sidebar";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
@@ -31,10 +30,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
-        <div className="flex min-h-screen flex-col md:h-screen md:flex-row">
-          <Sidebar />
-          <main className="min-w-0 flex-1 px-4 py-6 md:overflow-y-auto md:px-8 md:py-7">{children}</main>
-        </div>
+        {/* Each area brings its own shell: app/(global)/layout.tsx outside an app, app/a/[app]/layout.tsx inside one. */}
+        {children}
         <Toaster />
       </body>
     </html>

@@ -20,7 +20,6 @@ import {
   weightedCoverage,
 } from "@/lib/metadata-check";
 import type { Store } from "@/lib/stores/types";
-import { BrandList } from "./brand-list";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
 
 type Props = {
@@ -52,10 +51,10 @@ type Props = {
   keywords: { term: string; opportunity: number | null; relevant: boolean }[];
   /** Store language, category and declared brand, for the policy checks. */
   policy: { lang: string; category: string | null; ownBrand?: string };
-  /** Competitor brands found by the detector (all of them, for the checks; and split for the list), and the words the user marked as «no es una marca». */
+  /** Competitor brands found by the detector, for the checks: a brand in the text shows up as a warning. */
   brands: string[];
-  brandGroups: { titles: string[]; developers: string[] };
-  brandExceptions: string[];
+  /** Ajustes › Marcas, where the list and the «no es una marca» exceptions live. */
+  brandsHref: string;
   aiEnabled: boolean;
   /**
    * State of the product sheet: whether it is empty, how many features are coming in the next version and,
@@ -83,8 +82,7 @@ export function MetadataEditor({
   keywords,
   policy,
   brands,
-  brandGroups,
-  brandExceptions,
+  brandsHref,
   aiEnabled,
   product,
 }: Props) {
@@ -422,7 +420,13 @@ export function MetadataEditor({
           )}
         </Card>
 
-        <BrandList appId={appId} brands={brandGroups.titles} developers={brandGroups.developers} exceptions={brandExceptions} />
+        <p className="px-1 text-table text-muted">
+          {brands.length === 1 ? "1 marca de la competencia detectada" : `${brands.length} marcas de la competencia detectadas`}: la IA no las usa y, si
+          aparecen en tu texto, salen en Avisos.{" "}
+          <Link href={brandsHref} className="text-link underline">
+            Revisar las marcas
+          </Link>
+        </p>
 
         <Card aria-label="Cobertura de keywords" className="overflow-hidden">
           <div className="border-b border-line px-5 py-4">

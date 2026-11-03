@@ -4,7 +4,8 @@ import { e2eDatabaseUrl } from "./e2e/db-url";
 // End-to-end checks against the production build (`npm run test:e2e` builds first) and a TEST
 // database. See README, «Desarrollo: interfaz y pruebas e2e».
 
-const PORT = 3200;
+// E2E_PORT lets two runs (two checkouts) share a machine.
+const PORT = Number(process.env.E2E_PORT ?? 3200);
 const databaseUrl = e2eDatabaseUrl();
 // The fixtures read the app ids from here (workers load this file too).
 process.env.E2E_RESOLVED_DATABASE_URL = databaseUrl;

@@ -17,8 +17,8 @@ export default async function Home() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <PageHeader title="Panel">Las apps que sigues y sus keywords.</PageHeader>
-        <Link href="/buscar" className={buttonPrimary}>
+        <PageHeader title="Inicio">Las apps que sigues y sus keywords.</PageHeader>
+        <Link href="/apps/nueva" className={buttonPrimary}>
           + Añadir app
         </Link>
       </div>
@@ -29,7 +29,7 @@ export default async function Home() {
           <p className="mx-auto mt-2 max-w-md text-sm text-muted">
             Busca tu app en App Store o Google Play, revisa su ficha y pulsa «Seguir esta app» para empezar a añadirle keywords.
           </p>
-          <Link href="/buscar" className={`${buttonPrimary} mt-5`}>
+          <Link href="/apps/nueva" className={`${buttonPrimary} mt-5`}>
             Buscar una app
           </Link>
         </Card>
@@ -74,7 +74,7 @@ function SetupNeeded() {
         <code className="font-mono">npm run db:migrate</code>. Los pasos están en el README.
       </p>
       <p className="mt-2 text-sm text-ink-soft">
-        Mientras tanto ya puedes <Link href="/buscar" className="text-link underline">buscar apps</Link>.
+        Mientras tanto ya puedes <Link href="/apps/nueva" className="text-link underline">buscar apps</Link>.
       </p>
     </Card>
   );

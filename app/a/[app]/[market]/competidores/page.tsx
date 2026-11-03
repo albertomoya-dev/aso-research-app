@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { followCompetitor, refreshCompetitors, unfollowCompetitor } from "@/app/competitor-actions";
 import { AppIcon } from "@/components/app-icon";
 import { ConfirmButton } from "@/components/confirm-button";
 import { SERIES_COLORS, ShareChart } from "@/components/share-chart";
 import { SubmitButton } from "@/components/submit-button";
 import { buttonSecondary, Card, PageHeader } from "@/components/ui";
-import { loadMarketParams, marketPath } from "@/lib/products";
+import { loadMarketParams } from "@/lib/products";
 import { getCompetitorPage } from "@/lib/competitor-queries";
 import { formatDate, formatNumber, formatRating } from "@/lib/format";
 import type { ListingChange } from "@/lib/listing-diff";
@@ -86,12 +85,6 @@ export default async function CompetitorsPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Competidores
-      </nav>
       <PageHeader title={`Competidores de ${app.title}`}>
         Quién ocupa el TOP 5 de tus keywords y qué cambian en su ficha. La cuota de visibilidad reparte cada keyword (según su popularidad)
         entre las cinco primeras posiciones, dando más peso a las primeras.

@@ -43,11 +43,21 @@ for (const theme of THEMES) {
 }
 
 // Report only: annotated and written to test-results/axe-routes.json.
-const GLOBAL_ROUTES = ["/", "/buscar", "/novedades", "/resumen", "/ajustes"];
+const GLOBAL_ROUTES = ["/", "/apps/nueva", "/actividad", "/actividad?vista=semana", "/integraciones"];
 // The first market of the test database stands in for every app.
 const appRoutes = (a: E2eApp) => {
   const market = `/a/${a.slug}/${a.country}`;
-  return [market, `${market}/ideas`, `${market}/ficha`, `${market}/competidores`, `/a/${a.slug}/ajustes/producto`];
+  const product = `/a/${a.slug}`;
+  return [
+    market,
+    `${market}/ideas`,
+    `${market}/ficha`,
+    `${market}/competidores`,
+    `${product}/ajustes/producto`,
+    `${product}/ajustes/mercados`,
+    `${product}/ajustes/marcas`,
+    `${product}/ajustes/peligro`,
+  ];
 };
 
 test("rutas actuales: informe de accesibilidad (no bloquea)", async ({ page, apps }) => {

@@ -1,11 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CreativeNav } from "@/components/creative-nav";
 import { IconStudio } from "@/components/icon-studio";
 import { PageHeader } from "@/components/ui";
 import { getDb, schema } from "@/db";
-import { loadPrimaryParams, marketPath, productPath } from "@/lib/products";
+import { loadPrimaryParams, productPath } from "@/lib/products";
 import { defaultIconSpec, type IconSpec, iconSpecSchema } from "@/lib/assets/icon";
 import { formatSavedAt, proxied } from "@/lib/assets/screenshots";
 import { hasAnthropicKey } from "@/lib/claude";
@@ -25,12 +24,6 @@ export default async function IconPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Creativos / Icono
-      </nav>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Icono de la app">
           Diseña un icono vectorial (fondo, símbolo o letra y placa), compáralo con el actual a tamaño real y descárgalo a 1024 px para App Store y 512 px para

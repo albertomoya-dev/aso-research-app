@@ -69,12 +69,9 @@ export default async function KeywordPage(props: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Keyword
-      </nav>
+      <Link href={marketPath(app, "/keywords")} className="inline-flex min-h-11 items-center self-start text-table text-link hover:underline md:min-h-8">
+        ← Seguimiento
+      </Link>
 
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>

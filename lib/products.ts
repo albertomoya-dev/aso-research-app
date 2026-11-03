@@ -1,8 +1,10 @@
 import { and, asc, count, eq, like, or } from "drizzle-orm";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { getDb, schema } from "@/db";
 import type { App, Product } from "@/db/schema";
+import { marketCookieName, pickMarket } from "./app-nav";
 import { groupMarkets, isSlugClash, type MarketRef, productSlugBase, type ProductWithMarkets, uniqueSlug } from "./market-path";
 
 export {
@@ -133,6 +135,21 @@ export async function loadMarketParams(params: Promise<{ app: string; market: st
 export async function loadPrimaryParams(params: Promise<{ app: string }>): Promise<MarketApp> {
   const product = await loadProduct((await params).app);
   return primaryMarket(product.id);
+}
+
+/**
+ * The market an app-wide page works with (Ajustes › Marcas, Datos de Play Console): `?m=` when given,
+ * else the last market seen of this product (cookie set by the app shell), else the primary one.
+ */
+export async function loadContextMarket(slug: string, fromQuery?: string | string[] | null): Promise<MarketApp> {
+  const product = await loadProduct(slug);
+  const [markets, jar] = await Promise.all([
+    getDb().select({ country: schema.apps.country }).from(schema.apps).where(eq(schema.apps.productId, product.id)).orderBy(asc(schema.apps.id)),
+    cookies(),
+  ]);
+  const picked = pickMarket(markets, typeof fromQuery === "string" ? fromQuery : null, jar.get(marketCookieName(slug))?.value);
+  if (!picked) notFound();
+  return loadMarket(slug, picked.country);
 }
 
 /** Every followed product, by title, with its markets oldest first: for the home page and the sidebar. One query. */

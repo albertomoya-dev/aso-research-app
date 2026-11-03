@@ -26,7 +26,7 @@ function SetupAsc({ error }: { error: string | null }) {
         </li>
       </ol>
       <p className="text-[13px] text-muted">
-        Los pasos detallados están en el README, sección «App Store Connect». En <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes probar la conexión.
+        Los pasos detallados están en el README, sección «App Store Connect». En <Link href="/integraciones" className="text-link underline">Integraciones</Link> puedes probar la conexión.
       </p>
     </Card>
   );

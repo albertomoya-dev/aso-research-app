@@ -134,12 +134,6 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Reseñas
-      </nav>
       <PageHeader title="Qué dicen las reseñas">
         Claude lee las reseñas más recientes del país que elijas (hasta 300) y resume temas, quejas y peticiones, y las palabras con las que los
         usuarios describen la app. Puedes analizar tu app, los competidores que vigilas o cualquier app de tu TOP 5.
@@ -214,7 +208,7 @@ export default async function ReviewsPage({ params, searchParams }: Props) {
         </Card>
       ) : (
         <Card className="px-5 py-4 text-sm text-ink-soft">
-          Para analizar reseñas añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno. Su estado está en <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link>.
+          Para analizar reseñas añade <code className="font-mono">ANTHROPIC_API_KEY</code> en las variables de entorno. Su estado está en <Link href="/integraciones" className="text-link underline">Integraciones</Link>.
         </Card>
       )}
 

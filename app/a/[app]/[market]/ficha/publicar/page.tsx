@@ -40,12 +40,8 @@ export default async function PublishPage({ params, searchParams }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        /{" "}
         <Link href={editorHref} className="text-link hover:underline">
-          Editor de ficha
+          Ficha de la tienda
         </Link>{" "}
         / Publicar
       </nav>
@@ -87,7 +83,7 @@ function SetupPlay({ error }: { error: string | null }) {
         </li>
       </ol>
       <p className="text-[13px] text-muted">
-        Los pasos detallados están en el README, sección «Google Play Console». En <Link href="/ajustes" className="text-link hover:underline">Ajustes</Link> puedes probar la conexión.
+        Los pasos detallados están en el README, sección «Google Play Console». En <Link href="/integraciones" className="text-link underline">Integraciones</Link> puedes probar la conexión.
       </p>
     </Card>
   );

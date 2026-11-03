@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { FindTabs } from "@/components/find-tabs";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AppIcon } from "@/components/app-icon";
@@ -46,6 +47,7 @@ export default async function TopKeywordsPage({ params, searchParams }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
+      <FindTabs market={app} active="top10" />
       <PageHeader title="Keywords del TOP 10">
         Leemos la ficha de las {TOP_DEPTH} primeras apps de la búsqueda (
         {app.store === "android" ? "título, descripción corta y descripción" : "título y descripción; Apple no publica el subtítulo"}) y sacamos

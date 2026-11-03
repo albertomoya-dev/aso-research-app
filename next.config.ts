@@ -1,17 +1,5 @@
 import type { NextConfig } from "next";
-
-/**
- * Old global pages → new ones (docs/REDISENO_UX.md §8), as 308s. Their destinations arrive in phase 27,
- * so they stay off until then: turn ENABLE_GLOBAL_REDIRECTS on in that phase. The app pages
- * (`/apps/[id]/…`) need the database and redirect from app/apps/[id]/[[...rest]]/route.ts instead.
- */
-const ENABLE_GLOBAL_REDIRECTS = false;
-const GLOBAL_REDIRECTS = [
-  { source: "/novedades", destination: "/actividad", permanent: true },
-  { source: "/resumen", destination: "/actividad?vista=semana", permanent: true },
-  { source: "/ajustes", destination: "/integraciones", permanent: true },
-  { source: "/buscar", destination: "/apps/nueva", permanent: true },
-];
+import { GLOBAL_REDIRECTS } from "./lib/redirects";
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -21,8 +9,9 @@ const nextConfig: NextConfig = {
     // Screenshot sets carry their images (base64) when they are saved.
     serverActions: { bodySizeLimit: "4mb" },
   },
+  // Old global pages (/novedades, /resumen, /ajustes, /buscar) → their new ones, as 308s with the query kept.
   async redirects() {
-    return ENABLE_GLOBAL_REDIRECTS ? GLOBAL_REDIRECTS : [];
+    return [...GLOBAL_REDIRECTS];
   },
 };
 

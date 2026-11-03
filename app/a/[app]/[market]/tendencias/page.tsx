@@ -62,12 +62,6 @@ export default async function SeasonalityPage({ params }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav aria-label="Ruta" className="text-sm text-muted">
-        <Link href={marketPath(app)} className="text-link hover:underline">
-          {app.title}
-        </Link>{" "}
-        / Estacionalidad
-      </nav>
       <PageHeader title="Estacionalidad de tus keywords">
         Interés medio en Google por mes en {getCountry(app.country).name}, a partir de Google Trends (últimos 12 meses). Sirve para preparar la
         ficha y las keywords unas semanas antes de cada pico.
