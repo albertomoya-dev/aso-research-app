@@ -87,7 +87,7 @@ describe("dismissSuggestions", () => {
     expect(mocks.updates).toHaveLength(1);
     expect(mocks.updates[0]).toEqual({ set: { status: "dismissed" }, ids: all });
     expect(mocks.pending.size).toBe(0);
-    expect(mocks.revalidated).toEqual(["market:1/ideas"]);
+    expect(mocks.revalidated).toEqual(["market:1"]);
   });
 
   it("counts only the ideas that were still pending", async () => {

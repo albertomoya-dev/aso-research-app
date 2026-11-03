@@ -25,6 +25,7 @@ import type { Listing } from "@/lib/listing-diff";
 import type { MetadataDraft } from "@/lib/metadata-check";
 // Relative so drizzle-kit can load it without the "@/" alias.
 import { KEYWORD_SOURCES } from "../lib/keywords";
+import { CANDIDATE_SOURCES, CANDIDATE_STATUSES } from "../lib/candidate-sources";
 import { FEATURE_STATUSES } from "../lib/product-facts";
 import type { KeywordIntent, RelevanceSource } from "@/lib/relevance";
 import type { RatingStats, ReviewAnalysis } from "@/lib/review-analysis";
@@ -33,6 +34,8 @@ import type { TrendPoint } from "@/lib/trends";
 export const storeEnum = pgEnum("store", ["ios", "android"]);
 export const keywordSourceEnum = pgEnum("keyword_source", KEYWORD_SOURCES);
 export const suggestionStatusEnum = pgEnum("suggestion_status", ["pending", "accepted", "dismissed"]);
+export const candidateSourceEnum = pgEnum("candidate_source", CANDIDATE_SOURCES);
+export const candidateStatusEnum = pgEnum("candidate_status", CANDIDATE_STATUSES);
 
 /**
  * An app of one store, followed in one or more countries (its markets: rows of `apps`). Holds what is
@@ -133,6 +136,8 @@ export const rankSnapshots = pgTable(
     /** 1-based; null when the app is outside the results we fetched. */
     position: integer("position"),
     top5: jsonb("top5").$type<AppSummary[]>().notNull(),
+    /** First ten results (migration 0021). Null in snapshots older than it: fall back to `top5`. */
+    top10: jsonb("top10").$type<AppSummary[]>(),
     /** How many results were fetched: a null position means "outside the top N". */
     depth: integer("depth").notNull(),
   },
@@ -242,6 +247,36 @@ export const aiSuggestions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("ai_suggestions_app_term_idx").on(t.appId, t.term)],
+);
+
+/**
+ * Candidate keywords of Keywords › Encontrar that are not AI ideas (those stay in `ai_suggestions`):
+ * autocomplete and TOP 10 results the user dismissed, followed or measured, and the words of the review
+ * analyses (pending until the user decides). A dismissed term never comes back in any source. `source`
+ * "ai" only holds the measured popularity of an AI idea; its status lives in `ai_suggestions`.
+ */
+export const keywordCandidates = pgTable(
+  "keyword_candidates",
+  {
+    id: serial("id").primaryKey(),
+    /** The market (an `apps` row). */
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    /** Normalized like keywords.term. */
+    term: text("term").notNull(),
+    source: candidateSourceEnum("source").notNull(),
+    status: candidateStatusEnum("status").notNull().default("pending"),
+    reason: text("reason"),
+    /** 1–5 when known (the AI estimated it). */
+    relevance: integer("relevance"),
+    /** 0–100 from the autocomplete already read (lib/candidates.ts `estimatePopularity`): an estimate. */
+    popularityEstimate: integer("popularity_estimate"),
+    /** 0–100 measured on demand («Medir popularidad»), like keyword_metrics.popularity. */
+    popularityMeasured: integer("popularity_measured"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("keyword_candidates_app_term_source_idx").on(t.appId, t.term, t.source)],
 );
 
 /** A competitor whose listing is checked every day. */

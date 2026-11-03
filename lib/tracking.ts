@@ -202,7 +202,7 @@ export async function trackRankings(
               schema.rankSnapshots.country,
               schema.rankSnapshots.date,
             ],
-            set: { position: sql`excluded.position`, top5: sql`excluded.top5`, depth: sql`excluded.depth` },
+            set: { position: sql`excluded.position`, top5: sql`excluded.top5`, top10: sql`excluded.top10`, depth: sql`excluded.depth` },
           });
         report.snapshots += rows.length;
       } catch (error) {

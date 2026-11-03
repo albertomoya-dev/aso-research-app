@@ -3,12 +3,15 @@ import type { AppSummary } from "./stores/types";
 /** Results requested per search. The App Store API returns up to 200; Google Play usually returns about 30 (its limit, not ours), so every snapshot stores the real count in `depth`. */
 export const RANK_DEPTH = 200;
 
-export type RankResult = { position: number | null; top5: AppSummary[] };
+export type RankResult = { position: number | null; top5: AppSummary[]; top10: AppSummary[] };
 
-/** Position is the 1-based index of the app in the search results; null when it is not there. */
+/**
+ * Position is the 1-based index of the app in the search results; null when it is not there. Keeps the
+ * first five (alerts, visibility share, the table) and, since migration 0021, the first ten (the detail panel).
+ */
 export function computeRank(results: AppSummary[], storeId: string): RankResult {
   const index = results.findIndex((r) => r.id === storeId);
-  return { position: index === -1 ? null : index + 1, top5: results.slice(0, 5) };
+  return { position: index === -1 ? null : index + 1, top5: results.slice(0, 5), top10: results.slice(0, 10) };
 }
 
 /**

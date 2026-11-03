@@ -15,7 +15,20 @@ const product = (a: E2eApp) => `/a/${a.slug}`;
 const APP_ROUTES: { route: string; path: (app: E2eApp) => string | null }[] = [
   { route: "/a/[app]/[market]", path: market },
   { route: "/a/[app]/[market]/keywords/[keywordId]", path: (a) => (a.keywordId ? `${market(a)}/keywords/${a.keywordId}` : null) },
-  ...["keywords", "descubrir", "ideas", "top10", "competidores", "resenas", "tendencias", "ficha", "ficha/publicar", "cambios"].map((sub) => ({
+  { route: "/a/[app]/[market]/keywords?k=[keywordId]", path: (a) => (a.keywordId ? `${market(a)}/keywords?k=${a.keywordId}` : null) },
+  ...[
+    "keywords",
+    "encontrar",
+    "encontrar?fuente=pendientes",
+    "encontrar?fuente=ia",
+    "encontrar?fuente=top10",
+    "competidores",
+    "resenas",
+    "tendencias",
+    "ficha",
+    "ficha/publicar",
+    "cambios",
+  ].map((sub) => ({
     route: `/a/[app]/[market]/${sub}`,
     path: (a: E2eApp) => `${market(a)}/${sub}`,
   })),
@@ -44,6 +57,9 @@ const LEGACY_REDIRECTS: { from: (a: E2eApp) => string; to: (a: E2eApp) => string
   { from: (a) => `/apps/${a.id}/estacionalidad`, to: (a) => `${market(a)}/tendencias` },
   { from: (a) => `/apps/${a.id}/producto`, to: (a) => `${product(a)}/ajustes/producto` },
   { from: (a) => `/apps/${a.id}/creativos/icono`, to: (a) => `${product(a)}/creativos/icono` },
+  // Phase 29: the three find pages are one screen; the old /apps/[id] URLs go straight to it.
+  { from: (a) => `/apps/${a.id}/descubrir`, to: (a) => `${market(a)}/encontrar` },
+  { from: (a) => `/apps/${a.id}/ideas`, to: (a) => `${market(a)}/encontrar` },
 ];
 
 // Some pages read Google Play live (search, autocomplete, reviews), so they get room.

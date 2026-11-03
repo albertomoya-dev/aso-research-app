@@ -15,7 +15,7 @@ type Props = {
   /** Shown as "N frases encontradas en {countryName}" unless a caption is given. */
   countryName: string;
   caption?: string;
-  source?: "discover" | "ai";
+  source?: "discover" | "ai" | "reviews";
   /** Store language, for filler words. */
   lang: string;
   /** Shows «Estimar relevancia con IA» when there is an Anthropic key. */

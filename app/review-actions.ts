@@ -1,5 +1,6 @@
 "use server";
 
+import { insertReviewCandidates } from "@/lib/candidate-queries";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb, schema } from "@/db";
@@ -68,10 +69,12 @@ export async function analyzeReviewsAction(_prev: AnalyzeState, formData: FormDa
       version: own ? app.meta.version : null,
     });
     await db.insert(schema.reviewAnalyses).values({ ...row, result: { ...output, opportunities: own ? [] : fixOpportunityStatus(output.opportunities ?? [], features) }, model });
+    // The words users write reach Keywords › Encontrar as «Reseñas» candidates (only the market's own country).
+    if (country.code === app.country) await insertReviewCandidates(appId, output.keywordIdeas ?? []).catch((err) => console.error("insertReviewCandidates", err));
   } catch (error) {
     if (error instanceof AiError) return { error: error.message };
     throw error;
   }
-  await revalidateMarket(appId, "/resenas");
+  await revalidateMarket(appId, "", "layout");
   return { ok: true };
 }

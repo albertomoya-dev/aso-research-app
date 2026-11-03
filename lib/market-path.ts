@@ -56,9 +56,6 @@ export function marketPath(market: MarketRef, sub = ""): string {
 /** Old tab (`/apps/[id]/…`) → new section of the market. Renamed ones: metadata → ficha, estacionalidad → tendencias. */
 const MARKET_SECTIONS: Record<string, string> = {
   keywords: "keywords",
-  descubrir: "descubrir",
-  ideas: "ideas",
-  top10: "top10",
   resenas: "resenas",
   competidores: "competidores",
   estacionalidad: "tendencias",
@@ -74,6 +71,23 @@ const MARKET_SUBPAGES: Record<string, (rest: string[]) => boolean> = {
 const CREATIVE_SUBPAGES = new Set(["icono", "logo", "video"]);
 
 /**
+ * The three old find pages are one screen since phase 29: `/encontrar?fuente=…`. Shared with the 308s of
+ * the new paths (lib/redirects.ts), so an old `/apps/[id]/descubrir` goes straight to the end.
+ */
+export const FIND_PAGE_SOURCES = { descubrir: "autocompletado", ideas: "ia", top10: "top10" } as const;
+
+/**
+ * `/encontrar?…&fuente=…`: the old query (`seed`, `kw`, `term`…) first and then the source, the order in
+ * which the next.config 308 builds it.
+ */
+export function findPath(market: MarketRef, page: keyof typeof FIND_PAGE_SOURCES, search = ""): string {
+  const query = new URLSearchParams(search);
+  query.delete("fuente");
+  query.append("fuente", FIND_PAGE_SOURCES[page]);
+  return marketPath(market, `/encontrar?${query}`);
+}
+
+/**
  * Where an old URL `/apps/[id]/[...rest]` lives now, or null when it never existed (→ 404).
  * `/apps/[id]` goes to the keywords of the market, the old «Producto» tab to the app settings and
  * «Creativos» to the app (no country). `search` («?…» or "") is kept.
@@ -86,6 +100,7 @@ export function legacyAppRedirect(market: MarketRef, rest: readonly string[] = [
     if (tail.length === 0) return productPath(market.productSlug, `/creativos${search}`);
     return tail.length === 1 && CREATIVE_SUBPAGES.has(tail[0]) ? productPath(market.productSlug, `/creativos/${tail[0]}${search}`) : null;
   }
+  if (Object.hasOwn(FIND_PAGE_SOURCES, section)) return tail.length === 0 ? findPath(market, section as keyof typeof FIND_PAGE_SOURCES, search) : null;
   const target = MARKET_SECTIONS[section];
   if (!target) return null;
   const allowed = MARKET_SUBPAGES[target] ?? ((r: string[]) => r.length === 0);

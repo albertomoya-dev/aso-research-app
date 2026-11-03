@@ -113,7 +113,7 @@ function CommandPalette({ products, open, setOpen }: { products: ProductWithMark
                 <Sparkles aria-hidden="true" />
                 Optimizar ficha
               </CommandItem>
-              <CommandItem value="Generar ideas keywords ia" onSelect={() => go(marketPath(ref, "/ideas"))}>
+              <CommandItem value="Generar ideas keywords ia" onSelect={() => go(marketPath(ref, "/encontrar?fuente=ia"))}>
                 <Lightbulb aria-hidden="true" />
                 Generar ideas
               </CommandItem>
@@ -121,7 +121,7 @@ function CommandPalette({ products, open, setOpen }: { products: ProductWithMark
             {keywordHits.length > 0 && (
               <CommandGroup heading="Keywords">
                 {keywordHits.map((k) => (
-                  <CommandItem key={k.id} value={`keyword ${k.term} ${query}`} onSelect={() => go(marketPath(ref, `/keywords/${k.id}`))}>
+                  <CommandItem key={k.id} value={`keyword ${k.term} ${query}`} onSelect={() => go(marketPath(ref, `/keywords?k=${k.id}`))}>
                     <Hash aria-hidden="true" />
                     {k.term}
                   </CommandItem>

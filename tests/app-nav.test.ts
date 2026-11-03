@@ -29,7 +29,7 @@ describe("sidebar config", () => {
     const byId = Object.fromEntries(ALL_NAV_ENTRIES.map((e) => [e.id, navHref(e, es)]));
     expect(byId.resumen).toBe("/a/recordatorio/es");
     expect(byId.seguimiento).toBe("/a/recordatorio/es/keywords");
-    expect(byId.encontrar).toBe("/a/recordatorio/es/descubrir");
+    expect(byId.encontrar).toBe("/a/recordatorio/es/encontrar");
     expect(byId.ficha).toBe("/a/recordatorio/es/ficha");
     expect(byId.creativos).toBe("/a/recordatorio/creativos?m=es");
     expect(byId.ajustes).toBe("/a/recordatorio/ajustes?m=es");
@@ -42,9 +42,7 @@ describe("activeNavId", () => {
     ["/a/recordatorio/es", "resumen"],
     ["/a/recordatorio/es/keywords", "seguimiento"],
     ["/a/recordatorio/es/keywords/12", "seguimiento"],
-    ["/a/recordatorio/es/descubrir", "encontrar"],
-    ["/a/recordatorio/es/ideas", "encontrar"],
-    ["/a/recordatorio/es/top10", "encontrar"],
+    ["/a/recordatorio/es/encontrar", "encontrar"],
     ["/a/recordatorio/es/resenas", "resenas"],
     ["/a/recordatorio/es/tendencias", "tendencias"],
     ["/a/recordatorio/es/ficha/publicar", "ficha"],
