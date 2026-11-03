@@ -9,13 +9,20 @@
 --
 -- Merge rules when two markets of one product both had rows ("first" = lowest apps.id with rows, the
 -- primary market when it has any):
---   product_facts      one per product: the first market's row, with every empty field ('' or [])
---                      filled from the next market that has it.
+--   product_facts      one per product: the first market's row. Its empty text fields are filled from
+--                      the next market that has them; the lists (differentiators, constraints,
+--                      languages) become the ordered union of every market's: the first market's items,
+--                      then the others' whose normalised text is new (normalised: lower case, no
+--                      accents, single spaces, as for features).
 --   product_features   the first market's, plus the other markets' whose normalised name (lower case,
 --                      no accents, single spaces) is not there yet; renumbered so the extra ones go last.
---   product_releases   one per version: the first market's.
+--   product_releases   one per version: the first market's row; an empty date comes from another
+--                      market, and every distinct non-empty notes text is kept, the others' appended
+--                      after a "---" line.
 --   brand_exceptions   the union of every market's words.
---   asset_designs      one per kind: the first market's.
+--   asset_designs      one per kind: the first market's. The others' rows are copied first to the
+--                      table asset_designs_merged_0020 (not in the schema; the cleanup migration drops
+--                      it) and their ids raised as a NOTICE, so no design is lost.
 --   generated_images   all kept.
 
 -- 1. Old keys: cascade FKs on app_id, and the keys built on it.
@@ -50,15 +57,28 @@ UPDATE "product_features" SET "product_id" = "apps"."product_id" FROM "apps" WHE
 UPDATE "product_releases" SET "product_id" = "apps"."product_id" FROM "apps" WHERE "apps"."id" = "product_releases"."app_id";--> statement-breakpoint
 
 -- 3. Deduplicate per product.
--- product_facts: fill the first row's empty fields from the other markets (lowest app_id first)…
+-- product_facts: fill the first row's empty text fields from the other markets (lowest app_id first)
+-- and merge the lists (DISTINCT ON keeps an item's first occurrence: lowest market, then its position)…
 UPDATE "product_facts" AS "p" SET
 	"brand" = COALESCE(NULLIF("p"."brand", ''), (SELECT "o"."brand" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."brand" <> '' ORDER BY "o"."app_id" LIMIT 1), ''),
 	"pitch" = COALESCE(NULLIF("p"."pitch", ''), (SELECT "o"."pitch" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."pitch" <> '' ORDER BY "o"."app_id" LIMIT 1), ''),
 	"audience" = COALESCE(NULLIF("p"."audience", ''), (SELECT "o"."audience" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."audience" <> '' ORDER BY "o"."app_id" LIMIT 1), ''),
 	"tone" = COALESCE(NULLIF("p"."tone", ''), (SELECT "o"."tone" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."tone" <> '' ORDER BY "o"."app_id" LIMIT 1), ''),
-	"differentiators" = COALESCE(NULLIF("p"."differentiators", '[]'::jsonb), (SELECT "o"."differentiators" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."differentiators" <> '[]'::jsonb ORDER BY "o"."app_id" LIMIT 1), '[]'::jsonb),
-	"constraints" = COALESCE(NULLIF("p"."constraints", '[]'::jsonb), (SELECT "o"."constraints" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."constraints" <> '[]'::jsonb ORDER BY "o"."app_id" LIMIT 1), '[]'::jsonb),
-	"languages" = COALESCE(NULLIF("p"."languages", '[]'::jsonb), (SELECT "o"."languages" FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND "o"."languages" <> '[]'::jsonb ORDER BY "o"."app_id" LIMIT 1), '[]'::jsonb),
+	"differentiators" = (SELECT COALESCE(jsonb_agg("u"."v" ORDER BY "u"."app_id", "u"."ord"), '[]'::jsonb) FROM (
+		SELECT DISTINCT ON (regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g')) "e"."v", "o"."app_id", "e"."ord"
+		FROM "product_facts" "o", jsonb_array_elements(CASE WHEN jsonb_typeof("o"."differentiators") = 'array' THEN "o"."differentiators" ELSE '[]'::jsonb END) WITH ORDINALITY AS "e"("v", "ord")
+		WHERE "o"."product_id" = "p"."product_id"
+		ORDER BY regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g'), "o"."app_id", "e"."ord") AS "u"),
+	"constraints" = (SELECT COALESCE(jsonb_agg("u"."v" ORDER BY "u"."app_id", "u"."ord"), '[]'::jsonb) FROM (
+		SELECT DISTINCT ON (regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g')) "e"."v", "o"."app_id", "e"."ord"
+		FROM "product_facts" "o", jsonb_array_elements(CASE WHEN jsonb_typeof("o"."constraints") = 'array' THEN "o"."constraints" ELSE '[]'::jsonb END) WITH ORDINALITY AS "e"("v", "ord")
+		WHERE "o"."product_id" = "p"."product_id"
+		ORDER BY regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g'), "o"."app_id", "e"."ord") AS "u"),
+	"languages" = (SELECT COALESCE(jsonb_agg("u"."v" ORDER BY "u"."app_id", "u"."ord"), '[]'::jsonb) FROM (
+		SELECT DISTINCT ON (regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g')) "e"."v", "o"."app_id", "e"."ord"
+		FROM "product_facts" "o", jsonb_array_elements(CASE WHEN jsonb_typeof("o"."languages") = 'array' THEN "o"."languages" ELSE '[]'::jsonb END) WITH ORDINALITY AS "e"("v", "ord")
+		WHERE "o"."product_id" = "p"."product_id"
+		ORDER BY regexp_replace(translate(lower(trim("e"."v" #>> '{}')), 'áàâäãåāéèêëēíìîïīóòôöõøōúùûüūñçýÿß', 'aaaaaaaeeeeeiiiiiooooooouuuuuncyys'), '\s+', ' ', 'g'), "o"."app_id", "e"."ord") AS "u"),
 	"updated_at" = (SELECT max("o"."updated_at") FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id")
 WHERE NOT EXISTS (SELECT 1 FROM "product_facts" "f" WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id")
 	AND EXISTS (SELECT 1 FROM "product_facts" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id");--> statement-breakpoint
@@ -79,13 +99,36 @@ FROM (
 WHERE "n"."id" = "product_features"."id" AND "product_features"."product_id" IN (
 	SELECT "product_id" FROM "product_features" GROUP BY "product_id" HAVING count(DISTINCT "app_id") > 1
 );--> statement-breakpoint
--- product_releases: one per version, the lowest market's.
+-- product_releases: one per version, the lowest market's row, with the date and notes of the others…
+UPDATE "product_releases" AS "p" SET
+	"date" = COALESCE("p"."date", (SELECT "o"."date" FROM "product_releases" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND trim("o"."version") = trim("p"."version") AND "o"."date" IS NOT NULL ORDER BY "o"."app_id", "o"."id" LIMIT 1)),
+	"notes" = COALESCE((SELECT string_agg("n"."notes", E'\n\n---\n\n' ORDER BY "n"."app_id", "n"."id") FROM (
+		SELECT trim("o"."notes") AS "notes", min("o"."app_id") AS "app_id", min("o"."id") AS "id"
+		FROM "product_releases" "o"
+		WHERE "o"."product_id" = "p"."product_id" AND trim("o"."version") = trim("p"."version") AND ("o"."id" = "p"."id" OR "o"."app_id" > "p"."app_id") AND trim("o"."notes") <> ''
+		GROUP BY trim("o"."notes")) AS "n"), "p"."notes")
+WHERE NOT EXISTS (SELECT 1 FROM "product_releases" "f" WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id" AND trim("f"."version") = trim("p"."version"))
+	AND EXISTS (SELECT 1 FROM "product_releases" "o" WHERE "o"."product_id" = "p"."product_id" AND "o"."app_id" > "p"."app_id" AND trim("o"."version") = trim("p"."version"));--> statement-breakpoint
+-- …then drop the others.
 DELETE FROM "product_releases" AS "p" USING "product_releases" AS "f"
 WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id" AND trim("f"."version") = trim("p"."version");--> statement-breakpoint
 -- brand_exceptions: the union (a word only once per product).
 DELETE FROM "brand_exceptions" AS "p" USING "brand_exceptions" AS "f"
 WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id" AND "f"."word" = "p"."word";--> statement-breakpoint
--- asset_designs: one per kind, the lowest market's.
+-- asset_designs: one per kind, the lowest market's. The others are copied aside first and listed in a NOTICE…
+CREATE TABLE "asset_designs_merged_0020" AS
+SELECT "p".* FROM "asset_designs" "p"
+WHERE EXISTS (SELECT 1 FROM "asset_designs" "f" WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id" AND "f"."kind" = "p"."kind");--> statement-breakpoint
+DO $$
+DECLARE
+	ids text;
+BEGIN
+	SELECT string_agg("id"::text || ' (app ' || "app_id" || ', ' || "kind" || ')', ', ' ORDER BY "id") INTO ids FROM "asset_designs_merged_0020";
+	IF ids IS NOT NULL THEN
+		RAISE NOTICE 'asset_designs not kept (another market of the product has one of that kind), copied to asset_designs_merged_0020: %', ids;
+	END IF;
+END $$;--> statement-breakpoint
+-- …and dropped from asset_designs.
 DELETE FROM "asset_designs" AS "p" USING "asset_designs" AS "f"
 WHERE "f"."product_id" = "p"."product_id" AND "f"."app_id" < "p"."app_id" AND "f"."kind" = "p"."kind";--> statement-breakpoint
 -- generated_images: nothing to merge, every image stays.

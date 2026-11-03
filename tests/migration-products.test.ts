@@ -118,14 +118,17 @@ describe("migration 0020_product_owned_data", () => {
         (2, 2, 'ios', '1234567890', 'es', 'Pastillero', 'Otro', 'i', 'u', '${meta("Pastillero")}'),
         (4, 1, 'android', 'com.moyalogames.recordatorio', 'us', 'Pill Reminder', 'Moya', 'i', 'u', '${meta("Pill Reminder")}');
       INSERT INTO product_facts (app_id, brand, pitch, audience, differentiators, constraints, tone, languages) VALUES
-        (1, 'Recordatorio', 'Para no olvidar las pastillas', '', '[]', '["Sin consejos médicos"]', '', '[]'),
-        (4, 'Reminder', 'Never miss a pill', 'Adults', '["Offline"]', '["No medical claims"]', 'Friendly', '[]'),
+        (1, 'Recordatorio', 'Para no olvidar las pastillas', '', '[]', '["Sin consejos médicos", "Sin dosis"]', '', '["español"]'),
+        (4, 'Reminder', 'Never miss a pill', 'Adults', '["Offline"]', '[" sin  consejos MEDICOS", "No medical claims"]', 'Friendly', '["Español", "inglés"]'),
         (2, 'Pastillero', 'Otro', '', '[]', '[]', '', '[]');
       INSERT INTO product_features (app_id, name, sort) VALUES
         (1, 'Avisos', 0), (1, 'Historial', 1),
         (4, 'Widgets', 0), (4, '  avísos ', 1), (4, 'Exportar', 3), (4, 'HISTORIAL', 5),
         (2, 'Avisos', 0);
-      INSERT INTO product_releases (app_id, version, notes) VALUES (1, '1.0', 'es'), (4, '1.0', 'us'), (4, '1.1', 'us');
+      INSERT INTO product_releases (app_id, version, date, notes) VALUES
+        (1, '1.0', NULL, 'es'), (4, '1.0', '2026-01-02', 'us'), (4, '1.1', NULL, 'us'),
+        (1, '2.0', '2026-03-01', ''), (4, '2.0', '2026-03-05', 'Nuevo'),
+        (1, '3.0', NULL, 'Igual'), (4, '3.0', NULL, ' Igual ');
       INSERT INTO brand_exceptions (app_id, word) VALUES (1, 'pastillas'), (1, 'reminder'), (4, 'reminder'), (4, 'pill');
       INSERT INTO asset_designs (app_id, kind, spec) VALUES (1, 'icon', '{"from":"es"}'), (4, 'icon', '{"from":"us"}'), (4, 'screenshots', '{"from":"us"}');
       INSERT INTO generated_images (app_id, kind, prompt, provider, model, mime, data) VALUES
@@ -136,7 +139,7 @@ describe("migration 0020_product_owned_data", () => {
 
   afterAll(() => db.close());
 
-  it("keeps one product sheet per product: the primary market's, with its empty fields filled from the others", async () => {
+  it("keeps one product sheet per product: the primary market's, empty text filled and lists merged from the others", async () => {
     const { rows } = await db.query(
       "SELECT product_id, brand, pitch, audience, differentiators, constraints, tone, languages FROM product_facts ORDER BY product_id",
     );
@@ -147,9 +150,10 @@ describe("migration 0020_product_owned_data", () => {
         pitch: "Para no olvidar las pastillas",
         audience: "Adults",
         differentiators: ["Offline"],
-        constraints: ["Sin consejos médicos"],
+        // Primary's first, in order; then the other market's new items. « sin  consejos MEDICOS» is the same item.
+        constraints: ["Sin consejos médicos", "Sin dosis", "No medical claims"],
         tone: "Friendly",
-        languages: [],
+        languages: ["español", "inglés"],
       },
       { product_id: 2, brand: "Pastillero", pitch: "Otro", audience: "", differentiators: [], constraints: [], tone: "", languages: [] },
     ]);
@@ -167,10 +171,15 @@ describe("migration 0020_product_owned_data", () => {
   });
 
   it("merges releases by version, brand exceptions as a union, one design per kind and every image", async () => {
-    const releases = await db.query("SELECT product_id, version, notes FROM product_releases ORDER BY version");
+    const releases = await db.query("SELECT product_id, app_id, version, date::text AS date, notes FROM product_releases ORDER BY version");
     expect(releases.rows).toEqual([
-      { product_id: 1, version: "1.0", notes: "es" },
-      { product_id: 1, version: "1.1", notes: "us" },
+      // Same version, both with notes: the primary's row, the other's notes appended; its date fills the empty one.
+      { product_id: 1, app_id: 1, version: "1.0", date: "2026-01-02", notes: "es\n\n---\n\nus" },
+      { product_id: 1, app_id: 4, version: "1.1", date: null, notes: "us" },
+      // Primary's notes empty: the other's; primary's date kept.
+      { product_id: 1, app_id: 1, version: "2.0", date: "2026-03-01", notes: "Nuevo" },
+      // The same notes are not repeated.
+      { product_id: 1, app_id: 1, version: "3.0", date: null, notes: "Igual" },
     ]);
     const brands = await db.query("SELECT product_id, word FROM brand_exceptions ORDER BY word");
     expect(brands.rows).toEqual([
@@ -183,6 +192,9 @@ describe("migration 0020_product_owned_data", () => {
       { product_id: 1, kind: "screenshots", spec: { from: "us" } },
       { product_id: 1, kind: "icon", spec: { from: "es" } },
     ]);
+    // The design that lost is copied aside, not lost.
+    const aside = await db.query("SELECT app_id, product_id, kind, spec FROM asset_designs_merged_0020");
+    expect(aside.rows).toEqual([{ app_id: 4, product_id: 1, kind: "icon", spec: { from: "us" } }]);
     const images = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM generated_images WHERE product_id = 1");
     expect(images.rows[0].n).toBe(3);
   });

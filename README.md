@@ -465,13 +465,13 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 - **Seguir una app** (Buscar app) crea el producto la primera vez. **Seguir en otro país** (tarjeta «Otros países») añade un mercado al mismo producto.
 - **Datos de la app en conjunto:** la ficha de producto (`product_facts`, `product_features`, `product_releases`), las marcas excluidas (`brand_exceptions`) y los creativos (`asset_designs`, `generated_images`) cuelgan de `product_id`, así que son los mismos en todos los países. Las consultas y las acciones reciben el id de cualquier mercado y lo traducen con `marketProductId()` (`lib/products.ts`).
 - **La migración `0020_product_owned_data`** movió esas tablas de `app_id` a `product_id` y fusionó lo que cada país tenía guardado. Se queda lo del mercado principal (el `apps.id` más bajo con datos) y de los demás solo se toma lo que falta:
-  - en la ficha, los campos vacíos;
-  - las funciones con un nombre que no estuviera ya (sin distinguir mayúsculas, tildes ni espacios), al final de la lista;
-  - las versiones que no estuvieran;
+  - en la ficha, los textos vacíos. Las listas (diferenciadores, restricciones, idiomas) se unen: primero las del principal y después las de los otros países que no estuvieran ya, sin distinguir mayúsculas, tildes ni espacios;
+  - las funciones con un nombre que no estuviera ya (con la misma comparación), al final de la lista. Las que solo se parecen («Historial de tomas» y «Historial de tomas por días») se quedan las dos;
+  - las versiones que no estuvieran. Si una versión estaba en dos países, se queda la del principal: su fecha vacía se rellena y las notas distintas se añaden debajo de una línea `---`;
   - todas las marcas excluidas;
-  - el diseño de cada tipo que el principal no tuviera;
+  - el diseño de cada tipo que el principal no tuviera. Si los dos tenían uno, el del otro país se copia a la tabla `asset_designs_merged_0020`, que no está en el esquema, y la migración avisa de sus ids con un NOTICE;
   - todas las imágenes generadas.
-- **La columna `app_id` antigua** sigue en esas tablas, opcional y sin usarse, para que el código anterior a la 0020 pueda seguir leyendo. Ya no se escribe y pasa a `NULL` si se deja de seguir su país. Una migración de limpieza posterior la quitará.
+- **La columna `app_id` antigua** sigue en esas tablas, opcional y sin usarse, para que el código anterior a la 0020 pueda seguir leyendo. Ya no se escribe y pasa a `NULL` si se deja de seguir su país. Una migración de limpieza posterior la quitará, junto con `asset_designs_merged_0020` cuando ya no haga falta.
 - **Dejar de seguir un país** borra solo ese mercado: sus keywords, posiciones, reseñas, competidores, borradores y publicaciones. Los datos del producto se conservan mientras sigas la app en otro país, y la confirmación lo dice. Al dejar de seguir el último país se borra el producto y, en cascada, su ficha, sus marcas excluidas y sus creativos.
 - **Los borradores de ficha y las publicaciones** (`listing_drafts`, `publications`) se quedan en el mercado (`app_id`). Cada uno se escribe y se mide con las keywords de su país. Pero la consola de la tienda tiene una sola ficha por app e idioma. Por eso el editor avisa cuando otro país del mismo producto tiene un borrador del mismo idioma y la misma ficha (`sharedListingNotice` en `lib/listing-drafts.ts`): si publicas desde los dos, la última publicación sustituye a la anterior.
 
