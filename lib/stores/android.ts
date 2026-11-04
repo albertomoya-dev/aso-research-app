@@ -1,22 +1,32 @@
 import gplay, { type IAppItem, type IAppItemFullDetail, type IReviewsItem } from "google-play-scraper";
-import { limiters, withRetry } from "./retry";
+import { abortable, limiters, withRetry } from "./retry";
 import { StoreError, type AppMeta, type AppSummary, type Review, type StoreAdapter } from "./types";
 
 // google-play-scraper reads Google Play's HTML, so it can break when Google changes
 // the page. Keep every call behind this adapter.
 const client = gplay.memoized({ maxAge: 6 * 60 * 60 * 1000 });
 
-function wrap<T>(fn: () => Promise<T>): Promise<T> {
-  return limiters.android(() =>
-    withRetry(async () => {
-      try {
-        return await fn();
-      } catch (error) {
-        const status = (error as { status?: number }).status;
-        const message = error instanceof Error ? error.message : String(error);
-        throw new StoreError("android", message, status);
-      }
-    }),
+/** A Google Play call behind the limiter and the retries; `signal` (optional) stops waiting for it. */
+function wrap<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  return abortable(
+    limiters.android(() =>
+      withRetry(
+        async () => {
+          try {
+            return await abortable(fn(), signal);
+          } catch (error) {
+            if (signal?.aborted) throw signal.reason;
+            const status = (error as { status?: number }).status;
+            const message = error instanceof Error ? error.message : String(error);
+            throw new StoreError("android", message, status);
+          }
+        },
+        undefined,
+        undefined,
+        signal,
+      ),
+    ),
+    signal,
   );
 }
 
@@ -79,9 +89,9 @@ export const android: StoreAdapter = {
     });
   },
 
-  async getReviews(id, { country, lang, limit }) {
+  async getReviews(id, { country, lang, limit, signal }) {
     // 2 = sort.NEWEST; the package types declare the enum but not its runtime value.
-    const { data } = await wrap(() => client.reviews({ appId: id, country, lang, sort: 2, num: Math.min(limit, 500) }));
+    const { data } = await wrap(() => client.reviews({ appId: id, country, lang, sort: 2, num: Math.min(limit, 500) }), signal);
     return data.map(toReview);
   },
 };

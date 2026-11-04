@@ -1,5 +1,5 @@
 import { getCountry } from "../countries";
-import { limiters, withRetry } from "./retry";
+import { abortable, limiters, withRetry } from "./retry";
 import { StoreError, type AppMeta, type AppSummary, type Review, type StoreAdapter } from "./types";
 
 const BASE = "https://itunes.apple.com";
@@ -142,17 +142,25 @@ export const ios: StoreAdapter = {
     );
   },
 
-  async getReviews(id, { country, limit }) {
+  async getReviews(id, { country, limit, signal }) {
     const trackId = id.replace(/^id/, "");
     const reviews: Review[] = [];
     for (let page = 1; page <= REVIEW_PAGES && reviews.length < limit; page++) {
       const url = `${BASE}/${country}/rss/customerreviews/page=${page}/id=${trackId}/sortby=mostrecent/json`;
-      const batch = await limiters.ios(() =>
-        withRetry(async () => {
-          const res = await fetch(url, { next: { revalidate: CACHE_SECONDS } });
-          if (!res.ok) throw new StoreError("ios", `Reseñas del App Store respondieron ${res.status}`, res.status);
-          return parseReviewFeed(await res.json());
-        }),
+      const batch = await abortable(
+        limiters.ios(() =>
+          withRetry(
+            async () => {
+              const res = await fetch(url, { next: { revalidate: CACHE_SECONDS }, signal });
+              if (!res.ok) throw new StoreError("ios", `Reseñas del App Store respondieron ${res.status}`, res.status);
+              return parseReviewFeed(await res.json());
+            },
+            undefined,
+            undefined,
+            signal,
+          ),
+        ),
+        signal,
       );
       if (batch.length === 0) break;
       reviews.push(...batch);

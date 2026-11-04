@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 import type { App } from "@/db/schema";
 import { type Candidate, type CandidateRow } from "./candidates";
@@ -106,14 +106,31 @@ export async function insertReviewCandidates(appId: number, ideas: readonly { ke
   return inserted.length;
 }
 
+/** `normalizeKeyword` in SQL: whitespace runs to one space, trimmed, lower case. */
+const normalizedSql = (column: SQL) => sql`lower(btrim(regexp_replace(${column}, '[[:space:]]+', ' ', 'g')))`;
+
 /**
- * SQL for the pending tray count of a market (`appId` is a column or a value): AI ideas pending plus
- * stored candidates pending (review words, measured ones), leaving out terms already followed.
+ * SQL for the pending tray count of a market (`appId` is a column or a value): the same rule as
+ * Encontrar's «Pendientes» (`mergeCandidates` over the pending AI ideas and `storedCandidates`): DISTINCT
+ * normalized terms of the pending AI ideas and the pending stored candidates (not «ai» rows), leaving out
+ * the terms the market follows and those dismissed in ANY source (keyword_candidates or ai_suggestions).
  */
 export function pendingCandidatesSql(appId: unknown) {
   return sql<number>`(
-    (select count(*) from ${schema.aiSuggestions} s where s.app_id = ${appId} and s.status = 'pending')
-    + (select count(*) from ${schema.keywordCandidates} c where c.app_id = ${appId} and c.status = 'pending' and c.source <> 'ai'
-        and not exists (select 1 from ${schema.appKeywords} ak join ${schema.keywords} k on k.id = ak.keyword_id where ak.app_id = c.app_id and k.term = c.term))
+    select count(distinct p.term) from (
+      select ${normalizedSql(sql`s.term`)} as term from ${schema.aiSuggestions} s where s.app_id = ${appId} and s.status = 'pending'
+      union all
+      select ${normalizedSql(sql`c.term`)} from ${schema.keywordCandidates} c where c.app_id = ${appId} and c.status = 'pending' and c.source <> 'ai'
+    ) p
+    where p.term <> ''
+      and not exists (
+        select 1 from ${schema.appKeywords} ak join ${schema.keywords} k on k.id = ak.keyword_id
+        where ak.app_id = ${appId} and ${normalizedSql(sql`k.term`)} = p.term)
+      and not exists (
+        select 1 from ${schema.keywordCandidates} d
+        where d.app_id = ${appId} and d.status = 'dismissed' and ${normalizedSql(sql`d.term`)} = p.term)
+      and not exists (
+        select 1 from ${schema.aiSuggestions} d
+        where d.app_id = ${appId} and d.status = 'dismissed' and ${normalizedSql(sql`d.term`)} = p.term)
   )`.mapWith(Number);
 }

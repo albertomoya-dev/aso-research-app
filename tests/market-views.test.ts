@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { chartSeries, MAX_SHARE_SERIES, OTHERS_ID, seriesColor, shareChartKind, sharedKeywords, withOthers } from "@/lib/competitor-view";
 import { cronBudget, OWN_LISTINGS_STOP_AT_MS, RELEVANCE_STOP_AT_MS, REVIEW_FRESHNESS_STOP_AT_MS } from "@/lib/cron-step";
 import { nextSeasons } from "@/lib/health";
-import { hasNewReviews, sourcesToCheck } from "@/lib/review-freshness";
+import { freshnessSignal, hasNewReviews, sourcesToCheck } from "@/lib/review-freshness";
 import type { AppSummary } from "@/lib/stores/types";
 import { HEAT_CLASS, heatBucket, prepareAnnotation, prepareFocus, startsInLabel, upcomingPeaks } from "@/lib/trends-view";
 
@@ -101,12 +101,38 @@ describe("sourcesToCheck", () => {
       { appId: 1, targetStoreId: "own", checkedOn: "2026-11-04" },
       { appId: 2, targetStoreId: "own", checkedOn: "2026-11-03" },
     ];
+    // Never checked first (in their order), then the one checked yesterday.
     expect(sourcesToCheck(sources, checked, "2026-11-04")).toEqual([
       { appId: 1, targetStoreId: "a" },
-      { appId: 2, targetStoreId: "own" },
       { appId: 2, targetStoreId: "b" },
+      { appId: 2, targetStoreId: "own" },
     ]);
     expect(sourcesToCheck(sources, checked, "2026-11-04", 1)).toHaveLength(1);
+  });
+
+  it("rotates over every source when there are more than the cap, oldest check first", () => {
+    const sources = ["a", "b", "c", "d", "e"].map((t) => ({ appId: 1, targetStoreId: t }));
+    let checked: { appId: number; targetStoreId: string; checkedOn: string }[] = [];
+    const days = ["2026-11-01", "2026-11-02", "2026-11-03"];
+    const read: string[][] = [];
+    for (const day of days) {
+      const due = sourcesToCheck(sources, checked, day, 2);
+      read.push(due.map((s) => s.targetStoreId));
+      checked = [...checked.filter((c) => !due.some((s) => s.targetStoreId === c.targetStoreId)), ...due.map((s) => ({ ...s, checkedOn: day }))];
+    }
+    // Day 1 and 2 read the never-checked ones; day 3 the last new one, then the one read longest ago.
+    expect(read).toEqual([["a", "b"], ["c", "d"], ["e", "a"]]);
+  });
+
+  it("orders by the day of the last check, never-checked before any of them", () => {
+    const sources = ["recent", "old", "new", "older"].map((t) => ({ appId: 1, targetStoreId: t }));
+    const checked = [
+      { appId: 1, targetStoreId: "recent", checkedOn: "2026-11-03" },
+      { appId: 1, targetStoreId: "old", checkedOn: "2026-10-20" },
+      { appId: 1, targetStoreId: "older", checkedOn: "2026-10-01" },
+    ];
+    expect(sourcesToCheck(sources, checked, "2026-11-04").map((s) => s.targetStoreId)).toEqual(["new", "older", "old", "recent"]);
+    expect(sourcesToCheck(sources, checked, "2026-11-04", 0)).toEqual([]);
   });
 
   it("runs before relevance in the daily job, after own listings", () => {
@@ -115,6 +141,27 @@ describe("sourcesToCheck", () => {
     expect(budget.reviewFreshnessDeadline).toBe(start + REVIEW_FRESHNESS_STOP_AT_MS);
     expect(OWN_LISTINGS_STOP_AT_MS).toBeLessThan(REVIEW_FRESHNESS_STOP_AT_MS);
     expect(REVIEW_FRESHNESS_STOP_AT_MS).toBeLessThan(RELEVANCE_STOP_AT_MS);
+  });
+});
+
+describe("freshnessSignal", () => {
+  it("gives each request only the time left before the relevance step", async () => {
+    const now = Date.now();
+    expect(freshnessSignal(Infinity, now)).toBeUndefined();
+    const late = freshnessSignal(now - 1, now)!;
+    expect(late.aborted).toBe(true);
+    expect((late.reason as DOMException).name).toBe("TimeoutError");
+    const soon = freshnessSignal(Date.now() + 20)!;
+    expect(soon.aborted).toBe(false);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(soon.aborted).toBe(true);
+  });
+
+  it("defaults to the relevance deadline of the cron budget", () => {
+    const start = Date.UTC(2026, 10, 4, 6);
+    const budget = cronBudget(start, start);
+    // trackReviewFreshness(deadline) caps its requests at deadline + (relevance − freshness stop).
+    expect(budget.reviewFreshnessDeadline + (RELEVANCE_STOP_AT_MS - REVIEW_FRESHNESS_STOP_AT_MS)).toBe(budget.relevanceDeadline);
   });
 });
 

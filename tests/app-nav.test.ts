@@ -20,6 +20,11 @@ describe("sidebar config", () => {
     expect(SETTINGS_ENTRY.label).toBe("Ajustes de la app");
   });
 
+  it("shows the counters of §5: avisos, pendientes, reseñas nuevas and avisos de la ficha", () => {
+    const counters = Object.fromEntries(ALL_NAV_ENTRIES.filter((e) => e.counter).map((e) => [e.id, e.counter]));
+    expect(counters).toEqual({ resumen: "alerts", encontrar: "pending", resenas: "reviews", ficha: "listing" });
+  });
+
   it("ids are unique", () => {
     const ids = ALL_NAV_ENTRIES.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
