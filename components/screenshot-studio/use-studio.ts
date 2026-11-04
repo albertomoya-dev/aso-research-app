@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { staleSlides } from "@/lib/assets/bulk-upload";
+import { toast } from "sonner";
+import { MAX_SLIDES, staleSlides } from "@/lib/assets/bulk-upload";
 import { loadImage, pageFontFamily } from "@/lib/assets/screenshot-render";
 import {
-  applyTemplate,
   blankSlide,
   type Crop,
   getPreset,
@@ -15,6 +15,7 @@ import {
 } from "@/lib/assets/screenshots";
 import { detectScreen } from "@/lib/assets/screen-detect";
 import { paletteFromImages, themeFromPalette } from "@/lib/assets/palette";
+import { applyTemplateWith, type BackgroundMode, gradientPartner, reorder } from "@/lib/assets/studio-edits";
 import type { ImageMode, ScreenshotStudioProps, Status } from "./types";
 
 /**
@@ -87,32 +88,55 @@ export function useStudio(props: ScreenshotStudioProps) {
     };
   }, [paletteKey, imageFor]);
 
-  function pickTemplate(id: string) {
+  /**
+   * Applies a template; with `keepColors` the user's five colours stay (H23). The AI backdrop always
+   * stays. A toast offers to undo it.
+   */
+  function pickTemplate(id: string, keepColors = false) {
     const t = TEMPLATES.find((x) => x.id === id);
     if (!t) return;
-    setSpec((s) => applyTemplate(s, t));
+    const before = spec;
+    setSpec(applyTemplateWith(before, t, { keepColors }));
+    toast(`Plantilla «${t.label}» aplicada${keepColors ? " con tus colores" : ""}`, {
+      action: { label: "Deshacer", onClick: () => setSpec(before) },
+    });
   }
 
   function addSlide() {
+    if (spec.slides.length >= MAX_SLIDES) return;
     const next = blankSlide(slide?.layout ?? "text-top");
     setSpec((s) => ({ ...s, slides: [...s.slides, next] }));
     setSelected(spec.slides.length);
   }
   function removeSlide(id: string) {
     if (spec.slides.length <= 1) return;
+    const i = spec.slides.findIndex((sl) => sl.id === id);
     setSpec((s) => ({ ...s, slides: s.slides.filter((sl) => sl.id !== id) }));
-    setSelected((i) => Math.max(0, i - 1));
+    // The selection follows the screen it was on, or the one before the removed one.
+    setSelected((sel) => Math.max(0, sel > i || sel === spec.slides.length - 1 ? sel - 1 : sel));
+  }
+  /** Moves the screen at `from` to position `to` (drag and drop, buttons, Alt+arrows) and selects it. */
+  function moveSlideTo(from: number, to: number) {
+    const target = Math.max(0, Math.min(spec.slides.length - 1, to));
+    if (from === target || from < 0 || from >= spec.slides.length) return;
+    setSpec((s) => ({ ...s, slides: reorder(s.slides, from, target) }));
+    setSelected(target);
+    setStatus({ kind: "ok", text: `Pantalla ${from + 1} movida a la posición ${target + 1}.` });
   }
   function moveSlide(id: string, dir: -1 | 1) {
-    setSpec((s) => {
-      const i = s.slides.findIndex((sl) => sl.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= s.slides.length) return s;
-      const slides = [...s.slides];
-      [slides[i], slides[j]] = [slides[j], slides[i]];
-      setSelected(j);
-      return { ...s, slides };
-    });
+    const i = spec.slides.findIndex((sl) => sl.id === id);
+    if (i >= 0) moveSlideTo(i, i + dir);
+  }
+
+  /** Solid colour, a gradient or the AI backdrop (the AI one is applied from its section). */
+  function setBackgroundMode(mode: BackgroundMode) {
+    if (mode === "solid") setSpec((s) => ({ ...s, backgroundImage: null, theme: { ...s.theme, background2: null } }));
+    if (mode === "gradient")
+      setSpec((s) => ({
+        ...s,
+        backgroundImage: null,
+        theme: { ...s.theme, background2: s.theme.background2 ?? gradientPartner(s.theme.background) },
+      }));
   }
 
   const modeOf = (sl: Slide): ImageMode => (sl.asIs ? "asis" : sl.crop ? "crop" : "raw");
@@ -216,6 +240,8 @@ export function useStudio(props: ScreenshotStudioProps) {
     addSlide,
     removeSlide,
     moveSlide,
+    moveSlideTo,
+    setBackgroundMode,
     modeOf,
     setImageMode,
     redetect,

@@ -173,7 +173,7 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
   }
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
+    <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
       <div className="flex min-w-0 flex-col gap-4">
         <Card className="px-5 py-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -190,7 +190,7 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
             </div>
           </div>
           <div className="mt-4 flex justify-center rounded-lg bg-bg p-4">
-            <canvas ref={canvasRef} style={{ height: PREVIEW_HEIGHT, width: Math.round((PREVIEW_HEIGHT * preset.width) / preset.height) }} className="rounded-md bg-surface-muted" />
+            <canvas ref={canvasRef} style={{ height: PREVIEW_HEIGHT, width: Math.round((PREVIEW_HEIGHT * preset.width) / preset.height) }} className="max-w-full rounded-md bg-surface-muted object-contain" />
           </div>
           <input
             type="range"
@@ -215,7 +215,7 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
               {result.audio === "opus" && result.extension === "mp4" && " (App Store Connect pide AAC: usa Chrome, Edge o Safari para el vídeo de App Store)"}
               {result.extension === "webm" && " · tu navegador no codifica H.264, así que es WebM; conviértelo a MP4 antes de subirlo a App Store Connect"}
             </p>
-            <video src={result.url} controls playsInline className="mt-3 max-h-[420px] rounded-md bg-bg" />
+            <video src={result.url} controls playsInline className="mt-3 max-h-[420px] max-w-full rounded-md bg-bg" />
             <button
               type="button"
               onClick={() => downloadBlob(`${slug(appTitle)}-${preset.id}.${result.extension}`, result.blob)}
@@ -227,7 +227,7 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
         )}
       </div>
 
-      <div className="flex flex-col gap-4">
+      <div className="flex min-w-0 flex-col gap-4">
         <Card className="px-5 py-4">
           <h2 className="text-[15px] font-semibold">Ajustes</h2>
           <div className="mt-3 flex flex-col gap-3">

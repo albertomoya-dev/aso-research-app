@@ -110,6 +110,15 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 - **Pestañas con URL:** Ajustes de la app usa `Tabs` con una URL por pestaña (`SettingsTabs`), con `activationMode="manual"` para que las flechas no carguen páginas. Son las únicas pestañas que navegan; el resto de `Tabs` cambia de vista sin salir de la página.
 - **Lo destructivo** va a Ajustes › Zona de peligro, en un `Dialog` que pide escribir el nombre (`UnfollowDialog`). Nunca `window.confirm` ni un menú.
 
+### Editores (Creativos, `components/screenshot-studio/`)
+
+- **Tres zonas y una barra:** a la izquierda la lista de elementos (200 px), en el centro el lienzo y a la derecha el inspector (320 px). Arriba, una barra con el tamaño, las vistas, las descargas, «⋯» y **una** acción principal, «Guardar». Las tres columnas aparecen desde `xl`. De `md` a `xl` la lista pasa a una fila encima del lienzo y el inspector. En el móvil todo se apila y un aviso dice «Mejor en un ordenador», pero el editor se puede usar.
+- **Inspector:** secciones plegables con un botón de cabecera (`aria-expanded` y `aria-controls`). Al plegarse, el panel queda `hidden` y no se desmonta, para no perder lo escrito. Abiertas por defecto, solo las del elemento elegido (Texto y Captura).
+- **Reordenar:** arrastrar nunca es la única forma. Cada elemento tiene sus botones ↑ y ↓, y Alt+flechas sobre la miniatura. Las flechas solas solo cambian la selección. El movimiento se anuncia en la línea de estado (`aria-live`).
+- **Lienzo:** el zoom va por pasos (50–200 %) con «Ajustar». Ampliado, hace scroll dentro de su caja, nunca en la página. Sin sombra: es una superficie con borde, no algo que flota.
+- **Lo que sustituye el trabajo del usuario pregunta antes.** Por ejemplo, una plantilla que cambiaría colores propios abre un `Dialog`, con la opción que conserva («Mantener mis colores») como principal. Después, un toast con «Deshacer».
+- **Las propuestas de la IA no se parecen a los ajustes.** Van en su propio grupo con título, borde discontinuo y la etiqueta «Prompt». Elegir una solo rellena el campo y no aplica nada.
+
 - Los componentes de shadcn/ui se adaptan a **nuestros** tokens. No se usa su `globals.css` ni sus nombres (`muted` es aquí un texto, no un fondo).
 - Iconos: `lucide-react`, 16 px en botones y menús, `aria-hidden` cuando hay texto al lado.
 - Gráficos: Recharts con `--series-own` para tu app y `--series-1…5` para la competencia, rejilla `--line`, ejes `--muted` y tooltip sobre `surface` con `shadow-float`. No se usa `@tremor/react`.

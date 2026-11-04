@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { CreativeNav } from "@/components/creative-nav";
 import { ScreenshotStudio } from "@/components/screenshot-studio";
 import { PageHeader } from "@/components/ui";
+import { HelpTip } from "@/components/ui/help-tip";
 import { getDb, schema } from "@/db";
 import { loadPrimaryParams, productPath } from "@/lib/products";
 import {
@@ -102,11 +103,13 @@ export default async function ScreenshotsPage({ params }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Screenshots para la tienda">
-          Monta las capturas de{" "}
-          {app.store === "ios" ? "App Store" : "Google Play"} con marco de
-          dispositivo y un titular por pantalla, en los tamaños que pide la
-          tienda. Todo se dibuja en tu navegador; el diseño se guarda aquí y los
-          PNG se descargan listos para subir.
+          <span className="inline-flex items-center gap-1">
+            Capturas de {app.store === "ios" ? "App Store" : "Google Play"} con marco y titular, en los tamaños de la tienda.
+            <HelpTip label="Screenshots para la tienda">
+              Todo se dibuja en tu navegador: el diseño se guarda aquí y los PNG se descargan listos para subir. Arrastra capturas (o una carpeta) a
+              cualquier parte del editor.
+            </HelpTip>
+          </span>
         </PageHeader>
         <CreativeNav base={productPath(app.productSlug, "/creativos")} />
       </div>

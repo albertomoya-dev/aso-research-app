@@ -10,14 +10,18 @@ import { buttonPrimary, buttonSecondary, inputClass } from "./ui";
 const label = "flex min-w-0 flex-col gap-1.5 text-[13px] font-medium text-ink-soft";
 
 /** Plan, result and lesson of one store listing experiment. Without `experiment`, the form creates a new one. */
-export function ExperimentForm({ appId, experiment }: { appId: number; experiment?: Experiment }) {
-  const [state, action, pending] = useActionState<ExperimentState, FormData>(saveExperiment, null);
+export function ExperimentForm({ appId, experiment, onDone }: { appId: number; experiment?: Experiment; onDone?: () => void }) {
+  const [state, action, pending] = useActionState<ExperimentState, FormData>(async (prev, formData) => {
+    const result = await saveExperiment(prev, formData);
+    if (result?.ok) onDone?.();
+    return result;
+  }, null);
   const e = experiment;
   return (
-    <form action={action} className="grid gap-3 md:grid-cols-2">
+    <form action={action} className="grid gap-3">
       <input type="hidden" name="appId" value={appId} />
       {e && <input type="hidden" name="experimentId" value={e.id} />}
-      <label className={`${label} md:col-span-2`}>
+      <label className={label}>
         Nombre
         <input name="name" required maxLength={120} defaultValue={e?.name} placeholder="Icono con fondo verde" className={inputClass} />
       </label>
@@ -65,8 +69,8 @@ export function ExperimentForm({ appId, experiment }: { appId: number; experimen
           </label>
         </>
       )}
-      <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-        <button type="submit" disabled={pending} className={e ? buttonSecondary : buttonPrimary}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" disabled={pending} className={buttonPrimary}>
           {pending ? "Guardando…" : e ? "Guardar" : "Añadir experimento"}
         </button>
         {e && (

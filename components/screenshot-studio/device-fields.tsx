@@ -1,27 +1,16 @@
 "use client";
 
-import { presetsFor } from "@/lib/assets/screenshots";
-import { Card, inputClass } from "../ui";
+import { inputClass } from "../ui";
 import { CheckField, fieldLabel, RangeField } from "./fields";
 import type { Studio } from "./use-studio";
 
 const pct = (v: number) => `${v}%`;
 
-/** Store size and the device: scale, frame, tilt, offsets, alternating side and the paired screen. */
+/** Dispositivo: scale, frame, tilt, offsets, alternating side and the paired screen (the store size is in the top bar). */
 export function DeviceFields({ studio }: { studio: Studio }) {
-  const { spec, update, updateTheme, props } = studio;
+  const { spec, update, updateTheme } = studio;
   return (
     <div className="flex flex-col gap-3">
-      <label className={fieldLabel}>
-        Tamaño
-        <select value={spec.device} onChange={(e) => update({ device: e.target.value })} className={inputClass}>
-          {presetsFor(props.store).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label} · {p.width}×{p.height} · {p.note}
-            </option>
-          ))}
-        </select>
-      </label>
       <RangeField
         label="Tamaño del móvil"
         value={Math.round(spec.deviceScale * 100)}
@@ -34,7 +23,7 @@ export function DeviceFields({ studio }: { studio: Studio }) {
       {spec.showFrame && (
         <label className={fieldLabel}>
           Color del marco
-          <select value={spec.theme.frame} onChange={(e) => updateTheme({ frame: e.target.value as "dark" | "light" })} className={inputClass}>
+          <select value={spec.theme.frame} onChange={(e) => updateTheme({ frame: e.target.value as "dark" | "light" })} className={`${inputClass} w-full min-w-0`}>
             <option value="dark">Oscuro</option>
             <option value="light">Claro</option>
           </select>
@@ -60,16 +49,5 @@ export function DeviceFields({ studio }: { studio: Studio }) {
       <CheckField label="Alternar el lado en cada pantalla" checked={spec.alternate} onChange={(v) => update({ alternate: v })} />
       <CheckField label="Mostrar la siguiente pantalla detrás" checked={spec.pair} onChange={(v) => update({ pair: v })} />
     </div>
-  );
-}
-
-export function DeviceCard({ studio }: { studio: Studio }) {
-  return (
-    <Card className="px-5 py-4">
-      <h2 className="text-[15px] font-semibold">Dispositivo</h2>
-      <div className="mt-3">
-        <DeviceFields studio={studio} />
-      </div>
-    </Card>
   );
 }

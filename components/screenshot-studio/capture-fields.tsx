@@ -19,8 +19,7 @@ export function CaptureFields({ studio, upload, slide }: { studio: Studio; uploa
   const { storeImages } = props;
   const mode = modeOf(slide);
   return (
-    <div className="flex flex-col gap-2 md:col-span-2">
-      <span className="text-[13px] font-medium text-ink-soft">Captura de pantalla</span>
+    <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <label className={`${buttonSecondary} cursor-pointer`} aria-busy={upload.uploading}>
           {upload.uploading ? "Leyendo…" : "Subir capturas"}

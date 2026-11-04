@@ -62,8 +62,8 @@ export type OverflowRecord = {
 };
 
 /**
- * Horizontal overflow of the document and of <main>, and the element responsible. Recorded, not
- * asserted, until the redesign removes it (DESIGN.md: the body never scrolls sideways).
+ * Horizontal overflow of the document and of <main>, and the element responsible. The routes spec
+ * asserts both stay within the window (DESIGN.md: the body never scrolls sideways).
  */
 export async function measureOverflow(page: Page): Promise<Omit<OverflowRecord, "route" | "path" | "width">> {
   return page.evaluate(() => {
