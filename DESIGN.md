@@ -79,7 +79,7 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 
 | Componente | Cuándo usarlo |
 |---|---|
-| `Button` (`variant`: primary, secondary, ghost, danger; `size`: sm, md, lg, icon) | Toda acción. Una `primary` por pantalla. Con `asChild` estiliza un `Link` |
+| `Button` (`variant`: primary, secondary, ghost, danger; `size`: sm, md, lg, icon) | Toda acción. Una `primary` por pantalla (la marca la clase `btn-primary` y `data-variant`, y `e2e/polish.spec.ts` las cuenta en cada ruta). Con `asChild` estiliza un `Link` |
 | `buttonPrimary`, `buttonSecondary`, `inputClass` (`components/ui.tsx`) | Las cadenas de siempre, para formularios de servidor. Salen de `buttonVariants` |
 | `Card`, `PageHeader` (`title`, contexto en `children`, `actions`) | Agrupar contenido; cabecera de cada pantalla con su acción principal y «⋯» |
 | `Dialog` | Confirmaciones y formularios cortos |
@@ -95,8 +95,9 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 | `DeltaBadge` | Variación: ▲3, ▼2, «=», «Entra», «Sale» |
 | `RankBadge` | Posición: «#14», «>30» en gris, borde azul si está al alcance |
 | `StatusDot` | Estado de la salud ASO, siempre con texto |
-| `EmptyState` | Cuando no hay nada: icono, título, una frase y un botón |
-| `Skeleton`, `SkeletonText`, `SkeletonKpi`, `SkeletonTable`, `SkeletonChart` | Carga con la forma del contenido real |
+| `EmptyState` | Cuando no hay nada: icono, título, una frase y un botón. Toda lista o tabla que puede quedar vacía lo usa |
+| `Skeleton`, `SkeletonText`, `SkeletonKpi`, `SkeletonTable`, `SkeletonChart` | Carga con la forma del contenido real. Cada ruta tiene su `loading.tsx` con una forma de `components/page-skeleton.tsx` (`SummarySkeleton`, `TableSkeleton`, `ListingSkeleton`, `StudioSkeleton`…) |
+| `OperationProgress` + `useLongAction` (`lib/long-operations.ts`) | Operaciones largas de la IA (20–60 s): pasos con el actual marcado, «Puedes seguir navegando» y, si te vas, un toast con el paso y después «… listo» con «Ver resultado». Los pasos van por tiempo y dicen lo que hace la acción, en orden; nunca un porcentaje inventado |
 | `DataTable` (+ `TableSearch`, `FacetFilter`, `ViewOptions`, `useTableView`, `SelectionBar`) | Toda tabla de datos: buscador y facetas en la barra, «Vistas» (columnas y densidad, en localStorage), cabecera fija, cifras a la derecha, filas de 44 o 36 px, selección con barra flotante y `card` para el móvil. La lógica de filtros está en `lib/data-table.ts`. Ejemplo: Keywords › Seguimiento |
 | `HighlightTextarea` (`components/highlight-textarea.tsx`) | Texto editable con marcas detrás, como un corrector: subrayado suave `brand` para lo cubierto, ondulado `danger` para un aviso y fondo `brand` suave para lo resaltado. Las marcas son decoración (`aria-hidden`): el aviso se lista también en texto. El campo crece con el texto. Ejemplo: Ficha de la tienda |
 | `DiffText` (`components/diff-text.tsx`) | Dos textos como uno, por palabras (`lib/word-diff.ts`): lo quitado en `<del>` tachado sobre `danger-soft`, lo añadido en `<ins>` subrayado sobre `up` suave. Nunca solo color |
@@ -106,10 +107,16 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 
 - **Dos marcos:** `app/(global)/layout.tsx` fuera de una app y `app/a/[app]/layout.tsx` dentro. Los dos usan `ShellLayout`: barra lateral, columna de contenido y `<main>`, que es lo que hace scroll.
 - **Barra lateral:** `SidebarFrame` con `SidebarLink`, con el icono a 16 px y el contador `NavCount` (`tone="brand"` solo para lo no leído). Las entradas de la app salen de `NAV_GROUPS` en `lib/app-nav.ts`: una sección nueva se añade allí, no en el JSX.
-- **Cabecera de la app** (`AppHeader`, 56 px): identidad a la izquierda, y a la derecha la fecha, «Buscar», **una** acción principal («Actualizar posiciones») y «⋯». Las páginas no repiten el nombre de la app ni un enlace «App / sección».
+- **Cabecera de la app** (`AppHeader`, 56 px): identidad a la izquierda, y a la derecha la fecha, «Buscar», «Actualizar posiciones» y «⋯». «Actualizar posiciones» es **secundario** con su icono: la acción principal es la de cada página («Optimizar con IA», «Guardar», «Añadir cambio»…). Las páginas no repiten el nombre de la app ni un enlace «App / sección».
 - **Selector de app** (`AppSwitcher`) y **paleta** (`PaletteProvider`, ⌘K) usan `Command`. Los dos agrupan por app, con un elemento por mercado.
 - **Pestañas con URL:** Ajustes de la app usa `Tabs` con una URL por pestaña (`SettingsTabs`), con `activationMode="manual"` para que las flechas no carguen páginas. Son las únicas pestañas que navegan; el resto de `Tabs` cambia de vista sin salir de la página.
-- **Lo destructivo** va a Ajustes › Zona de peligro, en un `Dialog` que pide escribir el nombre (`UnfollowDialog`). Nunca `window.confirm` ni un menú.
+- **Lo destructivo** va a Ajustes › Zona de peligro, en un `Dialog` que pide escribir el nombre (`UnfollowDialog`). Nunca `window.confirm` ni un menú. Quitar una fila desde su panel lateral pide un segundo toque en el mismo panel («¿Quitarla? Sí, quitar»).
+
+### Listas editables (Ajustes › Producto)
+
+- **Tarjetas, no filas de formulario.** Cada función es una tarjeta con su chip de estado (Publicada en `brand-soft`, Próxima versión en `warn`, Planeada y Retirada en gris, esta tachada) y, si toca, «No se anuncia». Pulsarla abre un `Sheet` con el formulario y «Guardar» como principal; «Añadir función» abre el mismo panel vacío.
+- **Lo que ve la IA, arriba, en una línea:** «La IA anuncia 25 funciones; 20 son de la 3.0.0» (`aiFeatureNotice` en `lib/product-facts.ts`).
+- **Importar** (CHANGELOG) va en un `Dialog` con su propio principal; la propuesta sobrevive a cerrarlo.
 
 ### Editores (Creativos, `components/screenshot-studio/`)
 
@@ -129,7 +136,9 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 - **Puntos de corte:** móvil por debajo de 640 px (`sm`), tablet de 640 a 1024 y escritorio desde 1024 (`lg`). Por debajo de `sm` la barra lateral pasa a una barra inferior (`MobileNav`) y las secciones de la app se abren desde la cabecera en una `Sheet`. De `sm` a `lg` la barra lateral muestra solo iconos (los textos quedan para los lectores de pantalla con `sm:max-lg:sr-only`).
 - **Objetivos táctiles de 44 px** en móvil (`min-h-11`). Se compactan a 32 px desde `md`.
 - **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (`card` de `DataTable`). `npm run test:e2e` lo comprueba en todas las rutas a 390 y 1440 px.
-- **Contraste AA** en los dos temas. `/dev/ui` se comprueba con axe en `npm run test:e2e`.
+- **Scroll vertical:** desde `sm` hace scroll `<main>` (la barra lateral y la cabecera quedan quietas). En el móvil hace scroll el documento, con la cabecera de la app `sticky`, para que el navegador pueda recoger su barra de direcciones. Nada debe depender de que `<main>` sea el contenedor de scroll por debajo de `sm`.
+- **Contraste AA** en los dos temas. `/dev/ui` y todas las rutas se comprueban con axe en `npm run test:e2e`: los fallos graves y críticos rompen la prueba.
+- **Enlaces dentro de un texto, siempre subrayados** (`text-link underline`); `hover:underline` solo para enlaces sueltos (axe `link-in-text-block`).
 - Foco visible siempre (`outline` de 2 px en `brand`).
 
 ## 7. Sí y no
@@ -142,7 +151,7 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 **No**
 - Hexadecimales o colores de Tailwind sueltos (`text-gray-500`) en componentes.
 - Sombras en tarjetas, degradados, un segundo acento decorativo.
-- Párrafos de explicación en la pantalla: van a un `HelpTip` o al README.
+- Párrafos de explicación en la pantalla: van a un `HelpTip` o al README. Un `<p>` de más de 2 líneas a 1440 px fuera de un `HelpTip` o un `EmptyState` rompe `e2e/polish.spec.ts`. Los textos que son datos (reseñas, fichas, salida de la IA) llevan `data-content`.
 - Pestañas horizontales para navegar.
 
 ## 8. Guía para agentes

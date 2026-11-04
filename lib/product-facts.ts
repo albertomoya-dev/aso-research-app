@@ -44,6 +44,44 @@ export function featuresFor<T extends ProductFeature>(features: T[], mode: Facts
   return features.filter((f) => f.advertise && (f.status === "shipped" || (mode === "next" && f.status === "next_release")));
 }
 
+/** Compares dotted versions numerically («3.10.0» after «3.9.2»); text parts compare as text. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.\-+]/);
+  const pb = b.split(/[.\-+]/);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? "0";
+    const y = pb[i] ?? "0";
+    const nx = Number(x);
+    const ny = Number(y);
+    const diff = Number.isFinite(nx) && Number.isFinite(ny) ? nx - ny : x.localeCompare(y);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+export type AiFeatureNotice = {
+  /** Features the AI may announce in the listing of the published version. */
+  announced: number;
+  /** The newest «since» version among them, and how many come from it. */
+  latestVersion: string | null;
+  fromLatest: number;
+  /** Next-release features it adds when the listing is prepared for the next version. */
+  next: number;
+};
+
+/** What the AI sees of the features: the header notice of Ajustes › Producto. */
+export function aiFeatureNotice(features: ProductFeature[]): AiFeatureNotice {
+  const announced = featuresFor(features, "published");
+  const versions = announced.map((f) => f.sinceVersion?.trim()).filter((v): v is string => Boolean(v));
+  const latestVersion = versions.length ? versions.reduce((a, b) => (compareVersions(b, a) > 0 ? b : a)) : null;
+  return {
+    announced: announced.length,
+    latestVersion,
+    fromLatest: latestVersion ? announced.filter((f) => f.sinceVersion?.trim() === latestVersion).length : 0,
+    next: featuresFor(features, "next").length - announced.length,
+  };
+}
+
 /** Max length of the declared brand: it has to fit in a 30-character title. */
 export const MAX_BRAND_CHARS = 30;
 

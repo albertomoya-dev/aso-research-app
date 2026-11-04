@@ -59,7 +59,7 @@ export default async function KeywordsPage({ params, searchParams }: Props) {
     <div className="flex flex-col gap-4">
       <PageHeader title="Seguimiento" actions={<AddKeywordsDialog appId={app.id} />}>
         Tus keywords en {country.name}.{" "}
-        <Link href={marketPath(app, "/ficha#publicada")} className="text-link hover:underline">
+        <Link href={marketPath(app, "/ficha#publicada")} className="text-link underline">
           Ver la ficha publicada
         </Link>
       </PageHeader>

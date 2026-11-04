@@ -1,5 +1,5 @@
 import { and, desc, eq, gte } from "drizzle-orm";
-import { ArrowDown, ArrowUp, Check, ChevronDown, Crown, Flag } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarClock, ChartLine, Check, ChevronDown, Crown, Flag } from "lucide-react";
 import Link from "next/link";
 import { cache, Suspense } from "react";
 import { getDb, schema } from "@/db";
@@ -17,6 +17,7 @@ import { firstSentence } from "@/lib/today";
 import { Card } from "./ui";
 import { buttonVariants } from "./ui/button-variants";
 import { DeltaBadge } from "./ui/delta-badge";
+import { EmptyState } from "./ui/empty-state";
 import { HelpTip } from "./ui/help-tip";
 import { KpiCard } from "./ui/kpi-card";
 import { Skeleton, SkeletonChart, SkeletonKpi, SkeletonText } from "./ui/skeleton";
@@ -125,7 +126,7 @@ async function Visibility({ app, days }: { app: MarketApp; days: ShareDays }) {
     .filter((a) => a.annotation.date >= from)
     .map((a) => ({ id: a.annotation.id, date: a.annotation.date, title: a.annotation.label, impact: formatAggregateImpact(a.aggregate) }));
   if (points.length === 0) {
-    return <p className="py-10 text-center text-[13px] text-ink-soft">Aún no hay posiciones en estos {days} días.</p>;
+    return <EmptyState icon={ChartLine} title="Aún no hay posiciones" description={`No hay consultas en estos ${days} días. Pulsa «Actualizar posiciones», arriba.`} />;
   }
   const first = points[0].share;
   const last = points.at(-1)!.share;
@@ -268,7 +269,7 @@ const newLeaders = cache((appId: number) =>
 async function MovementLists({ app }: { app: MarketApp }) {
   const [w, leaders] = await Promise.all([weekOf(app), newLeaders(app.id)]);
   if (!w.baselineDate) {
-    return <p className="px-5 py-6 text-[13px] text-ink-soft">Aún no hay una semana de posiciones con la que comparar.</p>;
+    return <EmptyState icon={CalendarClock} title="Aún sin movimientos" description="Hace falta una semana de posiciones para comparar." />;
   }
   return (
     <div className="flex flex-col">

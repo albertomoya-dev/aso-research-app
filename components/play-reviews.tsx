@@ -1,8 +1,10 @@
+import { MessageSquare } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { playConfig } from "@/lib/play-console/auth";
 import { getPlayClient, playErrorMessage, type PlayReview } from "@/lib/play-console/client";
 import { ReviewReplyForm } from "./review-reply-form";
 import { Card, ErrorNote } from "./ui";
+import { EmptyState } from "./ui/empty-state";
 
 /**
  * The app's own latest reviews read from the Google Play Developer API (official data, last 7 days only),
@@ -39,7 +41,7 @@ export async function PlayReviews({ appId, packageName, aiEnabled }: { appId: nu
           <ErrorNote>No se pudieron leer las reseñas de Google Play. {error}</ErrorNote>
         </div>
       ) : reviews.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-muted">No hay reseñas nuevas ni editadas en la última semana.</p>
+        <EmptyState icon={MessageSquare} title="Sin reseñas nuevas" description="Nadie ha escrito ni editado una reseña en la última semana." />
       ) : (
         <ul>
           {reviews.map((r) => (

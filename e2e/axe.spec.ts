@@ -1,10 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
-import { type E2eApp, expect, test } from "./fixtures";
+import { expect, test } from "./fixtures";
+import { allPaths } from "./route-list";
 
-// WCAG 2.1 A and AA. /dev/ui must pass in both themes; the current screens are only reported
-// until the redesign phases go through them.
+// WCAG 2.1 A and AA, in both themes: /dev/ui (and its floating layers) and every route.
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const THEMES = ["light", "dark"] as const;
 
@@ -42,38 +42,30 @@ for (const theme of THEMES) {
   });
 }
 
-// Report only: annotated and written to test-results/axe-routes.json.
-const GLOBAL_ROUTES = ["/", "/apps/nueva", "/actividad", "/actividad?vista=semana", "/integraciones"];
-// The first market of the test database stands in for every app.
-const appRoutes = (a: E2eApp) => {
-  const market = `/a/${a.slug}/${a.country}`;
-  const product = `/a/${a.slug}`;
-  return [
-    market,
-    `${market}/ideas`,
-    `${market}/ficha`,
-    `${market}/competidores`,
-    `${product}/ajustes/producto`,
-    `${product}/ajustes/mercados`,
-    `${product}/ajustes/marcas`,
-    `${product}/ajustes/peligro`,
-  ];
-};
+// Every route of the first market of the test database, in both themes: serious and critical
+// violations fail the run; minor and moderate ones are annotated. All of them are written to
+// test-results/axe-routes-<theme>.json.
+const BLOCKING = new Set(["serious", "critical"]);
 
-test("rutas actuales: informe de accesibilidad (no bloquea)", async ({ page, apps }) => {
-  const MAIN_ROUTES = [...GLOBAL_ROUTES, ...(apps[0] ? appRoutes(apps[0]) : [])];
-  test.setTimeout(300_000);
-  const report: Record<string, string[]> = {};
+test.describe("rutas: accesibilidad AA", () => {
+  test.describe.configure({ timeout: 180_000 });
+  // The paths depend on the database, so one test walks them (workers would each load the fixture).
   for (const theme of THEMES) {
-    for (const path of MAIN_ROUTES) {
-      await openWithTheme(page, path, theme);
-      const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-      report[`${path} · ${theme}`] = summary(result.violations);
-      if (result.violations.length > 0) {
-        test.info().annotations.push({ type: "axe", description: `${path} · ${theme}: ${result.violations.map((v) => `${v.id}×${v.nodes.length}`).join(", ")}` });
+    test(`todas las rutas sin fallos graves · ${theme}`, async ({ page, apps }) => {
+      test.setTimeout(900_000);
+      const report: Record<string, string[]> = {};
+      for (const path of allPaths(apps[0])) {
+        await openWithTheme(page, path, theme);
+        const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+        report[`${path} · ${theme}`] = summary(result.violations);
+        const minor = result.violations.filter((v) => !BLOCKING.has(v.impact ?? ""));
+        if (minor.length > 0) {
+          test.info().annotations.push({ type: "axe", description: `${path} · ${theme}: ${minor.map((v) => `${v.id}×${v.nodes.length}`).join(", ")}` });
+        }
+        expect.soft(summary(result.violations.filter((v) => BLOCKING.has(v.impact ?? ""))), `${path} · ${theme}`).toEqual([]);
       }
-    }
+      mkdirSync("test-results", { recursive: true });
+      writeFileSync(`test-results/axe-routes-${theme}.json`, JSON.stringify(report, null, 2));
+    });
   }
-  mkdirSync("test-results", { recursive: true });
-  writeFileSync("test-results/axe-routes.json", JSON.stringify(report, null, 2));
 });

@@ -22,7 +22,7 @@ export function HelpTip({ label, children, side = "top", className }: HelpTipPro
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
-    <span className={cn("relative inline-flex", className)}>
+    <span data-help-tip className={cn("relative inline-flex", className)}>
       <button
         type="button"
         aria-label={`Ayuda sobre «${label}»`}

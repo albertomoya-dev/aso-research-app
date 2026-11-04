@@ -3,10 +3,11 @@
 import { ChevronDown, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import { cn } from "@/lib/cn";
+import { useLongAction } from "@/lib/long-operations";
 import { formatNumber } from "@/lib/format";
 import type { DraftAge, DraftTarget, LocaleOption } from "@/lib/listing-drafts";
 import { type ListingProposal } from "@/lib/listing-optimizer";
@@ -32,6 +33,7 @@ import { CoverageList } from "./listing-coverage";
 import { IssueList } from "./listing-issues";
 import { editorUrl, ListingLocalePicker } from "./listing-locale-picker";
 import { ListingProposalPanel, pendingFields } from "./listing-proposal";
+import { OperationProgress } from "./operation-progress";
 import { StorePreview } from "./store-preview";
 import { inputClass } from "./ui";
 import { Button } from "./ui/button";
@@ -88,6 +90,8 @@ type Props = {
   releaseNotes: React.ReactNode;
   /** Opened from «Adaptar a…» on another listing (`?adaptar=1`): start adapting once, then drop the flag from the URL. */
   autoAdapt?: boolean;
+  /** `?focus=` (Tendencias › «Preparar temporada»): pre-fills what the AI should focus on. */
+  initialFocus?: string | null;
 };
 
 type View = "draft" | "published" | "compare";
@@ -119,6 +123,7 @@ export function MetadataEditor({
   publishedView,
   releaseNotes,
   autoAdapt,
+  initialFocus,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -130,11 +135,24 @@ export function MetadataEditor({
   const [focusTerm, setFocusTerm] = useState<string | null>(null);
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
   // One proposal at a time: «Optimizar con IA» or «Adaptar a …», told apart by the submit's intent.
-  const [ai, aiAction, optimizing] = useActionState<OptimizeState, FormData>(
+  // It outlives the page (lib/long-operations.ts): leave while the AI writes, and the proposal waits here.
+  const [ai, aiAction, optimizing, aiOp] = useLongAction<OptimizeState>(
+    `listing:${appId}:${target.locale}|${target.country}`,
     (prev, formData) => (formData.get("intent") === "localize" ? localizeListingAction(prev, formData) : optimizeListing(prev, formData)),
-    null,
+    (formData) =>
+      formData.get("intent") === "localize"
+        ? {
+            label: `Adaptando la ficha a ${targetName}`,
+            doneLabel: `Propuesta para ${targetName} lista`,
+            steps: [`Leyendo la ficha principal (${mainName})…`, `Buscando lo que se busca en ${targetName}…`, "Escribiendo la ficha…", "Revisando límites y normas…"],
+          }
+        : {
+            label: "Optimizando la ficha con IA",
+            doneLabel: "Propuesta de la ficha lista",
+            steps: ["Leyendo tu ficha y tus keywords…", "Escribiendo la propuesta…", "Revisando límites y normas…"],
+          },
   );
-  const [focus, setFocus] = useState("");
+  const [focus, setFocus] = useState(initialFocus ?? "");
   // Fields of the current proposal already accepted or discarded.
   const [handled, setHandled] = useState<{ proposal?: ListingProposal; keys: FieldKey[] }>({ keys: [] });
   const terms = useMemo(() => keywords.map((k) => k.term), [keywords]);
@@ -169,7 +187,7 @@ export function MetadataEditor({
     const data = new FormData(form);
     data.set("intent", "localize");
     setView("draft");
-    startTransition(() => aiAction(data));
+    aiAction(data);
   };
   // «Adaptar a…» from another listing lands here with ?adaptar=1: run it once and clean the URL, so a reload does not pay again.
   const autoRan = useRef(false);
@@ -274,8 +292,8 @@ export function MetadataEditor({
         </div>
 
         <div aria-live="polite" className="flex flex-col gap-2 text-table empty:hidden lg:col-span-2">
-          {ai?.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-danger">{ai.error}</p>}
-          {optimizing && <p className="rounded-control bg-surface-muted px-3 py-2 text-ink-soft">La IA está escribiendo la propuesta. Puede tardar hasta un minuto.</p>}
+          {!optimizing && ai?.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-danger">{ai.error}</p>}
+          <OperationProgress op={aiOp} />
           {state?.error && <p className="rounded-control bg-danger-soft px-3 py-2 text-danger">{state.error}</p>}
           {state?.savedAt && !state.warning && <p className="text-muted">Borrador guardado.</p>}
           {state?.warning && (
@@ -296,6 +314,11 @@ export function MetadataEditor({
               {age && <p className={cn("rounded-control px-3 py-2 text-table", age.stale ? "bg-warn-bg text-warn-fg" : "bg-surface-muted text-ink-soft")}>{age.text}</p>}
               {aiEnabled && (canOptimize || canLocalize) && (
                 <AiOptions productHref={productHref} product={product} focus={focus} onFocusChange={setFocus} isMain={isMain} mainName={mainName} />
+              )}
+              {!aiEnabled && initialFocus && (
+                <p role="note" data-testid="focus-note" className="rounded-control bg-surface-muted px-3 py-2 text-table text-ink-soft">
+                  Enfoque para la IA: «{initialFocus}». Lo usará «Optimizar con IA» cuando añadas la clave de Anthropic.
+                </p>
               )}
               {proposal && (
                 <ListingProposalPanel

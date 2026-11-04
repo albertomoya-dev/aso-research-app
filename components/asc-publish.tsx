@@ -1,3 +1,4 @@
+import { FileText } from "lucide-react";
 import Link from "next/link";
 import { publishToAsc } from "@/app/asc-actions";
 import type { App } from "@/db/schema";
@@ -8,7 +9,8 @@ import { type DraftTarget, targetLabel } from "@/lib/listing-drafts";
 import { ascNextFields, buildPublishPreview, fieldList, PUBLISH_FIELDS } from "@/lib/publications";
 import { PublishDiff } from "./publish-diff";
 import { PublishForm } from "./publish-form";
-import { Card, ErrorNote, inputClass } from "./ui";
+import { buttonSecondary, Card, ErrorNote, inputClass } from "./ui";
+import { EmptyState } from "./ui/empty-state";
 
 function SetupAsc({ error }: { error: string | null }) {
   return (
@@ -50,12 +52,17 @@ export async function AscPublish({ app, target, editorHref }: { app: App; target
   }
   if (plan.kind === "no-draft") {
     return (
-      <Card className="px-5 py-4 text-sm text-ink-soft">
-        No hay ningún borrador guardado de {targetLabel(target)}.{" "}
-        <Link href={editorHref} className="text-link hover:underline">
-          Guárdalo en el editor
-        </Link>{" "}
-        y vuelve aquí.
+      <Card>
+        <EmptyState
+          icon={FileText}
+          title="No hay borrador que publicar"
+          description={`Guarda un borrador de ${targetLabel(target)} en la ficha y vuelve aquí.`}
+          action={
+            <Link href={editorHref} className={buttonSecondary}>
+              Ir a la ficha
+            </Link>
+          }
+        />
       </Card>
     );
   }

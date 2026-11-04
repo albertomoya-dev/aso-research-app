@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { OperationToasts } from "@/components/operation-toasts";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         {/* Each area brings its own shell: app/(global)/layout.tsx outside an app, app/a/[app]/layout.tsx inside one. */}
         {children}
         <Toaster />
+        <OperationToasts />
       </body>
     </html>
   );

@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useState, useTransition } from "react";
 import { recalculateRelevance, type RelevanceState, setKeywordRelevance } from "@/app/ai-actions";
+import { useLongAction } from "@/lib/long-operations";
 import { NOISE_REASON_LABEL, type NoiseReason, RELEVANCE_SOURCE_LABEL, type RelevanceSource } from "@/lib/relevance";
+import { OperationProgress } from "./operation-progress";
 import { buttonSecondary } from "./ui";
 
 const LEVELS = [
@@ -67,7 +69,17 @@ export function RelevanceSelect({
 
 /** «Recalcular relevancia»: one call to Claude per 100 keywords; keeps the ones the user rated. */
 export function RecalculateRelevance({ appId, pendingCount }: { appId: number; pendingCount: number }) {
-  const [state, action, pending] = useActionState<RelevanceState, FormData>(recalculateRelevance, null);
+  const batches = Math.max(1, Math.ceil(pendingCount / 100));
+  const [state, action, pending, op] = useLongAction<RelevanceState>(`relevance:${appId}`, recalculateRelevance, {
+    label: "Recalculando la relevancia",
+    doneLabel: "Relevancia recalculada",
+    steps: [
+      `Preparando ${pendingCount === 1 ? "1 keyword" : `${pendingCount} keywords`}…`,
+      batches === 1 ? "Preguntando a Claude…" : `Preguntando a Claude (${batches} tandas de 100)…`,
+      "Guardando las valoraciones…",
+    ],
+    stepMs: 6000,
+  });
   return (
     <form action={action} className="flex flex-wrap items-center gap-2.5">
       <input type="hidden" name="appId" value={appId} />
@@ -81,14 +93,15 @@ export function RecalculateRelevance({ appId, pendingCount }: { appId: number; p
         {pending ? "Estimando con IA…" : "Recalcular relevancia con IA"}
       </button>
       <span aria-live="polite" className="text-[13px]">
-        {state?.error && <span className="text-danger">{state.error}</span>}
-        {state && !state.error && (
+        {!pending && state?.error && <span className="text-danger">{state.error}</span>}
+        {!pending && state && !state.error && (
           <span className="text-ink-soft">
             {state.rated === 1 ? "1 keyword valorada" : `${state.rated} keywords valoradas`}
             {state.asked && state.rated !== undefined && state.rated < state.asked ? ` de ${state.asked}` : ""}
           </span>
         )}
       </span>
+      <OperationProgress op={op} className="basis-full sm:max-w-md" />
     </form>
   );
 }

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { FileText } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
 import { Suspense } from "react";
 import { publishToPlay } from "@/app/play-actions";
@@ -112,12 +114,17 @@ async function PlayPublish({ app, target, editorHref }: { app: App; target: Draf
   }
   if (plan.kind === "no-draft") {
     return (
-      <Card className="px-5 py-4 text-sm text-ink-soft">
-        No hay ningún borrador guardado de {targetLabel(target)}.{" "}
-        <Link href={editorHref} className="text-link hover:underline">
-          Guárdalo en el editor
-        </Link>{" "}
-        y vuelve aquí.
+      <Card>
+        <EmptyState
+          icon={FileText}
+          title="No hay borrador que publicar"
+          description={`Guarda un borrador de ${targetLabel(target)} en la ficha y vuelve aquí.`}
+          action={
+            <Link href={editorHref} className={buttonSecondary}>
+              Ir a la ficha
+            </Link>
+          }
+        />
       </Card>
     );
   }

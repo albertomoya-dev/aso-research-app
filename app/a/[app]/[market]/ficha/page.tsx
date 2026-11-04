@@ -209,6 +209,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
           />
         }
         autoAdapt={one(query.adaptar) === "1" && aiEnabled && !isMain && !sameLanguage}
+        initialFocus={one(query.focus)?.slice(0, 200)}
       />
       {columns.length > 1 && (
         <CoverageMatrix editorHref={marketPath(app, "/ficha")} store={app.store} matrix={matrix} hrefs={columns.map((c) => targetQuery(app.country, c))} />

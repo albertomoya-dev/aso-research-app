@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Sparkles, Trash2 } from "lucide-react";
-import { useTransition } from "react";
+import { useSyncExternalStore, useTransition } from "react";
 import { toast } from "sonner";
 import { removeKeywords, restoreKeywords, type RemovedKeyword } from "@/app/actions";
 import { recalculateSelected, setKeywordsRelevance } from "@/app/keyword-actions";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { SelectionBar } from "@/components/ui/data-table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { downloadCsv } from "@/lib/download";
+import { getOperations, getServerOperations, startOperation, subscribeOperations } from "@/lib/long-operations";
 import { keywordsCsv, type TableRow } from "@/lib/keyword-table";
 
 /** Seconds «Deshacer» stays on screen after removing keywords. */
@@ -75,12 +76,29 @@ export function KeywordSelectionBar({
       if (result.error) toast.error(result.error);
       else toast.success(`Relevancia ${value} en ${result.updated === 1 ? "1 keyword" : `${result.updated} keywords`}`);
     });
-  const recalculate = () =>
-    startTransition(async () => {
-      const result = await recalculateSelected(appId, ids);
-      if (result.error) toast.error(result.error);
-      else toast.success(result.asked === 0 ? "Todas las elegidas tienen relevancia tuya: la IA no las cambia." : `${result.rated} de ${result.asked} valoradas con IA`);
-    });
+  // A long AI operation: steps in a toast, and you can leave the page (lib/long-operations.ts).
+  const recalculating = useSyncExternalStore(subscribeOperations, getOperations, getServerOperations).some(
+    (o) => o.key === `relevance:${appId}` && o.status === "running",
+  );
+  const recalculate = () => {
+    const batches = Math.max(1, Math.ceil(ids.length / 100));
+    startOperation(
+      `relevance:${appId}`,
+      {
+        label: "Recalculando la relevancia con IA",
+        doneLabel: (r: Awaited<ReturnType<typeof recalculateSelected>>) =>
+          r.asked === 0 ? "Todas las elegidas tienen relevancia tuya: la IA no las cambia." : `${r.rated} de ${r.asked} valoradas con IA`,
+        notify: "always",
+        steps: [
+          `Preparando ${ids.length === 1 ? "1 keyword" : `${ids.length} keywords`}…`,
+          batches === 1 ? "Preguntando a Claude…" : `Preguntando a Claude (${batches} tandas de 100)…`,
+          "Guardando las valoraciones…",
+        ],
+        stepMs: 6000,
+      },
+      () => recalculateSelected(appId, ids),
+    );
+  };
 
   return (
     <SelectionBar count={rows.length} onClear={onClear}>
@@ -100,7 +118,7 @@ export function KeywordSelectionBar({
         </DropdownMenuContent>
       </DropdownMenu>
       {aiEnabled && (
-        <Button variant="secondary" size="sm" onClick={recalculate} disabled={busy} aria-busy={pending} title="Una petición a Claude por cada 100. No cambia las que has valorado tú.">
+        <Button variant="secondary" size="sm" onClick={recalculate} disabled={busy || recalculating} aria-busy={recalculating} title="Una petición a Claude por cada 100. No cambia las que has valorado tú.">
           <Sparkles size={16} aria-hidden="true" />
           Recalcular con IA
         </Button>

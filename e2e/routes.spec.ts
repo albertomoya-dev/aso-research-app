@@ -1,51 +1,12 @@
 import { collectErrors, type E2eApp, expect, measureOverflow, recordOverflow, test, VIEWPORTS } from "./fixtures";
+import { APP_ROUTES, GLOBAL_ROUTES, marketPath, productPath } from "./route-list";
 
 // Every current route, for every app in the test database, at 390 and 1440 px: it answers 200 and
 // logs no errors. Neither the document nor <main> (which scrolls on its own) may scroll sideways on
 // any route (DESIGN.md; since phase 32 there is no report-only exception).
 
-const GLOBAL_ROUTES = ["/", "/apps/nueva", "/actividad", "/actividad?vista=semana", "/integraciones"];
-
-const market = (a: E2eApp) => `/a/${a.slug}/${a.country}`;
-const product = (a: E2eApp) => `/a/${a.slug}`;
-
-const APP_ROUTES: { route: string; path: (app: E2eApp) => string | null }[] = [
-  { route: "/a/[app]/[market]", path: market },
-  { route: "/a/[app]/[market]/keywords/[keywordId]", path: (a) => (a.keywordId ? `${market(a)}/keywords/${a.keywordId}` : null) },
-  { route: "/a/[app]/[market]/keywords?k=[keywordId]", path: (a) => (a.keywordId ? `${market(a)}/keywords?k=${a.keywordId}` : null) },
-  ...[
-    "keywords",
-    "encontrar",
-    "encontrar?fuente=pendientes",
-    "encontrar?fuente=ia",
-    "encontrar?fuente=top10",
-    "competidores",
-    "resenas",
-    "tendencias",
-    "ficha",
-    "ficha/publicar",
-    "cambios",
-  ].map((sub) => ({
-    route: `/a/[app]/[market]/${sub}`,
-    path: (a: E2eApp) => `${market(a)}/${sub}`,
-  })),
-  // Product-level pages: the same for every market of a product, so they are visited once per product.
-  ...[
-    "ajustes",
-    "ajustes/producto",
-    "ajustes/mercados",
-    "ajustes/marcas",
-    "ajustes/play",
-    "ajustes/peligro",
-    "creativos",
-    "creativos/icono",
-    "creativos/logo",
-    "creativos/video",
-  ].map((sub) => ({
-    route: `/a/[app]/${sub}`,
-    path: (a: E2eApp) => `${product(a)}/${sub}`,
-  })),
-];
+const market = marketPath;
+const product = productPath;
 
 // Old /apps/[id] URLs (bookmarks, weekly emails) must answer 308 to their new path.
 const LEGACY_REDIRECTS: { from: (a: E2eApp) => string; to: (a: E2eApp) => string }[] = [

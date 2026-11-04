@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { SearchX } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import Link from "next/link";
 import { followApp } from "@/app/actions";
 import { AppIcon } from "@/components/app-icon";
@@ -102,7 +104,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 {apps.length === 1 ? "1 resultado" : `${apps.length} resultados`}
               </div>
               {apps.length === 0 ? (
-                <p className="px-5 py-8 text-sm text-muted">No hay resultados para «{q}» en este país.</p>
+                <EmptyState icon={SearchX} title="Sin resultados" description={`Nada para «${q}» en este país. Prueba con otro nombre o con otro país.`} />
               ) : (
                 <ul>
                   {apps.map((app) => {

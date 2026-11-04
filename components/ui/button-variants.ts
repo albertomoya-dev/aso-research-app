@@ -10,7 +10,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-brand text-on-brand hover:bg-brand-hover",
+        // `btn-primary` has no styles: it marks the primary action so e2e can count them (≤ 1 per screen).
+        primary: "btn-primary bg-brand text-on-brand hover:bg-brand-hover",
         secondary: "border border-line-strong bg-surface text-ink hover:bg-surface-muted",
         ghost: "text-ink-soft hover:bg-surface-muted hover:text-ink",
         danger: "bg-danger text-surface hover:opacity-90",

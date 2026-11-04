@@ -1,8 +1,11 @@
+import { Tags } from "lucide-react";
 import Link from "next/link";
 import type { CoverageMatrix as Matrix } from "@/lib/listing-drafts";
 import { FIELDS, type FieldKey } from "@/lib/metadata-check";
 import type { Store } from "@/lib/stores/types";
 import { Card } from "./ui";
+import { EmptyState } from "./ui/empty-state";
+import { HelpTip } from "./ui/help-tip";
 
 type Props = {
   /** The editor of this market (`/a/[app]/[market]/ficha`). */
@@ -19,14 +22,16 @@ export function CoverageMatrix({ editorHref, store, matrix, hrefs }: Props) {
   return (
     <Card aria-label="Cobertura por idioma" className="overflow-hidden">
       <div className="border-b border-line px-5 py-4">
-        <h2 className="text-[15px] font-semibold">Cobertura por idioma</h2>
-        <p className="mt-1 text-[13px] text-muted">
-          Tus {matrix.rows.length} keywords relevantes de más oportunidad en cada ficha guardada (y en la publicada, si aún no hay borrador principal). Son
-          keywords de este país: en otro idioma lo normal es que salgan vacías. Para medir otro idioma, sigue la app en ese país desde «Otros países».
-        </p>
+        <div className="flex items-center gap-1">
+          <h2 className="text-[15px] font-semibold">Cobertura por idioma</h2>
+          <HelpTip label="Cobertura por idioma" side="bottom">
+            Son keywords de este país: en otro idioma lo normal es que salgan vacías. Para medir otro idioma, añade ese país en Ajustes de la app › Mercados.
+          </HelpTip>
+        </div>
+        <p className="mt-1 text-[13px] text-muted">Tus {matrix.rows.length} keywords relevantes de más oportunidad en cada ficha guardada (o en la publicada).</p>
       </div>
       {matrix.rows.length === 0 ? (
-        <p className="px-5 py-4 text-sm text-muted">Aún no hay keywords relevantes que medir.</p>
+        <EmptyState icon={Tags} title="Nada que medir todavía" description="Aparece cuando sigas keywords relevantes en este país." />
       ) : (
         <div tabIndex={0} role="region" aria-label="Tabla de cobertura por idioma" className="relative overflow-x-auto focus-visible:outline-2 focus-visible:outline-brand">
           <table className="w-full text-sm" style={{ minWidth: `${240 + matrix.columns.length * 120}px` }}>

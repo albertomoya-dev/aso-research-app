@@ -109,15 +109,16 @@ function MobileSections() {
 }
 
 /**
- * The fixed 56 px header inside an app: icon and name, store, market picker, «Posiciones del…», the
- * primary action «Actualizar posiciones» and the «⋯» menu (Actualizar ficha, Ver en la tienda, Ajustes).
+ * The fixed 56 px header inside an app: icon and name, store, market picker, «Posiciones del…»,
+ * «Actualizar posiciones» and the «⋯» menu (Actualizar ficha, Ver en la tienda, Ajustes). The header
+ * button is secondary (with its icon, so it still stands out): the page below owns the one primary.
  */
 export function AppHeader() {
   const app = useAppNav()!;
   const actions = useMarketActions(app.market.id);
   const ref = { productSlug: app.product.slug, country: app.market.country };
   return (
-    <header className="shrink-0 border-b border-line bg-surface">
+    <header className="shrink-0 border-b border-line bg-surface max-sm:sticky max-sm:top-0 max-sm:z-30">
       <div className="flex h-14 items-center gap-2 px-4 md:gap-3 md:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           <AppIcon src={app.product.icon} size={28} />
@@ -135,7 +136,7 @@ export function AppHeader() {
           </span>
           <PaletteButton />
           <Button
-            variant="primary"
+            variant="secondary"
             onClick={actions.refreshRankings}
             disabled={actions.refreshing}
             aria-busy={actions.refreshing}

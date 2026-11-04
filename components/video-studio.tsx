@@ -10,6 +10,7 @@ import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import { DEFAULT_VIDEO_SETTINGS, durationWarning, getVideoPreset, totalDuration, VIDEO_PRESETS, type VideoSettings } from "@/lib/assets/video";
 import { type AudioOutcome, canEncodeMp4, drawFrame, encodeVideo, type EncodeResult } from "@/lib/assets/video-encode";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
+import { HelpTip } from "./ui/help-tip";
 
 /** `creativesHref`: the screenshots page (`/a/[app]/creativos`). */
 type Props = { appTitle: string; creativesHref: string; spec: ScreenshotSpec | null };
@@ -274,9 +275,12 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
 
         <Card className="px-5 py-4">
           <h2 className="text-[15px] font-semibold">Sonido</h2>
-          <p className="mt-1 text-xs text-muted">
-            Opcional: sube una pista (MP3, M4A, WAV u OGG) con derechos de uso. Rankeo no genera música. Se corta a la duración del vídeo con un
-            fundido de salida. Las app previews de App Store se reproducen sin sonido hasta que se toca el vídeo.
+          <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+            Opcional: una pista con derechos de uso (MP3, M4A, WAV u OGG).
+            <HelpTip label="Sonido">
+              Rankeo no genera música. La pista se corta a la duración del vídeo con un fundido de salida. Las app previews de App Store se reproducen sin sonido
+              hasta que se toca el vídeo.
+            </HelpTip>
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <label className={`${buttonSecondary} cursor-pointer`} aria-busy={decoding}>
@@ -327,10 +331,13 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
               </div>
             </div>
           )}
-          <p className="mt-2 text-xs text-muted">
-            {mp4
-              ? `Se codifica en tu navegador como MP4 H.264, el formato que piden App Store Connect y YouTube. ${audio ? "Con la pista de audio en AAC si tu navegador puede codificarlo." : "Sin sonido, salvo que añadas una pista."}`
-              : `Tu navegador no tiene WebCodecs: se grabará en WebM a tiempo real${audio ? ", con el audio sonando mientras se graba" : ""}. Para MP4 usa Chrome, Edge o Safari 17 o superior.`}
+          <p className="mt-2 flex items-center gap-1 text-xs text-muted">
+            {mp4 ? "MP4 H.264, el formato de App Store Connect y YouTube." : "Se grabará en WebM a tiempo real."}
+            <HelpTip label="Formato del vídeo">
+              {mp4
+                ? `Se codifica en tu navegador. ${audio ? "Con la pista de audio en AAC si tu navegador puede codificarlo." : "Sin sonido, salvo que añadas una pista."}`
+                : `Tu navegador no tiene WebCodecs${audio ? "; el audio suena mientras se graba" : ""}. Para MP4 usa Chrome, Edge o Safari 17 o superior.`}
+            </HelpTip>
           </p>
           {error && (
             <p role="alert" className="mt-2 text-xs text-danger">

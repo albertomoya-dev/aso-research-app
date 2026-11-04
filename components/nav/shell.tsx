@@ -4,7 +4,9 @@ import pkg from "@/package.json";
 
 // Frame shared by the global shell (app/(global)/layout.tsx) and the app shell (app/a/[app]/layout.tsx):
 // the sidebar is hidden below 640 px (the bottom bar replaces it), icons only from 640 to 1024 px and
-// 240 px wide from 1024 px up. The page scrolls inside <main>, so the sidebar and the header stay put.
+// 240 px wide from 1024 px up. From 640 px up the page scrolls inside <main>, so the sidebar and the header
+// stay put. Below 640 px the document itself scrolls (the header sticks to the top), so mobile browsers
+// can collapse their address bar.
 
 export function Logo() {
   return (
@@ -44,11 +46,11 @@ export function SidebarFoot({ children }: { children?: React.ReactNode }) {
 /** Sidebar, the content column (with an optional fixed header) and the space the bottom bar takes on phones. */
 export function ShellLayout({ sidebar, header, children, after }: { sidebar: React.ReactNode; header?: React.ReactNode; children: React.ReactNode; after?: React.ReactNode }) {
   return (
-    <div className="flex h-dvh">
+    <div className="flex min-h-dvh sm:h-dvh">
       {sidebar}
       <div className="flex min-w-0 flex-1 flex-col">
         {header}
-        <main className="min-w-0 flex-1 overflow-y-auto px-4 pt-6 pb-24 sm:pb-8 md:px-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 pt-6 pb-24 sm:overflow-y-auto sm:pb-8 md:px-8">{children}</main>
       </div>
       {after}
     </div>

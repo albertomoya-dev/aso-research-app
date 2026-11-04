@@ -3,6 +3,7 @@
 import type { Slide } from "@/lib/assets/screenshots";
 import { CropEditor } from "../crop-editor";
 import { buttonSecondary } from "../ui";
+import { HelpTip } from "../ui/help-tip";
 import type { ImageMode } from "./types";
 import type { Upload } from "./use-upload";
 import type { Studio } from "./use-studio";
@@ -85,9 +86,9 @@ export function CaptureFields({ studio, upload, slide }: { studio: Studio; uploa
       )}
       {storeImages.length > 0 && (
         <div>
-          <p className="mb-1.5 text-xs text-muted">
-            O usa una de las capturas publicadas en la tienda. Son montajes ya terminados: se busca el móvil dentro y se recorta su pantalla para la
-            plantilla.
+          <p className="mb-1.5 flex items-center gap-1 text-xs text-muted">
+            O usa una de las capturas publicadas en la tienda.
+            <HelpTip label="Capturas de la tienda">Son montajes ya terminados: se busca el móvil dentro y se recorta su pantalla para la plantilla.</HelpTip>
           </p>
           <ul className="flex flex-wrap gap-2">
             {storeImages.map((src, i) => (

@@ -10,7 +10,10 @@ import { RankChart } from "@/components/rank-chart";
 import { difficultyLabel } from "@/components/scores";
 import { TrendChart } from "@/components/trend-chart";
 import { StoreBadge } from "@/components/store-badge";
+import { CalendarClock, LineChart, Trophy } from "lucide-react";
 import { Card } from "@/components/ui";
+import { EmptyState } from "@/components/ui/empty-state";
+import { HelpTip } from "@/components/ui/help-tip";
 import { loadMarket, marketPath } from "@/lib/products";
 import { dailySeries } from "@/lib/chart-data";
 import { getCountry } from "@/lib/countries";
@@ -75,7 +78,7 @@ export default async function KeywordPage(props: Props) {
 
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{keyword.term}</h1>
+          <h1 className="text-page-title font-semibold">{keyword.term}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-muted">
             <StoreBadge store={app.store} country={app.country} />
             <span>{getCountry(app.country).name}</span>
@@ -110,15 +113,14 @@ export default async function KeywordPage(props: Props) {
 
       <Card aria-label="Evolución de la posición" className="p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[17px] font-semibold">Posición de {app.title}</h2>
-            <p className="text-[13px] text-muted">
-              Arriba es mejor. Los huecos son días en los que la app no aparecía entre los resultados que devolvió la tienda o no se
-              consultó.{" "}
+          <div className="flex items-center gap-1">
+            <h2 className="text-card-title font-semibold">Posición de {app.title}</h2>
+            <HelpTip label="Posición" side="bottom">
+              Arriba es mejor. Los huecos son días en los que la app no aparecía entre los resultados que devolvió la tienda o no se consultó.{" "}
               {app.store === "android"
                 ? "Google Play suele devolver unos 30 resultados por búsqueda; la tabla indica cuántos hubo cada día."
                 : "App Store devuelve hasta 200 resultados por búsqueda; la tabla indica cuántos hubo cada día."}
-            </p>
+            </HelpTip>
           </div>
           <nav aria-label="Periodo" className="flex rounded-lg bg-surface-muted p-0.5">
             {RANGES.map((r) => (
@@ -128,7 +130,7 @@ export default async function KeywordPage(props: Props) {
                 scroll={false}
                 aria-current={r === days ? "true" : undefined}
                 className={`inline-flex min-h-10 items-center rounded-lg px-3.5 text-sm font-semibold ${
-                  r === days ? "bg-surface text-ink shadow-sm" : "text-ink-soft"
+                  r === days ? "bg-surface text-ink ring-1 ring-line" : "text-ink-soft"
                 }`}
               >
                 {r} días
@@ -137,9 +139,7 @@ export default async function KeywordPage(props: Props) {
           </nav>
         </div>
         {history.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted">
-            Todavía no hay posiciones. Se guardan cada día; pulsa «Actualizar posiciones» en la ficha de la app para la primera.
-          </p>
+          <EmptyState icon={LineChart} title="Todavía no hay posiciones" description="Se guardan cada día. Pulsa «Actualizar posiciones», arriba, para la primera." />
         ) : (
           <>
             <RankChart data={series} markers={notes.filter((n) => n.date >= since).map(({ date, index }) => ({ date, index }))} depth={depth} />
@@ -172,10 +172,14 @@ export default async function KeywordPage(props: Props) {
       </Card>
 
       <Card aria-label="Interés en Google" className="p-5">
-        <h2 className="text-[17px] font-semibold">Interés en Google · últimos 12 meses</h2>
+        <div className="flex items-center gap-1">
+          <h2 className="text-card-title font-semibold">Interés en Google · últimos 12 meses</h2>
+          <HelpTip label="Interés en Google" side="bottom">
+            Google Trends en {getCountry(app.country).name}, de 0 a 100 respecto al pico de esta misma keyword. No sirve para comparar keywords entre sí, pero sí
+            para ver la estacionalidad.
+          </HelpTip>
+        </div>
         <p className="text-[13px] text-muted">
-          Google Trends en {getCountry(app.country).name}, de 0 a 100 respecto al pico de esta misma keyword. No sirve para comparar keywords
-          entre sí, pero sí para ver la estacionalidad.
           {metrics.prefixLength != null &&
             ` En ${app.store === "ios" ? "App Store" : "Google Play"} aparece en el autocompletado al escribir ${metrics.prefixLength} ${metrics.prefixLength === 1 ? "letra" : "letras"}.`}
           {metrics.popularity === 0 &&
@@ -197,16 +201,18 @@ export default async function KeywordPage(props: Props) {
             </div>
           </>
         ) : (
-          <p className="py-8 text-center text-sm text-muted">
-            {trend?.error ? `Google Trends no respondió (${trend.error}). Se reintentará en la próxima consulta.` : "Se descargará en la próxima consulta diaria."}
-          </p>
+          <EmptyState
+            icon={CalendarClock}
+            title={trend?.error ? "Google Trends no respondió" : "Aún sin datos de Google"}
+            description={trend?.error ? `${trend.error}. Se reintentará en la próxima consulta.` : "Se descargará en la próxima consulta diaria."}
+          />
         )}
       </Card>
 
       <div className="flex flex-wrap items-start gap-6">
         <Card aria-label="TOP 5" className="min-w-0 flex-[1_1_320px] overflow-hidden">
           <div className="border-b border-line px-5 py-4">
-            <h2 className="text-[17px] font-semibold">TOP 5 {latest ? `del ${formatDate(latest.date)}` : ""}</h2>
+            <h2 className="text-card-title font-semibold">TOP 5 {latest ? `del ${formatDate(latest.date)}` : ""}</h2>
           </div>
           {latest && latest.top5.length > 0 ? (
             <ol>
@@ -230,21 +236,21 @@ export default async function KeywordPage(props: Props) {
               })}
             </ol>
           ) : (
-            <p className="px-5 py-8 text-sm text-muted">Sin datos todavía.</p>
+            <EmptyState icon={Trophy} title="Sin TOP 5 todavía" description="Aparece con la primera consulta de posiciones." />
           )}
         </Card>
 
         <Card aria-label="Anotaciones" className="min-w-0 flex-[2_1_480px] p-5">
-          <h2 className="text-[17px] font-semibold">Anotaciones</h2>
-          <p className="mt-1 text-[13px] text-muted">
-            Marca cambios de ficha, versiones o campañas. Comparamos la posición media de los {ANNOTATION_WINDOW} días anteriores y posteriores. Se
-            comparten entre todas las keywords de la app; los cambios de la ficha publicada se anotan solos cada día. El efecto en cada keyword
-            afectada está en{" "}
-            <Link href={marketPath(app, "/cambios")} className="text-link hover:underline">
-              Cambios
+          <div className="flex flex-wrap items-center gap-1">
+            <h2 className="text-card-title font-semibold">Anotaciones</h2>
+            <HelpTip label="Anotaciones">
+              Marca cambios de ficha, versiones o campañas. Comparamos la posición media de los {ANNOTATION_WINDOW} días anteriores y posteriores. Se comparten
+              entre todas las keywords de la app; los cambios de la ficha publicada se anotan solos cada día.
+            </HelpTip>
+            <Link href={marketPath(app, "/cambios")} className="ml-auto text-table font-medium text-link underline">
+              Ver su efecto en Cambios
             </Link>
-            .
-          </p>
+          </div>
           <div className="mt-4">
             <AnnotationForm appId={app.id} defaultDate={end} />
           </div>

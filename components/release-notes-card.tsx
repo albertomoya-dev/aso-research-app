@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { generateReleaseNotes, type ReleaseNotesState } from "@/app/ai-actions";
 import type { DraftTarget } from "@/lib/listing-drafts";
 import { charCount, type Issue } from "@/lib/metadata-check";
 import { RELEASE_NOTES_LIMITS, releaseNotesIssues } from "@/lib/release-notes";
+import { useLongAction } from "@/lib/long-operations";
 import type { Store } from "@/lib/stores/types";
+import { OperationProgress } from "./operation-progress";
 import { buttonSecondary, Card, inputClass } from "./ui";
+import { HelpTip } from "./ui/help-tip";
 
 type Props = {
   appId: number;
@@ -43,7 +46,11 @@ function Frame({ bare, children }: { bare: boolean; children: React.ReactNode })
 
 /** «Notas de la versión»: Claude writes the «What's new» text; the user edits and copies it. Nothing is stored. */
 export function ReleaseNotesCard({ appId, productHref, store, target, targetName, aiEnabled, nextCount, latestVersion, policy, bare = false }: Props) {
-  const [state, action, pending] = useActionState<ReleaseNotesState, FormData>(generateReleaseNotes, null);
+  const [state, action, pending, op] = useLongAction<ReleaseNotesState>(`release-notes:${appId}:${target.locale}|${target.country}`, generateReleaseNotes, {
+    label: "Escribiendo las notas de la versión",
+    doneLabel: "Notas de la versión listas",
+    steps: ["Leyendo las funciones de la próxima versión…", "Escribiendo las notas…", "Revisando el límite y las normas…"],
+  });
   // The generated text, editable. Reset when a new result arrives.
   const [edited, setEdited] = useState<{ from?: ReleaseNotesState; text: string }>({ text: "" });
   const [copied, setCopied] = useState(false);
@@ -67,13 +74,15 @@ export function ReleaseNotesCard({ appId, productHref, store, target, targetName
   return (
     <Frame bare={bare}>
       {!bare && <h2 className="text-[15px] font-semibold">Notas de la versión</h2>}
-      <p className="mt-1 text-[13px] text-muted">
-        El texto de «Novedades de esta versión» en {targetName}, a partir de las {nextCount} funciones «Próxima versión» de tu{" "}
+      <p className="mt-1 flex flex-wrap items-center gap-1 text-[13px] text-muted">
+        «Novedades de esta versión» en {targetName}. No se guarda: cópialo a la consola de la tienda.
+        <HelpTip label="Notas de la versión">
+          Parte de las {nextCount} funciones «Próxima versión» de tu ficha de producto{latestVersion ? `, las notas de la versión ${latestVersion}` : ""} y el
+          CHANGELOG que pegues. Límite de {store === "android" ? "Google Play: 500 caracteres por idioma" : "App Store: 4000 caracteres"}.
+        </HelpTip>
         <Link href={productHref} className="text-link underline">
-          ficha de producto
+          Ficha de producto
         </Link>
-        {latestVersion ? `, las notas de la versión ${latestVersion}` : ""} y el CHANGELOG que pegues. Límite de{" "}
-        {store === "android" ? "Google Play: 500 caracteres por idioma" : "App Store: 4000 caracteres"}. No se guarda: cópialo a la consola de la tienda.
       </p>
       {aiEnabled ? (
         <form action={action} className="mt-3 flex flex-col gap-3">
@@ -95,9 +104,10 @@ export function ReleaseNotesCard({ appId, productHref, store, target, targetName
               {pending ? "Escribiendo…" : result ? "Generar otras" : "Generar notas"}
             </button>
             <span aria-live="polite" className="text-[13px]">
-              {state?.error && <span className="text-danger">{state.error}</span>}
+              {!pending && state?.error && <span className="text-danger">{state.error}</span>}
             </span>
           </div>
+          <OperationProgress op={op} className="max-w-md" />
         </form>
       ) : (
         <p className="mt-3 text-sm text-muted">Añade ANTHROPIC_API_KEY para generar las notas con IA (estado en <Link href="/integraciones" className="text-link underline">Integraciones</Link>).</p>

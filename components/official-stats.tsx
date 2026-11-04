@@ -2,6 +2,7 @@ import { formatDay, formatNumber } from "@/lib/format";
 import { type OfficialStats, type OfficialTermStats, untrackedTopTerms } from "@/lib/search-terms";
 import { SearchTermsImport } from "./search-terms-import";
 import { Card } from "./ui";
+import { HelpTip } from "./ui/help-tip";
 
 /** «Oficial · 120 visitantes · 14 instalaciones»: a figure from Play Console, never mixed with the estimates. */
 export function OfficialBadge({ stats, period }: { stats: OfficialTermStats; period: string }) {
@@ -27,14 +28,15 @@ export function OfficialStatsCard({ appId, stats, tracked }: { appId: number; st
     <Card aria-label="Datos oficiales de Google Play" className="flex flex-col gap-4 px-6 py-5">
       <div>
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-[17px] font-semibold">Términos de búsqueda reales</h2>
+          <h2 className="text-card-title font-semibold">Términos de búsqueda reales</h2>
           <span className="rounded-md border border-line-strong px-2 py-0.5 text-xs font-semibold text-ink-soft">Dato oficial · Play Console</span>
         </div>
-        <p className="mt-1 text-[13px] text-muted">
-          Importa el CSV de Play Console con las búsquedas que llevan a tu ficha: visitantes e instalaciones reales por término. Es la única cifra
-          oficial; la popularidad de la tabla es una estimación del autocompletado. Sirve tanto el informe mensual de Cloud Storage
-          (<code className="font-mono">store_performance_…_traffic_source.csv</code>, en UTF-16) como la descarga de la pantalla de términos de búsqueda,
-          con cabeceras en español o en inglés.
+        <p className="mt-1 flex flex-wrap items-center gap-1 text-[13px] text-muted">
+          Importa el CSV de Play Console: visitantes e instalaciones reales por término de búsqueda.
+          <HelpTip label="CSV de Play Console">
+            Es la única cifra oficial; la popularidad de la tabla es una estimación del autocompletado. Sirve el informe mensual de Cloud Storage
+            (store_performance_…_traffic_source.csv, en UTF-16) y la descarga de la pantalla de términos de búsqueda, con cabeceras en español o en inglés.
+          </HelpTip>
         </p>
         {stats && (
           <p className="mt-2 text-[13px] text-ink-soft">

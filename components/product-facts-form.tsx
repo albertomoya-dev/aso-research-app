@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { type FactsState, saveFacts } from "@/app/product-actions";
 import { MAX_BRAND_CHARS, type ProductFacts } from "@/lib/product-facts";
 import { buttonPrimary, inputClass } from "./ui";
+import { HelpTip } from "./ui/help-tip";
 
 const label = "flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft";
 const hint = "text-xs font-normal text-muted";
@@ -17,9 +18,15 @@ export function ProductFactsForm({ appId, facts, brandSuggestion }: { appId: num
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="appId" value={appId} />
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="facts-brand" className={label}>
-          Marca
-        </label>
+        <span className="flex items-center gap-1">
+          <label htmlFor="facts-brand" className={label}>
+            Marca
+          </label>
+          <HelpTip label="Marca">
+            La IA solo mantiene al principio del título, sin traducir, la marca que pongas aquí. Sin marca, el título puede cambiar entero al optimizarlo o al
+            adaptarlo a otro idioma.
+          </HelpTip>
+        </span>
         <input
           id="facts-brand"
           name="brand"
@@ -27,22 +34,17 @@ export function ProductFactsForm({ appId, facts, brandSuggestion }: { appId: num
           onChange={(e) => setBrand(e.target.value)}
           maxLength={MAX_BRAND_CHARS}
           placeholder="p. ej. «Runly». Déjalo vacío si tu título son solo keywords"
-          aria-describedby="facts-brand-hint"
+          aria-describedby={suggest ? "facts-brand-hint" : undefined}
           className={inputClass}
         />
-        <p id="facts-brand-hint" className={hint}>
-          La IA solo mantiene al principio del título, sin traducir, la marca que pongas aquí. Sin marca, el título puede cambiar entero al
-          optimizarlo o al adaptarlo a otro idioma.
-          {suggest && (
-            <>
-              {" "}
-              ¿Tu marca es «{suggest}», como empieza tu título?{" "}
-              <button type="button" onClick={() => setBrand(suggest)} className="font-medium text-link hover:underline">
-                Usar «{suggest}»
-              </button>
-            </>
-          )}
-        </p>
+        {suggest && (
+          <p id="facts-brand-hint" className={hint}>
+            ¿Tu marca es «{suggest}», como empieza tu título?{" "}
+            <button type="button" onClick={() => setBrand(suggest)} className="font-medium text-link hover:underline">
+              Usar «{suggest}»
+            </button>
+          </p>
+        )}
       </div>
       <label className={label}>
         Qué es, en una frase

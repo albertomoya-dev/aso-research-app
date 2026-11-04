@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { Metadata } from "next";
 import { CreativeNav } from "@/components/creative-nav";
 import { PageHeader } from "@/components/ui";
+import { HelpTip } from "@/components/ui/help-tip";
 import { VideoStudio } from "@/components/video-studio";
 import { getDb, schema } from "@/db";
 import { loadPrimaryParams, productPath } from "@/lib/products";
@@ -22,8 +23,11 @@ export default async function VideoPage({ params }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Vídeo promocional">
-          Anima tus screenshots guardados (entrada de los textos, zoom suave del móvil y transiciones) y expórtalos como MP4 en el tamaño de App Store (886×1920)
-          o vertical 1080×1920 para YouTube, que es lo que Google Play enlaza. Se genera en tu navegador.
+          Tus screenshots guardados, animados y en MP4.{" "}
+          <HelpTip label="Vídeo promocional" side="bottom">
+            Entrada de los textos, zoom suave del móvil y transiciones. Se exporta en el tamaño de App Store (886×1920) o vertical 1080×1920 para YouTube, que es
+            lo que Google Play enlaza. Se genera en tu navegador.
+          </HelpTip>
         </PageHeader>
         <CreativeNav base={productPath(app.productSlug, "/creativos")} />
       </div>

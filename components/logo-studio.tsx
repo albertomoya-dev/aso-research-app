@@ -1,10 +1,12 @@
 "use client";
 
+import { ImageOff } from "lucide-react";
 import { useState, useTransition } from "react";
 import { deleteGeneratedImage, generateLogoImages, generateLogoPrompts, type LogoImagesResult, type LogoPromptResult } from "@/app/asset-actions";
 import { downloadBlob, slug } from "@/lib/assets/download";
 import { loadImage } from "@/lib/assets/screenshot-render";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
+import { EmptyState } from "./ui/empty-state";
 
 /** `createdDay` comes formatted from the server so the date reads the same on both sides of hydration. */
 export type GeneratedLogo = { id: number; prompt: string; provider: string; model: string; createdDay: string };
@@ -77,7 +79,7 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
           <h2 className="text-[15px] font-semibold">Logos generados</h2>
           <p className="mt-0.5 text-xs text-muted">Se guardan aquí; descárgalos a 1024 px para App Store o 512 px para Google Play (PNG).</p>
           {images.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">Todavía no hay ninguno. Escribe un prompt (o pide uno a Claude) y pulsa «Generar».</p>
+            <EmptyState icon={ImageOff} title="Aún no hay logos" description="Escribe un prompt (o pide uno a Claude) y pulsa «Generar»." />
           ) : (
             <ul className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {images.map((image) => (
@@ -161,8 +163,8 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
             <p className="mt-1 text-xs text-muted">Con {providerLabel}. Cada imagen tarda entre 10 y 40 segundos y tiene coste en tu cuenta del proveedor.</p>
           ) : (
             <p className="mt-1 text-xs text-warn-fg">
-              Falta un proveedor de imágenes. Añade <code className="font-mono">OPENAI_API_KEY</code> o <code className="font-mono">GEMINI_API_KEY</code> en Vercel y vuelve a
-              desplegar. El estado de cada integración está en Ajustes.
+              Falta un proveedor de imágenes: añade <code className="font-mono">OPENAI_API_KEY</code> o <code className="font-mono">GEMINI_API_KEY</code> y vuelve a
+              desplegar.
             </p>
           )}
           <label className="mt-3 flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">

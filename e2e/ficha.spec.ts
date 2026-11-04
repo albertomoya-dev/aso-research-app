@@ -97,6 +97,18 @@ test("/dev/ui: la propuesta de la IA se acepta campo a campo desde el diff", asy
   await expect(proposal).toHaveCount(0);
 });
 
+// Phase 33: Tendencias «Preparar temporada» opens /ficha?focus=…, and the optimizer's focus starts filled.
+// The e2e server has no Anthropic key, so the field is not there: the page then shows the focus in a note.
+test("?focus= rellena el enfoque de «Optimizar con IA»", async ({ page, apps }) => {
+  const app = reference(apps);
+  const focus = "Temporada de «pastillero» en diciembre";
+  await open(page, `${ficha(app)}?focus=${encodeURIComponent(focus)}`);
+  await expect(page.getByRole("heading", { name: "Ficha de la tienda", level: 1 })).toBeVisible();
+  const field = page.locator("#ai-focus");
+  if ((await field.count()) > 0) await expect(field).toHaveValue(focus);
+  else await expect(page.getByTestId("focus-note")).toContainText(focus);
+});
+
 for (const vp of VIEWPORTS) {
   test(`/ficha sin scroll horizontal · ${vp.name}`, async ({ page, apps }) => {
     const app = reference(apps);

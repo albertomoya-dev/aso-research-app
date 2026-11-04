@@ -14,7 +14,7 @@ export type EmptyStateProps = {
 /** Replaces explanatory paragraphs when there is nothing to show yet: icon, title, one sentence, one action. */
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
   return (
-    <div className={cn("flex flex-col items-center gap-2 px-6 py-10 text-center", className)}>
+    <div data-empty-state className={cn("flex flex-col items-center gap-2 px-6 py-10 text-center", className)}>
       <span className="mb-1 inline-flex size-10 items-center justify-center rounded-full bg-surface-muted text-ink-soft">
         <Icon size={20} aria-hidden="true" />
       </span>
