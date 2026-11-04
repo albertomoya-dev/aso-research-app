@@ -1,13 +1,10 @@
 import { collectErrors, type E2eApp, expect, measureOverflow, recordOverflow, test, VIEWPORTS } from "./fixtures";
 
 // Every current route, for every app in the test database, at 390 and 1440 px: it answers 200 and
-// logs no errors. The document must not scroll sideways (phase 27: the navigation shell); the
-// overflow of <main> is measured and annotated, and creativos and its video page stay report-only
-// until phase 32 reorganises them.
+// logs no errors. Neither the document nor <main> (which scrolls on its own) may scroll sideways on
+// any route (DESIGN.md; since phase 32 there is no report-only exception).
 
 const GLOBAL_ROUTES = ["/", "/apps/nueva", "/actividad", "/actividad?vista=semana", "/integraciones"];
-// Report-only overflow (phase 32).
-const OVERFLOW_REPORT_ONLY = new Set(["/a/[app]/creativos", "/a/[app]/creativos/video"]);
 
 const market = (a: E2eApp) => `/a/${a.slug}/${a.country}`;
 const product = (a: E2eApp) => `/a/${a.slug}`;
@@ -99,9 +96,9 @@ async function visit(page: import("@playwright/test").Page, route: string, path:
           description: `${path} @${vp.width}: documento ${overflow.scrollWidth}/${overflow.innerWidth}, main ${overflow.mainScrollWidth}/${overflow.mainClientWidth}${overflow.widest ? ` · ${overflow.widest}` : ""}`,
         });
       }
-      if (!OVERFLOW_REPORT_ONLY.has(route)) {
-        expect.soft(overflow.scrollWidth, `${path} @${vp.width}: el documento no hace scroll horizontal${overflow.widest ? ` (${overflow.widest})` : ""}`).toBeLessThanOrEqual(overflow.innerWidth);
-      }
+      const culprit = overflow.widest ? ` (${overflow.widest})` : "";
+      expect.soft(overflow.scrollWidth, `${path} @${vp.width}: el documento no hace scroll horizontal${culprit}`).toBeLessThanOrEqual(overflow.innerWidth);
+      expect.soft(overflow.mainScrollWidth, `${path} @${vp.width}: <main> no hace scroll horizontal${culprit}`).toBeLessThanOrEqual(overflow.mainClientWidth);
       expect.soft(errors, `${path} @${vp.width} sin errores en la consola`).toEqual([]);
     });
   }
