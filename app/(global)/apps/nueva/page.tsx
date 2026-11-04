@@ -10,6 +10,7 @@ import { StoreBadge } from "@/components/store-badge";
 import { buttonPrimary, Card, ErrorNote, inputClass, PageHeader } from "@/components/ui";
 import { DEFAULT_COUNTRY, getCountry, isCountry } from "@/lib/countries";
 import { formatRating } from "@/lib/format";
+import { storeLinkApp } from "@/lib/store-links";
 import { getAdapter, looksLikeAppId, STORE_LABEL, STORES, type AppMeta, type AppSummary, type Store } from "@/lib/stores";
 
 export const metadata: Metadata = { title: "Añadir app" };
@@ -23,6 +24,9 @@ async function searchStore(store: Store, q: string, country: string): Promise<St
   const adapter = getAdapter(store);
   const query = { country, lang: getCountry(country).lang };
   try {
+    // A pasted store link opens that app in its own store, and nothing in the other one.
+    const link = storeLinkApp(q);
+    if (link) return { store, apps: link.store === store ? [await adapter.getApp(link.id, query)] : [] };
     if (looksLikeAppId(store, q)) return { store, apps: [await adapter.getApp(q, query)] };
     const apps = await adapter.searchApps(q, { ...query, limit: RESULTS_PER_STORE });
     return { store, apps };
@@ -61,14 +65,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Añadir app">
-        Escribe el nombre, el ID de App Store o el paquete de Google Play. Traemos su ficha tal como está publicada en la tienda.
+        Busca por nombre, ID, paquete o enlace de la tienda.
       </PageHeader>
 
       <Card className="px-5 py-4">
         <form className="flex flex-wrap items-end gap-2.5" action="/apps/nueva">
           <label className="flex min-w-0 flex-[1_1_320px] flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
             App
-            <input type="search" name="q" defaultValue={q} required placeholder="Nombre, ID o paquete" className={inputClass} />
+            <input type="search" name="q" defaultValue={q} required placeholder="Nombre, ID, paquete o enlace" className={inputClass} />
           </label>
           <label className="flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
             Tienda

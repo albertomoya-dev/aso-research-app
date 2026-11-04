@@ -93,7 +93,7 @@ export default async function FindPage({ params, searchParams }: Props) {
         </button>
       </form>
 
-      <nav aria-label="Fuentes de keywords" className="inline-flex max-w-full items-center gap-0.5 self-start overflow-x-auto rounded-control bg-surface-muted p-0.5">
+      <nav aria-label="Fuentes de keywords" className="relative inline-flex max-w-full items-center gap-0.5 self-start overflow-x-auto rounded-control bg-surface-muted p-0.5">
         {(["pendientes", "autocompletado", "ia", "top10"] as const).map((t) => (
           <Link
             key={t}
@@ -126,7 +126,7 @@ export default async function FindPage({ params, searchParams }: Props) {
             <GenerateIdeasForm appId={app.id} focus={seed} />
           ) : (
             <ErrorNote>
-              Falta la clave de Anthropic (ANTHROPIC_API_KEY). Compruébala en{" "}
+              Falta ANTHROPIC_API_KEY: revísala en{" "}
               <Link href="/integraciones" className="underline">
                 Integraciones
               </Link>

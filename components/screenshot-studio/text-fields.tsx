@@ -18,11 +18,10 @@ export function TextFields({ studio, ai, slide }: { studio: Studio; ai: Ai; slid
     <div className="flex flex-col gap-3">
       {slide.asIs && (
         <p className="rounded-control bg-warn-bg px-3 py-2 text-xs text-warn-fg">
-          Esta pantalla usa la captura «tal cual», así que el texto no se dibuja.{" "}
+          Captura «tal cual»: el texto no se dibuja.{" "}
           <button type="button" onClick={() => setImageMode(slide, "crop")} className="font-medium underline">
-            Recortar la pantalla y usar la plantilla
-          </button>{" "}
-          para que se vea.
+            Usar la plantilla
+          </button>
         </p>
       )}
       <label className={fieldLabel}>

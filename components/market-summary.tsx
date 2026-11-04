@@ -13,7 +13,7 @@ import { formatAggregateImpact } from "@/lib/impact";
 import type { MarketApp } from "@/lib/products";
 import { marketPath } from "@/lib/products";
 import { shiftDate, today } from "@/lib/ranking";
-import { firstSentence } from "@/lib/today";
+import { firstClause } from "@/lib/today";
 import { Card } from "./ui";
 import { buttonVariants } from "./ui/button-variants";
 import { DeltaBadge } from "./ui/delta-badge";
@@ -224,7 +224,12 @@ function Step({ item }: { item: HealthItem }) {
           <StatusDot status={item.status} label={<span className="font-medium text-ink">{item.label}</span>} />
           <span className="font-mono text-label text-muted">{item.value}</span>
         </div>
-        <p className="mt-0.5 text-[13px] text-ink-soft">{firstSentence(item.hint)}.</p>
+        {/* One short line; the whole explanation, on demand (DESIGN.md §1). */}
+        <p className="mt-0.5 flex items-center gap-1 text-[13px] text-ink-soft">
+          <span className="line-clamp-2 min-w-0">{firstClause(item.hint)}.</span>
+          {/* The line may be clamped to two: a long one keeps its whole text here. */}
+          {(firstClause(item.hint) !== item.hint.replace(/\.$/, "") || item.hint.length > 70) && <HelpTip label={item.label}>{item.hint}</HelpTip>}
+        </p>
       </div>
       {item.href && item.action && (
         <Link href={item.href} className={buttonVariants({ variant: "secondary", size: "sm" })}>
@@ -284,7 +289,8 @@ async function MovementLists({ app }: { app: MarketApp }) {
         {leaders.length === 0 ? (
           <p className="mt-1 text-[13px] text-muted">Ningún cambio de nº 1 esta semana.</p>
         ) : (
-          <ul className="mt-1.5 flex flex-col gap-1.5 text-[13px]">
+          // App names from the store: data, not explanation (e2e/polish.spec.ts skips `data-content`).
+          <ul data-content className="mt-1.5 flex flex-col gap-1.5 text-[13px]">
             {leaders.map((l) => (
               <li key={l.id} className="min-w-0">
                 <span className={l.tone === "up" ? "font-medium text-up" : l.tone === "down" ? "font-medium text-down" : "text-ink"}>{l.title}</span>
@@ -364,7 +370,7 @@ async function CompetitionBar({ app, days }: { app: MarketApp; days: ShareDays }
         ))}
         {rest > 0 && <span className="h-full bg-line-strong" style={{ width: `${rest}%` }} />}
       </div>
-      <p className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-ink-soft">
+      <p data-content className="flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-ink-soft">
         {shown.map((s) => (
           <span key={s.id} className="inline-flex min-w-0 items-center gap-1.5">
             <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: color(s.id, s.own) }} />

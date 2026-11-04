@@ -163,11 +163,11 @@ export function VideoStudio({ appTitle, creativesHref, spec }: Props) {
       <Card className="px-5 py-5 text-sm">
         <h2 className="font-semibold">Primero guarda un conjunto de screenshots</h2>
         <p className="mt-1.5 text-ink-soft">
-          El vídeo anima las pantallas guardadas en{" "}
-          <Link href={creativesHref} className="text-link hover:underline">
+          Monta cuatro o cinco pantallas en{" "}
+          <Link href={creativesHref} className="text-link underline">
             Screenshots
           </Link>
-          : monta al menos cuatro o cinco, guarda el diseño y vuelve aquí.
+          , guarda el diseño y vuelve.
         </p>
       </Card>
     );

@@ -36,7 +36,7 @@ function playBar(target: DraftTarget, hasDraft: boolean) {
       link: false,
       text: config.error
         ? `La conexión con Google Play Console está mal configurada: ${config.error}`
-        : "Para publicar desde Rankeo, conecta Google Play Console con una cuenta de servicio (GOOGLE_PLAY_SERVICE_ACCOUNT_JSON). Los pasos están en el README, sección «Google Play Console», y el estado en Ajustes.",
+        : "Para publicar desde aquí, conecta Google Play Console en Integraciones.",
     };
   }
   if (target.country) return { label, link: false, text: "La API de Google Play no permite publicar fichas personalizadas por país: copia este borrador en Play Console." };

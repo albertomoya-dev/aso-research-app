@@ -81,7 +81,7 @@ export function integrationStatuses(env: Env = process.env): Integration[] {
       write: null,
       detail: pass[0].set
         ? "La app pide usuario y contraseña en el navegador."
-        : "Sin APP_PASSWORD la app queda abierta a cualquiera con la dirección. Solo para desarrollo local.",
+        : "Sin APP_PASSWORD la app está abierta a cualquiera. Solo para desarrollo local.",
       enables: "Proteger toda la app con la contraseña del navegador.",
       vars: pass,
       readme: { section: "Puesta en marcha", anchor: "puesta-en-marcha" },
@@ -104,7 +104,7 @@ export function integrationStatuses(env: Env = process.env): Integration[] {
       state: ai[0].set ? "on" : "off",
       write: null,
       detail: ai[0].set ? "Clave presente. «Probar conexión» comprueba que es válida sin generar nada." : "Sin clave, las funciones de IA se ocultan.",
-      enables: "Ideas de keywords, relevancia, optimizar y traducir la ficha, notas de la versión, reseñas, textos de creativos y borradores de respuesta.",
+      enables: "Ideas, relevancia, ficha y traducciones, notas de versión, reseñas y creativos.",
       vars: ai,
       readme: { section: "Ideas con IA", anchor: "ideas-con-ia" },
       testable: ai[0].set,
@@ -133,7 +133,7 @@ export function integrationStatuses(env: Env = process.env): Integration[] {
       detail: mailSet === 2 ? "Listo para enviar. «Enviar email de prueba» manda uno a ALERT_EMAIL." : mailSet === 0 ? "Sin configurar." : missing(mail),
       enables: "Recibir el resumen semanal por email cada lunes.",
       vars: mail,
-      readme: { section: "Novedades y resumen semanal", anchor: "novedades-y-resumen-semanal" },
+      readme: { section: "Actividad y resumen semanal", anchor: "actividad-y-resumen-semanal" },
       testable: mailSet === 2,
     },
     {
@@ -142,7 +142,7 @@ export function integrationStatuses(env: Env = process.env): Integration[] {
       state: playCfg.configured ? "on" : playCfg.error ? "invalid" : "off",
       write: playCfg.configured ? playCfg.writeEnabled : null,
       detail: playCfg.error ?? (playCfg.configured ? "Cuenta de servicio presente." : "Sin configurar."),
-      enables: "Publicar el borrador de la ficha, responder reseñas de tu app e importar los términos de búsqueda reales.",
+      enables: "Publicar la ficha, responder reseñas e importar los términos de búsqueda reales.",
       vars: play,
       readme: { section: "Google Play Console", anchor: "google-play-console" },
       testable: playCfg.configured,

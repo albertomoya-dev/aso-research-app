@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { allPaths } from "./route-list";
+import { appPaths, firstMarkets, GLOBAL_ROUTES } from "./route-list";
 
 // WCAG 2.1 A and AA, in both themes: /dev/ui (and its floating layers) and every route.
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -42,30 +42,39 @@ for (const theme of THEMES) {
   });
 }
 
-// Every route of the first market of the test database, in both themes: serious and critical
-// violations fail the run; minor and moderate ones are annotated. All of them are written to
-// test-results/axe-routes-<theme>.json.
-const BLOCKING = new Set(["serious", "critical"]);
+// Every route in both themes, for EVERY market of the test database (and the product pages for the
+// first market of each product): ANY violation of the WCAG 2.0/2.1 A and AA rules fails, whatever its
+// impact. They are written to test-results/axe-routes-<theme>-<slot>.json. One test per market and one
+// for the global routes, so the workers share them; the slots past the last market are skipped.
+const MARKET_SLOTS = 8;
+
+async function checkPaths(page: Page, paths: string[], theme: (typeof THEMES)[number], file: string) {
+  const report: Record<string, string[]> = {};
+  for (const path of paths) {
+    await openWithTheme(page, path, theme);
+    const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
+    report[`${path} · ${theme}`] = summary(result.violations);
+    expect.soft(summary(result.violations), `${path} · ${theme}`).toEqual([]);
+  }
+  mkdirSync("test-results", { recursive: true });
+  writeFileSync(`test-results/axe-routes-${theme}-${file}.json`, JSON.stringify(report, null, 2));
+}
 
 test.describe("rutas: accesibilidad AA", () => {
-  test.describe.configure({ timeout: 180_000 });
-  // The paths depend on the database, so one test walks them (workers would each load the fixture).
   for (const theme of THEMES) {
-    test(`todas las rutas sin fallos graves · ${theme}`, async ({ page, apps }) => {
-      test.setTimeout(900_000);
-      const report: Record<string, string[]> = {};
-      for (const path of allPaths(apps[0])) {
-        await openWithTheme(page, path, theme);
-        const result = await new AxeBuilder({ page }).withTags(TAGS).analyze();
-        report[`${path} · ${theme}`] = summary(result.violations);
-        const minor = result.violations.filter((v) => !BLOCKING.has(v.impact ?? ""));
-        if (minor.length > 0) {
-          test.info().annotations.push({ type: "axe", description: `${path} · ${theme}: ${minor.map((v) => `${v.id}×${v.nodes.length}`).join(", ")}` });
-        }
-        expect.soft(summary(result.violations.filter((v) => BLOCKING.has(v.impact ?? ""))), `${path} · ${theme}`).toEqual([]);
-      }
-      mkdirSync("test-results", { recursive: true });
-      writeFileSync(`test-results/axe-routes-${theme}.json`, JSON.stringify(report, null, 2));
+    test(`rutas globales sin fallos de axe · ${theme}`, async ({ page }) => {
+      test.setTimeout(300_000);
+      await checkPaths(page, GLOBAL_ROUTES, theme, "global");
     });
+
+    for (let slot = 0; slot < MARKET_SLOTS; slot++) {
+      test(`rutas del mercado ${slot + 1} sin fallos de axe · ${theme}`, async ({ page, apps }) => {
+        test.skip(slot >= apps.length, `La base de datos de prueba tiene ${apps.length} mercados`);
+        test.setTimeout(900_000);
+        const app = apps[slot];
+        const first = firstMarkets(apps).some((a) => a.id === app.id);
+        await checkPaths(page, appPaths(app, first), theme, String(slot + 1));
+      });
+    }
   }
 });

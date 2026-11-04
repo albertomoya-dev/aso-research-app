@@ -35,8 +35,7 @@ export default async function LogoPage({ params }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Logo con IA generativa">
-          Un modelo de imágenes dibuja el logo a partir de un prompt; Claude puede escribir el prompt a partir de tu ficha y tus keywords. Las imágenes se guardan
-          aquí y se descargan en PNG a 1024 px (App Store) y 512 px (Google Play).
+          Un modelo de imágenes dibuja el logo a partir de un prompt. Se descarga en PNG para las dos tiendas.
         </PageHeader>
         <CreativeNav base={productPath(app.productSlug, "/creativos")} />
       </div>

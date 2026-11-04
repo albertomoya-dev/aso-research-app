@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpTip } from "./ui/help-tip";
 import { useFormStatus } from "react-dom";
 import { setBrandException } from "@/app/ai-actions";
 import { Card } from "./ui";
@@ -15,9 +16,12 @@ export function BrandList({ appId, brands, developers, exceptions }: Props) {
   return (
     <Card aria-label="Marcas detectadas" className="px-5 py-4">
       <h2 className="text-[15px] font-semibold">Marcas detectadas</h2>
-      <p className="mt-1 text-[13px] text-muted">
-        Salen de las apps que más aparecen en el TOP 5 de tus keywords. La IA no las usa en la ficha ni en las ideas. Nunca cuentan como marca las
-        palabras de tu título, tus keywords o tu ficha de producto, ni las palabras corrientes («pills», «recordatorio»…).
+      <p className="mt-1 flex items-center gap-1 text-[13px] text-muted">
+        La IA no las usa en la ficha ni en las ideas.
+        <HelpTip label="Marcas detectadas">
+          Salen de las apps que más aparecen en el TOP 5 de tus keywords. Nunca cuentan como marca las palabras de tu título, tus keywords o tu
+          ficha de producto, ni las palabras corrientes («pills», «recordatorio»…).
+        </HelpTip>
       </p>
       {brands.length === 0 ? (
         <p className="mt-3 text-sm text-muted">Ninguna por ahora.</p>

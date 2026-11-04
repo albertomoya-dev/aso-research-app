@@ -1,20 +1,19 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { getOperations, getServerOperations, markNotified, stepIndex, subscribeOperations } from "@/lib/long-operations";
-
-const pathOf = (href: string) => href.split("?")[0];
+import { getOperations, getServerOperations, isOperationPage, markNotified, stepIndex, subscribeOperations } from "@/lib/long-operations";
 
 /**
- * Mounted once in app/layout.tsx. While a long AI operation runs and the user is on another page, a
+ * Mounted once in app/layout.tsx (inside Suspense: it reads the query). While a long AI operation runs and the user is on another page, a
  * loading toast shows its step; when it ends there, the toast turns into «… listo» with «Ver
  * resultado». On the page where it started, the page itself shows the progress and the result.
  */
 export function OperationToasts() {
   const operations = useSyncExternalStore(subscribeOperations, getOperations, getServerOperations);
   const pathname = usePathname();
+  const search = useSearchParams().toString();
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
   const running = operations.some((o) => o.status === "running");
@@ -27,7 +26,8 @@ export function OperationToasts() {
 
   useEffect(() => {
     for (const op of operations) {
-      const onPage = pathOf(op.href) === pathname;
+      // Path and query: the listing editor of another language is another page.
+      const onPage = isOperationPage(op.href, search ? `${pathname}?${search}` : pathname);
       // An "always" operation has no progress on its page (a floating bar started it), so it toasts here too.
       const here = onPage && op.notify === "away";
       if (op.status === "running") {
@@ -48,7 +48,7 @@ export function OperationToasts() {
       if (op.status === "error") toast.error(op.label, { id: op.key, description: op.error, action, duration: 10_000 });
       else toast.success(op.doneLabel, { id: op.key, description: undefined, action, duration: 15_000 });
     }
-  }, [operations, pathname, now, router]);
+  }, [operations, pathname, search, now, router]);
 
   return null;
 }

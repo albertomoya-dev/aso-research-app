@@ -88,12 +88,24 @@ function FeatureEditor({ appId, feature, onDone }: { appId: number; feature: Fea
   const [status, setStatus] = useState<FeatureStatus>(feature?.status ?? "shipped");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, start] = useTransition();
-  const save = (formData: FormData) =>
+  const [error, setError] = useState<string | null>(null);
+  const save = (formData: FormData) => {
+    // Only spaces pass `required`; the server would refuse them, so say it here and keep the panel open.
+    if (!String(formData.get("name") ?? "").trim()) {
+      setError("Ponle un nombre a la función.");
+      return;
+    }
+    setError(null);
     start(async () => {
-      await (feature ? updateFeature(formData) : addFeature(formData));
+      const result = await (feature ? updateFeature(formData) : addFeature(formData));
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       toast(feature ? "Función guardada" : "Función añadida");
       onDone();
     });
+  };
   const remove = () =>
     start(async () => {
       const fd = new FormData();
@@ -141,6 +153,11 @@ function FeatureEditor({ appId, feature, onDone }: { appId: number; feature: Fea
         Anunciar en la ficha
         <span className="text-label text-muted">(desmárcalo en las funciones internas)</span>
       </label>
+      {error && (
+        <p role="alert" className="text-table text-danger">
+          {error}
+        </p>
+      )}
       <SheetFooter className="sm:items-center">
         {feature &&
           (confirmDelete ? (

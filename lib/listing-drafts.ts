@@ -179,7 +179,7 @@ export function draftAge(
   if (published && published.getTime() > saved.getTime()) {
     return {
       stale: true,
-      text: `${head} · la ficha publicada cambió el ${fmt(published)}, después de tu borrador. Revísalo antes de publicarlo para no deshacer esos cambios.`,
+      text: `${head} · la ficha publicada cambió el ${fmt(published)}: revísalo antes de publicar.`,
     };
   }
   if (published) return { stale: false, text: `${head} · la ficha publicada es del ${fmt(published)}, anterior a tu borrador.` };

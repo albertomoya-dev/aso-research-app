@@ -118,7 +118,7 @@ export default async function MetadataPage({ params, searchParams }: Props) {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Ficha de la tienda">
-        El texto de tu ficha en cada idioma, con la vista previa, las keywords que cubre y las normas de la tienda. Se guarda como borrador.
+        Tu ficha en cada idioma, con su vista previa. Se guarda como borrador.
       </PageHeader>
       <PublishBar
         store={app.store}

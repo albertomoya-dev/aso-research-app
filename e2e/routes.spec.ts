@@ -17,7 +17,12 @@ const LEGACY_REDIRECTS: { from: (a: E2eApp) => string; to: (a: E2eApp) => string
   { from: (a) => `/apps/${a.id}/creativos/icono`, to: (a) => `${product(a)}/creativos/icono` },
   // Phase 29: the three find pages are one screen; the old /apps/[id] URLs go straight to it.
   { from: (a) => `/apps/${a.id}/descubrir`, to: (a) => `${market(a)}/encontrar` },
-  { from: (a) => `/apps/${a.id}/ideas`, to: (a) => `${market(a)}/encontrar` },
+  { from: (a) => `/apps/${a.id}/ideas`, to: (a) => `${market(a)}/encontrar?fuente=ia` },
+  { from: (a) => `/apps/${a.id}/competidores`, to: (a) => `${market(a)}/competidores` },
+  { from: (a) => `/apps/${a.id}/resenas`, to: (a) => `${market(a)}/resenas` },
+  { from: (a) => `/apps/${a.id}/cambios`, to: (a) => `${market(a)}/cambios` },
+  // A keyword's old page opens its panel over the table (REDISENO_UX §8).
+  { from: (a) => `/apps/${a.id}/keywords/${a.keywordId ?? 1}`, to: (a) => `${market(a)}/keywords?k=${a.keywordId ?? 1}` },
 ];
 
 // Some pages read Google Play live (search, autocomplete, reviews), so they get room.
@@ -90,7 +95,10 @@ test("las URLs antiguas redirigen con 308", async ({ request, apps }) => {
     for (const { from, to } of LEGACY_REDIRECTS) {
       const response = await request.get(from(app), { maxRedirects: 0 });
       expect.soft(response.status(), `${from(app)} responde 308`).toBe(308);
-      expect.soft(new URL(response.headers()["location"] ?? "", "http://x").pathname, `${from(app)} lleva a ${to(app)}`).toBe(to(app));
+      const location = new URL(response.headers()["location"] ?? "", "http://x");
+      // The path, and the query when the target has one (`?fuente=`, `?k=`).
+      const got = to(app).includes("?") ? location.pathname + location.search : location.pathname;
+      expect.soft(got, `${from(app)} lleva a ${to(app)}`).toBe(to(app));
     }
   }
 });

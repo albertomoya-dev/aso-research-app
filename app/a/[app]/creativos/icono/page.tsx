@@ -26,8 +26,7 @@ export default async function IconPage({ params }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeader title="Icono de la app">
-          Diseña un icono vectorial (fondo, símbolo o letra y placa), compáralo con el actual a tamaño real y descárgalo a 1024 px para App Store y 512 px para
-          Google Play. Claude puede proponerte cuatro conceptos a partir de tu ficha y tus keywords.
+          Un icono vectorial, comparado con el actual a tamaño real, en PNG para las dos tiendas.
         </PageHeader>
         <CreativeNav base={productPath(app.productSlug, "/creativos")} />
       </div>

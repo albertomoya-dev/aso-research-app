@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearOperation, getOperations, startOperation, stepIndex } from "@/lib/long-operations";
+import { clearOperation, getOperations, hasOperation, isOperationPage, operationHref, startOperation, stepIndex } from "@/lib/long-operations";
 import { aiFeatureNotice, compareVersions, type ProductFeature } from "@/lib/product-facts";
 
 const feature = (status: ProductFeature["status"], sinceVersion: string | null, advertise = true): ProductFeature => ({
@@ -72,5 +72,30 @@ describe("long operations", () => {
     startOperation("test:2", { label: "Recalculando", doneLabel: (r: { rated: number }) => `${r.rated} valoradas`, steps: [] }, async () => ({ rated: 12 }));
     await new Promise((r) => setTimeout(r, 0));
     expect(getOperations().find((o) => o.key === "test:2")?.doneLabel).toBe("12 valoradas");
+  });
+});
+
+describe("where an operation's result shows", () => {
+  it("never keeps the parameters that start an operation, so «Ver resultado» does not pay again", () => {
+    expect(operationHref("/a/x/es/ficha", "?locale=en-US&adaptar=1&country=US")).toBe("/a/x/es/ficha?locale=en-US&country=US");
+    expect(operationHref("/a/x/es/ficha", "?adaptar=1")).toBe("/a/x/es/ficha");
+    expect(operationHref("/a/x/es/ficha", "")).toBe("/a/x/es/ficha");
+  });
+
+  it("is the same page with the same query in any order; the keyword panel does not count", () => {
+    expect(isOperationPage("/a/x/es/ficha?locale=en-US&country=US", "/a/x/es/ficha?country=US&locale=en-US")).toBe(true);
+    expect(isOperationPage("/a/x/es/ficha?locale=en-US", "/a/x/es/ficha?locale=fr-FR")).toBe(false);
+    expect(isOperationPage("/a/x/es/ficha?locale=en-US", "/a/x/es/ficha")).toBe(false);
+    expect(isOperationPage("/a/x/es/keywords", "/a/x/es/keywords?k=12")).toBe(true);
+    expect(isOperationPage("/a/x/es/ficha", "/a/x/us/ficha")).toBe(false);
+  });
+
+  it("tells whether an operation is kept under a key", async () => {
+    expect(hasOperation("test:3")).toBe(false);
+    startOperation("test:3", { label: "Adaptando", doneLabel: "Listo", steps: [] }, async () => ({}));
+    expect(hasOperation("test:3")).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    clearOperation("test:3");
+    expect(hasOperation("test:3")).toBe(false);
   });
 });

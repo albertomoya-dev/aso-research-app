@@ -31,8 +31,8 @@ export function OfficialStatsCard({ appId, stats, tracked }: { appId: number; st
           <h2 className="text-card-title font-semibold">Términos de búsqueda reales</h2>
           <span className="rounded-md border border-line-strong px-2 py-0.5 text-xs font-semibold text-ink-soft">Dato oficial · Play Console</span>
         </div>
-        <p className="mt-1 flex flex-wrap items-center gap-1 text-[13px] text-muted">
-          Importa el CSV de Play Console: visitantes e instalaciones reales por término de búsqueda.
+        <p className="mt-1 flex items-center gap-1 text-[13px] text-muted">
+          Visitantes e instalaciones reales del CSV de Play Console.
           <HelpTip label="CSV de Play Console">
             Es la única cifra oficial; la popularidad de la tabla es una estimación del autocompletado. Sirve el informe mensual de Cloud Storage
             (store_performance_…_traffic_source.csv, en UTF-16) y la descarga de la pantalla de términos de búsqueda, con cabeceras en español o en inglés.

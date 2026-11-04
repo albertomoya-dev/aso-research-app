@@ -56,6 +56,7 @@ export function ReviewReplyForm({ appId, reviewId, currentReply, aiEnabled, writ
             <input type="hidden" name="confirm" value="yes" />
             <ConfirmButton
               message={`¿Publicar esta respuesta en Google Play? Será pública${currentReply ? " y sustituirá a la actual" : ""}.`}
+              confirmLabel={currentReply ? "Sustituir respuesta" : "Publicar respuesta"}
               disabled={sending || !text.trim() || over}
               aria-busy={sending}
               className={buttonSecondary}

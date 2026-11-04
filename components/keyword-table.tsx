@@ -3,7 +3,7 @@
 import { ListFilter, SearchX } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { loadKeywordPanelAction } from "@/app/keyword-actions";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn, FacetFilter, FacetOptions, TableSearch, useTableView, ViewOptions } from "@/components/ui/data-table";
@@ -95,15 +95,42 @@ export function KeywordTable({
     else next.set("k", String(id));
     return next.size ? `${pathname}?${next}` : pathname;
   };
+  // Loaded on every opening, also of the keyword shown last: what was saved in the table since then
+  // (its relevance, say) must show. While it loads, the panel keeps the copy it had for that keyword.
+  const skipFirstLoad = useRef(k != null);
   useEffect(() => {
-    if (k == null || panel.id === k) return;
+    if (k == null) return;
+    if (skipFirstLoad.current) {
+      skipFirstLoad.current = false;
+      return;
+    }
+    let live = true;
     startLoading(async () => {
       const data = await loadKeywordPanelAction(appId, k);
-      setPanel({ id: k, data });
+      if (live) setPanel({ id: k, data });
     });
-  }, [k, panel.id, appId]);
-  const open = (id: number) => window.history.pushState(null, "", urlWith(id));
-  const close = () => window.history.replaceState(null, "", urlWith(null));
+    return () => {
+      live = false;
+    };
+  }, [k, appId]);
+  const patchPanel = (patch: Partial<KeywordPanelData>) =>
+    setPanel((p) => (p.data && p.data.id === k ? { ...p, data: { ...p.data, ...patch } } : p));
+  // This tab added the `?k=` entry (a row was opened here): closing goes back, so Back does not reopen it.
+  // Loaded with `?k=` (a shared link), closing replaces the entry instead.
+  const pushed = useRef(false);
+  useEffect(() => {
+    if (k == null) pushed.current = false;
+  }, [k]);
+  const open = (id: number) => {
+    pushed.current = true;
+    window.history.pushState(null, "", urlWith(id));
+  };
+  const close = () => {
+    if (pushed.current) {
+      pushed.current = false;
+      window.history.back();
+    } else window.history.replaceState(null, "", urlWith(null));
+  };
 
   const facets = useMemo(() => keywordFacets<KeywordRow>(lang), [lang]);
   const filtered = useMemo(() => applyFilters(rows, facets, facetSel, { text: q, of: (r) => r.term }), [rows, facets, facetSel, q]);
@@ -433,7 +460,7 @@ export function KeywordTable({
       </Sheet>
 
       <KeywordSelectionBar appId={appId} rows={picked} aiEnabled={aiEnabled} fileName={fileName} onClear={() => setSelected(new Set())} />
-      <KeywordDetailSheet appId={appId} keywordId={k} loaded={panel.id === k} data={panel.id === k ? panel.data : null} basePath={basePath} onClose={close} />
+      <KeywordDetailSheet appId={appId} keywordId={k} loaded={panel.id === k} data={panel.id === k ? panel.data : null} basePath={basePath} onClose={close} onPatch={patchPanel} />
     </>
   );
 }

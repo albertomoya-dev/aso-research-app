@@ -151,7 +151,7 @@ const td = "px-3 first:pl-4 last:pr-4";
 function MarketTable({ markets }: { markets: HomeMarket[] }) {
   return (
     <div className="hidden overflow-hidden rounded-card border border-line bg-surface sm:block">
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full text-table" aria-labelledby="markets-title">
           <thead className="bg-surface-muted">
             <tr className="border-b border-line text-left">
@@ -335,15 +335,18 @@ async function TodayList() {
   return (
     <ol className="flex flex-col" data-testid="today-tasks">
       {tasks.map((t) => (
-        <li key={t.key} className="flex flex-col gap-2 border-b border-line px-4 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <li key={t.key} data-severity={t.severity} className="flex flex-col gap-2 border-b border-line px-4 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:px-5">
           <div className="flex min-w-0 items-start gap-2.5">
             <StatusDot status={t.severity === "info" ? "unknown" : t.severity} label={<span className="sr-only">{t.severity === "bad" ? "Necesita atención" : "Mejorable"}</span>} className="mt-1" />
-            <p className="min-w-0 text-[13px]">
-              <span className="font-medium text-ink">
+            {/* The app on one line, the task on at most two (the whole text in `title`; the button opens the detail). */}
+            <div className="min-w-0 text-[13px]">
+              <p className="truncate font-medium text-ink">
                 {t.market.title} · {t.market.country.toUpperCase()}
-              </span>
-              <span className="text-ink-soft"> · {t.text}</span>
-            </p>
+              </p>
+              <p className="line-clamp-2 text-ink-soft" title={t.text}>
+                {t.text}
+              </p>
+            </div>
           </div>
           <Link href={t.href} className={buttonVariants({ variant: "secondary", size: "sm" })}>
             {t.action}
@@ -378,7 +381,7 @@ function HomeEmpty() {
             type="search"
             name="q"
             required
-            placeholder="Busca tu app por nombre o paquete"
+            placeholder="Nombre, paquete o enlace de la tienda"
             className="min-h-12 flex-1 rounded-control border border-line-strong bg-surface px-4 text-body text-ink placeholder:text-muted focus:border-brand focus:outline-2 focus:outline-brand/40"
           />
           <button type="submit" className={buttonVariants({ variant: "primary", size: "lg" })}>

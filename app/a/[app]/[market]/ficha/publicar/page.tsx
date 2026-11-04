@@ -48,8 +48,7 @@ export default async function PublishPage({ params, searchParams }: Props) {
         / Publicar
       </nav>
       <PageHeader title={`${verb} ${storeName}`}>
-        Envía el borrador guardado de {targetLabel(target)} a {storeName}. Antes de nada verás, campo a campo, lo que hay ahora en la consola y lo
-        que se enviará; no se cambia nada hasta que lo confirmes.
+        El borrador de {targetLabel(target)}, campo a campo frente a la consola. Nada cambia hasta que confirmes.
       </PageHeader>
       {app.store === "android" ? (
         <PlayPublish app={app} target={target} editorHref={editorHref} />
@@ -76,6 +75,15 @@ function SetupPlay({ error }: { error: string | null }) {
     <Card aria-label="Conectar Google Play Console" className="flex flex-col gap-2 px-5 py-4 text-sm text-ink-soft">
       <h2 className="text-[15px] font-semibold text-ink">Conecta Google Play Console</h2>
       {error && <ErrorNote>{error}</ErrorNote>}
+      <p>
+        Hace falta una cuenta de servicio. Pruébala en{" "}
+        <Link href="/integraciones" className="text-link underline">
+          Integraciones
+        </Link>
+        .
+      </p>
+      <details>
+        <summary className="inline-flex min-h-11 cursor-pointer items-center text-ink md:min-h-8">Cómo conectarla</summary>
       <ol className="flex list-decimal flex-col gap-1 pl-5">
         <li>En Google Cloud, activa la «Google Play Android Developer API» y crea una cuenta de servicio con una clave JSON.</li>
         <li>En Play Console › Usuarios y permisos, invita el correo de la cuenta de servicio con acceso a esta app (editar la ficha y responder reseñas).</li>
@@ -84,9 +92,8 @@ function SetupPlay({ error }: { error: string | null }) {
           Para poder publicar, añade también <code className="font-mono">GOOGLE_PLAY_ALLOW_WRITE=1</code>; sin ella la conexión es de solo lectura.
         </li>
       </ol>
-      <p className="text-[13px] text-muted">
-        Los pasos detallados están en el README, sección «Google Play Console». En <Link href="/integraciones" className="text-link underline">Integraciones</Link> puedes probar la conexión.
-      </p>
+        <p className="mt-2 text-[13px] text-muted">Los pasos detallados están en el README, sección «Google Play Console».</p>
+      </details>
     </Card>
   );
 }

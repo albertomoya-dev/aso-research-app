@@ -55,8 +55,9 @@ export function CaptureFields({ studio, upload, slide }: { studio: Studio; uploa
           {mode === "crop" && (
             <div className="flex flex-col gap-2">
               <CropEditor src={slide.image} crop={slide.crop} onChange={(crop) => updateSlide(slide.id, { asIs: false, crop })} />
-              <p className="text-xs text-muted">
-                Solo la zona marcada se usa como pantalla de la app dentro del marco de la plantilla. Arrastra sobre la imagen para ajustarla.
+              <p className="flex items-center gap-1 text-xs text-muted">
+                Arrastra sobre la imagen para marcar la pantalla.
+                <HelpTip label="Recorte">Solo la zona marcada se usa como pantalla de la app, dentro del marco de la plantilla.</HelpTip>
               </p>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => redetect(slide)} className={buttonSecondary}>
@@ -71,15 +72,18 @@ export function CaptureFields({ studio, upload, slide }: { studio: Studio; uploa
             </div>
           )}
           {mode === "raw" && storeImages.includes(slide.image) && (
-            <p className="text-xs text-warn-fg">
-              Esta captura viene de la tienda y ya lleva su propio texto y su propio móvil, así que dentro del marco se verá un móvil sobre otro.
-              Elige «Recortar la pantalla de un montaje» para usar solo la pantalla de la app.
+            <p className="flex items-center gap-1 text-xs text-warn-fg">
+              Se verá un móvil dentro de otro.
+              <HelpTip label="Captura de la tienda">
+                Esta captura viene de la tienda y ya lleva su propio texto y su propio móvil. Elige «Recortar la pantalla de un montaje» para usar solo la
+                pantalla de la app.
+              </HelpTip>
             </p>
           )}
           {mode === "asis" && (
-            <p className="text-xs text-muted">
-              La imagen se muestra entera, sin marco, texto, fondo ni plantilla. Para que la plantilla se aplique, elige «Recortar la pantalla de un
-              montaje».
+            <p className="flex items-center gap-1 text-xs text-muted">
+              Entera, sin marco, texto ni plantilla.
+              <HelpTip label="Tal cual">La imagen se muestra entera, sin marco, texto, fondo ni plantilla. Para que la plantilla se aplique, elige «Recortar la pantalla de un montaje».</HelpTip>
             </p>
           )}
         </div>

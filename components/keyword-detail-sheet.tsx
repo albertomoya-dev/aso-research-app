@@ -35,6 +35,7 @@ export function KeywordDetailSheet({
   data,
   basePath,
   onClose,
+  onPatch,
 }: {
   /** The data for `keywordId` has arrived (it may be null: the keyword is not followed any more). */
   loaded: boolean;
@@ -46,6 +47,8 @@ export function KeywordDetailSheet({
   /** `/a/[app]/[market]`, for the links. */
   basePath: string;
   onClose: () => void;
+  /** A value saved from the panel (relevance, intent), so the panel's copy of the data does not go stale. */
+  onPatch?: (patch: Partial<KeywordPanelData>) => void;
 }) {
   const { remove, pending } = useRemoveKeywords(appId);
   const ready = loaded && data != null && data.id === keywordId;
@@ -69,14 +72,28 @@ export function KeywordDetailSheet({
             <Skeleton className="h-40 w-full" />
           </>
         ) : (
-          <PanelBody data={data} appId={appId} basePath={basePath} removing={pending} onRemove={() => remove([data.id], onClose)} />
+          <PanelBody data={data} appId={appId} basePath={basePath} onPatch={onPatch} removing={pending} onRemove={() => remove([data.id], onClose)} />
         )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function PanelBody({ data, appId, basePath, removing, onRemove }: { data: KeywordPanelData; appId: number; basePath: string; removing: boolean; onRemove: () => void }) {
+function PanelBody({
+  data,
+  appId,
+  basePath,
+  removing,
+  onRemove,
+  onPatch,
+}: {
+  data: KeywordPanelData;
+  appId: number;
+  basePath: string;
+  removing: boolean;
+  onRemove: () => void;
+  onPatch?: (patch: Partial<KeywordPanelData>) => void;
+}) {
   const reachable = rankStatus(data.position) === "within-reach";
   const markers = data.annotations.map(({ date, index }) => ({ date, index }));
   const hasHistory = data.series.some((p) => p.position != null);
@@ -138,9 +155,18 @@ function PanelBody({ data, appId, basePath, removing, onRemove }: { data: Keywor
       <section aria-label="Relevancia e intención" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <h3 className="text-label font-medium text-ink-soft">Relevancia</h3>
-          <RelevanceSelect appId={appId} keywordId={data.id} term={data.term} value={data.relevance} source={data.relevanceSource} reason={null} />
+          <RelevanceSelect
+            appId={appId}
+            keywordId={data.id}
+            term={data.term}
+            value={data.relevance}
+            source={data.relevanceSource}
+            reason={null}
+            // Rating 3 or more also marks the intent as «own» (setKeywordRelevance).
+            onSaved={(relevance) => onPatch?.({ relevance, relevanceSource: "user", ...(relevance >= 3 ? { intent: "own" as const } : {}) })}
+          />
         </div>
-        <IntentSelect appId={appId} keywordId={data.id} term={data.term} value={data.intent} />
+        <IntentSelect appId={appId} keywordId={data.id} term={data.term} value={data.intent} onSaved={(intent) => onPatch?.({ intent })} />
       </section>
 
       <section aria-label="Dónde aparece en tu ficha" className="flex flex-col gap-1.5">
@@ -226,7 +252,19 @@ const INTENTS = [
   { value: "foreign", label: "Buscan otro tipo de app" },
 ] as const;
 
-function IntentSelect({ appId, keywordId, term, value }: { appId: number; keywordId: number; term: string; value: "own" | "foreign" | null }) {
+function IntentSelect({
+  appId,
+  keywordId,
+  term,
+  value,
+  onSaved,
+}: {
+  appId: number;
+  keywordId: number;
+  term: string;
+  value: "own" | "foreign" | null;
+  onSaved?: (value: "own" | "foreign") => void;
+}) {
   const [pending, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic(value);
   return (
@@ -242,6 +280,7 @@ function IntentSelect({ appId, keywordId, term, value }: { appId: number; keywor
             setShown(next);
             const result = await setKeywordIntent(appId, keywordId, next);
             if (result.error) toast.error(result.error);
+            else onSaved?.(next);
           });
         }}
         className="min-h-11 rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink focus:border-brand focus:outline-2 focus:outline-brand/50 md:min-h-8"

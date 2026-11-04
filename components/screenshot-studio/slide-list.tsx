@@ -43,7 +43,7 @@ export function SlideList({ studio, previews }: { studio: Studio; previews: Prev
       <h2 id="slides-title" className="text-label font-medium text-ink-soft">
         Pantallas <span className="font-mono text-muted">{count}/{MAX_SLIDES}</span>
       </h2>
-      <ol className="flex gap-3 overflow-x-auto pb-1 xl:flex-col xl:overflow-x-visible xl:pb-0" aria-describedby="slides-help">
+      <ol className="relative flex gap-3 overflow-x-auto pb-1 xl:flex-col xl:overflow-x-visible xl:pb-0" aria-describedby="slides-help">
         {spec.slides.map((sl, i) => (
           <li
             key={sl.id}

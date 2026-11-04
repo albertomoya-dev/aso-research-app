@@ -68,26 +68,36 @@ async function nextSort(productId: number) {
   return (row?.sort ?? -1) + 1;
 }
 
-export async function addFeature(formData: FormData) {
+/** What a sheet form gets back: an error to show, or nothing when it was saved. */
+export type SheetItemResult = { error?: string };
+
+/** The first message of a failed parse (the schemas carry the Spanish ones). */
+const firstIssue = (error: z.ZodError, fallback: string) => error.issues[0]?.message || fallback;
+
+export async function addFeature(formData: FormData): Promise<SheetItemResult> {
   const owner = await sheetOwner(formData);
   const parsed = featureFromForm(formData);
-  if (!parsed.success || !owner) return;
+  if (!parsed.success) return { error: firstIssue(parsed.error, "Revisa los campos de la función.") };
+  if (!owner) return { error: "App no encontrada." };
   await getDb()
     .insert(schema.productFeatures)
     .values({ productId: owner.productId, ...parsed.data, sort: await nextSort(owner.productId) });
   await refresh(owner);
+  return {};
 }
 
-export async function updateFeature(formData: FormData) {
+export async function updateFeature(formData: FormData): Promise<SheetItemResult> {
   const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("featureId"));
   const parsed = featureFromForm(formData);
-  if (!parsed.success || !owner) return;
+  if (!parsed.success) return { error: firstIssue(parsed.error, "Revisa los campos de la función.") };
+  if (!owner) return { error: "App no encontrada." };
   await getDb()
     .update(schema.productFeatures)
     .set(parsed.data)
     .where(and(eq(schema.productFeatures.id, id), eq(schema.productFeatures.productId, owner.productId)));
   await refresh(owner);
+  return {};
 }
 
 export async function deleteFeature(formData: FormData) {
@@ -108,26 +118,30 @@ function releaseFromForm(formData: FormData) {
   });
 }
 
-export async function addRelease(formData: FormData) {
+export async function addRelease(formData: FormData): Promise<SheetItemResult> {
   const owner = await sheetOwner(formData);
   const parsed = releaseFromForm(formData);
-  if (!parsed.success || !owner) return;
+  if (!parsed.success) return { error: firstIssue(parsed.error, "Revisa los campos de la versión.") };
+  if (!owner) return { error: "App no encontrada." };
   await getDb()
     .insert(schema.productReleases)
     .values({ productId: owner.productId, ...parsed.data });
   await refresh(owner);
+  return {};
 }
 
-export async function updateRelease(formData: FormData) {
+export async function updateRelease(formData: FormData): Promise<SheetItemResult> {
   const owner = await sheetOwner(formData);
   const id = idSchema.parse(formData.get("releaseId"));
   const parsed = releaseFromForm(formData);
-  if (!parsed.success || !owner) return;
+  if (!parsed.success) return { error: firstIssue(parsed.error, "Revisa los campos de la versión.") };
+  if (!owner) return { error: "App no encontrada." };
   await getDb()
     .update(schema.productReleases)
     .set(parsed.data)
     .where(and(eq(schema.productReleases.id, id), eq(schema.productReleases.productId, owner.productId)));
   await refresh(owner);
+  return {};
 }
 
 export async function deleteRelease(formData: FormData) {

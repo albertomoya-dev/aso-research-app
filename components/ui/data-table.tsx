@@ -160,7 +160,16 @@ export function DataTable<Row>({
                   return (
                     <tr
                       key={rowKey(row)}
-                      onClick={onRowClick ? (e) => !interactive(e.target) && onRowClick(row) : undefined}
+                      onClick={
+                        onRowClick
+                          ? (e) => {
+                              // React bubbles events through portals: a click in a dialog opened from the row
+                              // (the «Vigilar» confirmation) is not a click on the row.
+                              if (!e.currentTarget.contains(e.target as Node) || interactive(e.target)) return;
+                              onRowClick(row);
+                            }
+                          : undefined
+                      }
                       className={cn(
                         ROW_HEIGHT[density],
                         "group",
@@ -346,8 +355,14 @@ export function useTableView(key: string, known: readonly string[], fallback: Ta
   const [view, setView] = useState<TableView>(fallback);
   useEffect(() => {
     // Read once after mounting: localStorage does not exist on the server.
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(key);
+    } catch {
+      // Storage blocked (privacy settings): keep the default view.
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(parseTableView(window.localStorage.getItem(key), known, fallback, always));
+    setView(parseTableView(saved, known, fallback, always));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const update = (next: TableView) => {

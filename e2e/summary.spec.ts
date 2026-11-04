@@ -39,6 +39,11 @@ test("Inicio: KPIs, una fila por mercado que abre su Resumen y «Qué hacer hoy�
   // The task list (or its «nada urgente» line) streams in after the health of every market.
   await expect(page.getByTestId("today-tasks").or(page.getByText("Nada urgente hoy."))).toBeVisible({ timeout: 60_000 });
   test.info().annotations.push({ type: "timing", description: `Inicio completo (con salud y tareas) en ${Date.now() - started} ms con ${apps.length} mercados` });
+  // Most serious first: every «necesita atención» before any «mejorable», and those before the rest.
+  const severities = await page.getByTestId("today-tasks").locator("li[data-severity]").evaluateAll((els) => els.map((el) => el.getAttribute("data-severity")!));
+  const rank = { bad: 0, warn: 1, info: 2 } as Record<string, number>;
+  expect(severities.map((s) => rank[s])).toEqual(severities.map((s) => rank[s]).sort((a, b) => a - b));
+  test.info().annotations.push({ type: "tasks", description: severities.join(", ") || "sin tareas" });
 
   // Rows go by app name, then country; each one links to a followed market's Resumen.
   const link = rows.first().getByRole("link");
@@ -50,13 +55,20 @@ test("Inicio: KPIs, una fila por mercado que abre su Resumen y «Qué hacer hoy�
 });
 
 test("Inicio: tiempo de servidor de la primera respuesta", async ({ request }) => {
-  // Warm-up, then the measured request: the full HTML, streamed sections included.
+  // Warm-up, then the measured requests: the full HTML, streamed sections included. The best of three
+  // absorbs one slow round trip to the database; under 1,5 s it is.
   await request.get("/");
-  const started = Date.now();
-  const response = await request.get("/");
-  const ms = Date.now() - started;
-  expect(response.status()).toBe(200);
-  test.info().annotations.push({ type: "timing", description: `GET / (HTML completo) en ${ms} ms` });
+  const times: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    const started = Date.now();
+    const response = await request.get("/");
+    await response.body();
+    times.push(Date.now() - started);
+    expect(response.status()).toBe(200);
+  }
+  const best = Math.min(...times);
+  test.info().annotations.push({ type: "timing", description: `GET / (HTML completo) en ${times.join(" / ")} ms` });
+  expect(best, `GET / en ${times.join(" / ")} ms`).toBeLessThan(1500);
 });
 
 test("Inicio en el móvil: tarjetas en lugar de la tabla", async ({ page, apps }) => {

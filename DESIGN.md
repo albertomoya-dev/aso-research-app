@@ -137,7 +137,7 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 - **Objetivos táctiles de 44 px** en móvil (`min-h-11`). Se compactan a 32 px desde `md`.
 - **El `body` nunca hace scroll horizontal.** Las tablas anchas hacen scroll dentro de su contenedor, y en móvil pasan a tarjetas (`card` de `DataTable`). `npm run test:e2e` lo comprueba en todas las rutas a 390 y 1440 px.
 - **Scroll vertical:** desde `sm` hace scroll `<main>` (la barra lateral y la cabecera quedan quietas). En el móvil hace scroll el documento, con la cabecera de la app `sticky`, para que el navegador pueda recoger su barra de direcciones. Nada debe depender de que `<main>` sea el contenedor de scroll por debajo de `sm`.
-- **Contraste AA** en los dos temas. `/dev/ui` y todas las rutas se comprueban con axe en `npm run test:e2e`: los fallos graves y críticos rompen la prueba.
+- **Contraste AA** en los dos temas. `/dev/ui` y todas las rutas (de cada mercado) se comprueban con axe en `npm run test:e2e`: cualquier fallo de WCAG 2.1 A o AA rompe la prueba, sea cual sea su gravedad.
 - **Enlaces dentro de un texto, siempre subrayados** (`text-link underline`); `hover:underline` solo para enlaces sueltos (axe `link-in-text-block`).
 - Foco visible siempre (`outline` de 2 px en `brand`).
 

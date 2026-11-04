@@ -6,6 +6,8 @@ import { deleteGeneratedImage, generateLogoImages, generateLogoPrompts, type Log
 import { downloadBlob, slug } from "@/lib/assets/download";
 import { loadImage } from "@/lib/assets/screenshot-render";
 import { buttonPrimary, buttonSecondary, Card, inputClass } from "./ui";
+import { Button } from "./ui/button";
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { EmptyState } from "./ui/empty-state";
 
 /** `createdDay` comes formatted from the server so the date reads the same on both sides of hydration. */
@@ -108,16 +110,7 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
                     <button type="button" onClick={() => setPrompt(image.prompt)} className={buttonSecondary}>
                       Reusar prompt
                     </button>
-                    <button
-                      type="button"
-                      disabled={deleting}
-                      onClick={() => {
-                        if (window.confirm("¿Borrar esta imagen?")) startDeleting(() => deleteGeneratedImage(appId, image.id));
-                      }}
-                      className="text-xs text-danger hover:underline"
-                    >
-                      Borrar
-                    </button>
+                    <DeleteImageButton disabled={deleting} onConfirm={() => startDeleting(() => deleteGeneratedImage(appId, image.id))} />
                   </div>
                 </li>
               ))}
@@ -163,8 +156,7 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
             <p className="mt-1 text-xs text-muted">Con {providerLabel}. Cada imagen tarda entre 10 y 40 segundos y tiene coste en tu cuenta del proveedor.</p>
           ) : (
             <p className="mt-1 text-xs text-warn-fg">
-              Falta un proveedor de imágenes: añade <code className="font-mono">OPENAI_API_KEY</code> o <code className="font-mono">GEMINI_API_KEY</code> y vuelve a
-              desplegar.
+              Falta <code className="font-mono">OPENAI_API_KEY</code> o <code className="font-mono">GEMINI_API_KEY</code>.
             </p>
           )}
           <label className="mt-3 flex flex-col gap-1.5 text-[13px] font-medium text-ink-soft">
@@ -190,5 +182,38 @@ export function LogoStudio({ appId, appTitle, images, providerLabel, aiEnabled }
         </Card>
       </div>
     </div>
+  );
+}
+
+/** «Borrar» of a generated image, after a confirmation dialog (DESIGN.md: never `window.confirm`). */
+function DeleteImageButton({ disabled, onConfirm }: { disabled: boolean; onConfirm: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button type="button" disabled={disabled} className="text-xs text-danger hover:underline">
+          Borrar
+        </button>
+      </DialogTrigger>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>¿Borrar esta imagen?</DialogTitle>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary">Cancelar</Button>
+          </DialogClose>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setOpen(false);
+              onConfirm();
+            }}
+          >
+            Borrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

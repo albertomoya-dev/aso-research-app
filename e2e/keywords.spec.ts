@@ -65,27 +65,91 @@ test("a 390 px la tabla pasa a tarjetas, con los filtros en una hoja inferior y 
   expect(overflow.scrollWidth, overflow.widest ?? "").toBeLessThanOrEqual(overflow.innerWidth);
 });
 
-test("Encontrar: lo descartado no vuelve tras recargar", async ({ page, apps }) => {
-  const app = apps[0];
+// Every kind of candidate waiting in the tray: review words, autocomplete and TOP 10 terms kept in
+// keyword_candidates, and an AI idea (ai_suggestions). Test rows, deleted at the end.
+const DISMISS_CASES = [
+  { source: "reviews", table: "keyword_candidates" },
+  { source: "autocomplete", table: "keyword_candidates" },
+  { source: "top10", table: "keyword_candidates" },
+  { source: "ai", table: "ai_suggestions" },
+] as const;
+
+for (const { source, table } of DISMISS_CASES) {
+  test(`Encontrar: lo descartado (${source}) no vuelve tras recargar`, async ({ page, apps }) => {
+    const app = apps[0];
+    const sql = neon(process.env.E2E_RESOLVED_DATABASE_URL!);
+    const term = `e2e descartar ${source} ${Date.now()}`;
+    if (table === "ai_suggestions") {
+      await sql`insert into ai_suggestions (app_id, term, language, intent, relevance, estimated_competition, reason, model, prompt_version)
+        values (${app.id}, ${term}, 'es', 'own', 4, 'media', 'Prueba e2e', 'e2e', 'e2e')`;
+    } else {
+      await sql`insert into keyword_candidates (app_id, term, source, reason) values (${app.id}, ${term}, ${source}, 'Prueba e2e')`;
+    }
+    try {
+      await open(page, `${market(app)}/encontrar?fuente=pendientes`);
+      const list = page.getByRole("region", { name: "Candidatas pendientes" });
+      const box = list.getByRole("checkbox", { name: new RegExp(term) });
+      await expect(box).toBeVisible();
+      if (source === "reviews") await expect(list.getByText("Reseñas").first()).toBeVisible();
+      await box.check();
+      await list.getByRole("button", { name: /^Descartar 1$/ }).click();
+      await expect(box).toBeHidden();
+      await open(page, `${market(app)}/encontrar?fuente=pendientes`);
+      await expect(page.getByText(term)).toHaveCount(0);
+      const rows = (table === "ai_suggestions"
+        ? await sql`select status from ai_suggestions where app_id = ${app.id} and term = ${term}`
+        : await sql`select status from keyword_candidates where app_id = ${app.id} and term = ${term}`) as { status: string }[];
+      expect(rows.map((r) => r.status)).toContain("dismissed");
+      // An AI idea is also dismissed in its own source.
+      if (source === "ai") {
+        await open(page, `${market(app)}/encontrar?fuente=ia`);
+        await expect(page.getByText(term)).toHaveCount(0);
+      }
+    } finally {
+      await sql`delete from keyword_candidates where app_id = ${app.id} and term = ${term}`;
+      await sql`delete from ai_suggestions where app_id = ${app.id} and term = ${term}`;
+    }
+  });
+}
+
+// The panel keeps a copy of the keyword's data: what is saved in it shows when it is opened again.
+test("panel: la relevancia y la intención guardadas se ven al volver a abrirlo", async ({ page, apps }) => {
+  const app = withKeywords(apps);
   const sql = neon(process.env.E2E_RESOLVED_DATABASE_URL!);
-  const term = `e2e descartar ${Date.now()}`;
-  // A review word waiting in the tray, as the analysis of the reviews leaves it.
-  await sql`insert into keyword_candidates (app_id, term, source, reason) values (${app.id}, ${term}, 'reviews', 'Aparece en las reseñas')`;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, `${market(app)}/keywords`);
+  // The first row shown, whatever the default filters leave.
+  const link = page.getByRole("table", { name: "Keywords" }).getByRole("link").first();
+  const term = (await link.textContent())!.trim();
+  const keywordId = Number(new URL((await link.getAttribute("href"))!, "http://x").searchParams.get("k"));
+  const [before] = (await sql`select relevance, relevance_source, relevance_checked_at, intent from app_keywords
+    where app_id = ${app.id} and keyword_id = ${keywordId}`) as { relevance: number | null; relevance_source: string | null; relevance_checked_at: string | null; intent: string | null }[];
   try {
-    await open(page, `${market(app)}/encontrar?fuente=pendientes`);
-    const list = page.getByRole("region", { name: "Candidatas pendientes" });
-    const box = list.getByRole("checkbox", { name: new RegExp(term) });
-    await expect(box).toBeVisible();
-    await expect(list.getByText("Reseñas").first()).toBeVisible();
-    await box.check();
-    await list.getByRole("button", { name: /^Descartar 1$/ }).click();
-    await expect(box).toBeHidden();
-    await open(page, `${market(app)}/encontrar?fuente=pendientes`);
-    await expect(page.getByText(term)).toHaveCount(0);
-    const [row] = (await sql`select status from keyword_candidates where app_id = ${app.id} and term = ${term}`) as { status: string }[];
-    expect(row.status).toBe("dismissed");
+    const openPanel = async () => {
+      await page.getByRole("table", { name: "Keywords" }).getByRole("link", { name: term, exact: true }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      return page.getByRole("dialog");
+    };
+    let panel = await openPanel();
+    const relevance = before.relevance === 5 ? "4" : "5";
+    const intent = before.intent === "foreign" ? "own" : "foreign";
+    await panel.getByRole("combobox", { name: `Relevancia de ${term}` }).selectOption(relevance);
+    await expect(panel.getByRole("combobox", { name: `Relevancia de ${term}` })).toBeEnabled();
+    await panel.getByRole("combobox", { name: `Intención de ${term}` }).selectOption(intent);
+    await expect(panel.getByRole("combobox", { name: `Intención de ${term}` })).toBeEnabled();
+    await expect(panel.getByRole("combobox", { name: `Relevancia de ${term}` })).toHaveValue(relevance);
+    await expect(panel.getByRole("combobox", { name: `Intención de ${term}` })).toHaveValue(intent);
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    // Opened from the table, closing goes back in the history: the URL loses ?k=.
+    await expect(page).not.toHaveURL(/[?&]k=/);
+    panel = await openPanel();
+    await expect(panel.getByRole("combobox", { name: `Relevancia de ${term}` })).toHaveValue(relevance);
+    await expect(panel.getByRole("combobox", { name: `Intención de ${term}` })).toHaveValue(intent);
   } finally {
-    await sql`delete from keyword_candidates where app_id = ${app.id} and term = ${term}`;
+    await sql`update app_keywords set relevance = ${before.relevance}, relevance_source = ${before.relevance_source},
+      relevance_checked_at = ${before.relevance_checked_at}, intent = ${before.intent}
+      where app_id = ${app.id} and keyword_id = ${keywordId}`;
   }
 });
 

@@ -89,7 +89,8 @@ export function findPath(market: MarketRef, page: keyof typeof FIND_PAGE_SOURCES
 
 /**
  * Where an old URL `/apps/[id]/[...rest]` lives now, or null when it never existed (→ 404).
- * `/apps/[id]` goes to the keywords of the market, the old «Producto» tab to the app settings and
+ * `/apps/[id]` goes to the keywords of the market, `/apps/[id]/keywords/[kid]` to that keyword's
+ * panel (`/keywords?k=[kid]`), the old «Producto» tab to the app settings and
  * «Creativos» to the app (no country). `search` («?…» or "") is kept.
  */
 export function legacyAppRedirect(market: MarketRef, rest: readonly string[] = [], search = ""): string | null {
@@ -105,6 +106,13 @@ export function legacyAppRedirect(market: MarketRef, rest: readonly string[] = [
   if (!target) return null;
   const allowed = MARKET_SUBPAGES[target] ?? ((r: string[]) => r.length === 0);
   if (!allowed(tail)) return null;
+  // A keyword's page is its panel over the table now (REDISENO_UX §8): `/keywords?k=[id]`. The
+  // `/keywords/[id]` page still exists for the links made since, but an old URL opens the panel.
+  if (target === "keywords" && tail.length === 1) {
+    const query = new URLSearchParams(search);
+    query.set("k", tail[0]);
+    return marketPath(market, `/keywords?${query}`);
+  }
   return marketPath(market, `/${[target, ...tail].join("/")}${search}`);
 }
 

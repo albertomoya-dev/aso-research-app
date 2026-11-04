@@ -59,6 +59,41 @@ test("Competidores: la cuota es una barra dentro de cada fila y la fila abre el 
   await expect(panel).toBeHidden();
 });
 
+// The «Dejar de vigilar» dialog is a portal inside the row: its clicks must not open the row's panel.
+// Cancelling changes nothing.
+test("Competidores: cancelar «Dejar de vigilar» no abre el panel de la fila", async ({ page, apps }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let found = false;
+  for (const app of apps) {
+    await open(page, `${market(app)}/competidores`);
+    const on = page.getByRole("table", { name: "Competidores" }).locator('[role=switch][aria-checked="true"]').first();
+    if ((await on.count()) === 0) continue;
+    found = true;
+    await on.click();
+    const confirm = page.getByRole("dialog", { name: /^¿Dejar de vigilar/ });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "Cancelar" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(on).toHaveAttribute("aria-checked", "true");
+    // On the phone the switch keeps its size but takes a 44 px touch target.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const card = page.getByRole("list", { name: "Competidores" }).locator('[role=switch][aria-checked="true"]').first();
+    // elementFromPoint only sees the viewport: bring the switch to the middle of the screen first.
+    await card.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    const size = await card.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const before = getComputedStyle(el, "::before");
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top - 8)?.closest("[role=switch]") === el;
+      return { width: r.width, height: r.height, target: parseFloat(before.width), hit };
+    });
+    expect(size.height, "el interruptor conserva su tamaño").toBeLessThan(30);
+    expect(size.target, "su zona táctil mide 44 px").toBeGreaterThanOrEqual(44);
+    expect(size.hit, "el «Vigilar» responde 8 px por encima de su borde").toBe(true);
+    break;
+  }
+  if (!found) test.info().annotations.push({ type: "note", description: "Ningún mercado vigila a un competidor: nada que comprobar." });
+});
+
 test("Tendencias: las filas sin datos van plegadas tras «Mostrar N sin datos»", async ({ page, apps }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   let folded = 0;

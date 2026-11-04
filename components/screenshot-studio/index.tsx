@@ -6,7 +6,8 @@ import { cn } from "@/lib/cn";
 import { CanvasView } from "./canvas-view";
 import { Inspector } from "./inspector";
 import { SlideList } from "./slide-list";
-import { staleMessage } from "./stale-message";
+import { HelpTip } from "../ui/help-tip";
+import { staleMessage, staleTitle } from "./stale-message";
 import { TemplateDialog } from "./template-dialog";
 import { Toolbar } from "./toolbar";
 import type { ScreenshotStudioProps } from "./types";
@@ -54,7 +55,10 @@ export function ScreenshotStudio(props: ScreenshotStudioProps) {
         </p>
       )}
       {stale.length > 0 && (
-        <p className="rounded-control bg-warn-bg px-4 py-3 text-sm text-warn-fg">{staleMessage(stale, props.published.version, props.publishedDate)}</p>
+        <p className="flex items-center gap-1 rounded-control bg-warn-bg px-4 py-3 text-sm text-warn-fg">
+          {staleTitle(stale)}
+          <HelpTip label="Capturas antiguas">{staleMessage(stale, props.published.version, props.publishedDate)}</HelpTip>
+        </p>
       )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[200px_minmax(0,1fr)_320px]">
         <div className="min-w-0 md:col-span-2 xl:col-span-1 xl:sticky xl:top-0 xl:max-h-[calc(100dvh-120px)] xl:self-start xl:overflow-y-auto">

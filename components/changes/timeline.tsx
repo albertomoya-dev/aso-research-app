@@ -83,7 +83,7 @@ function TimelineEntry({ appId, keywordsHref, note }: { appId: number; keywordsH
             </div>
             <h4 className="mt-1 font-semibold wrap-break-word text-ink">{a.label}</h4>
             {a.detail && a.detail.changes.length > 0 && (
-              <ul className="mt-1 flex flex-col gap-0.5 text-[13px] text-ink-soft">
+              <ul data-content className="mt-1 flex flex-col gap-0.5 text-[13px] text-ink-soft">
                 {a.detail.changes.map((c) => (
                   <li key={c.field} className="wrap-break-word">
                     {changeText(c)}
@@ -94,7 +94,7 @@ function TimelineEntry({ appId, keywordsHref, note }: { appId: number; keywordsH
           </div>
           <DeleteChangeButton appId={appId} annotationId={a.id} label={a.label} />
         </div>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-2 pb-3 text-[13px] text-ink-soft" data-impact>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-2 pb-3 text-[13px] text-ink-soft" data-impact data-content>
           {line.text ? (
             <>
               <span>{line.text}</span>
@@ -125,7 +125,7 @@ function TimelineEntry({ appId, keywordsHref, note }: { appId: number; keywordsH
 
 function ImpactTable({ rows, keywordsHref }: { rows: AnnotationWithImpact["rows"]; keywordsHref: string }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-140 text-[13px]">
         <thead>
           <tr className="text-left text-label text-muted">

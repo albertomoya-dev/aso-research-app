@@ -107,7 +107,7 @@ export default async function ProductPage({ params }: Props) {
           <details className="text-sm">
             <summary className="cursor-pointer font-medium text-ink-soft">Ver lo que lee la IA (ficha para la próxima versión)</summary>
             <p className="mt-2 text-[13px] text-muted">Va en cada petición, en inglés; los textos salen en el idioma de la tienda.</p>
-            <pre data-content className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2.5 font-mono text-xs text-ink-soft">
+            <pre data-content className="relative mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-surface-muted px-3 py-2.5 font-mono text-xs text-ink-soft">
               {preview}
             </pre>
           </details>

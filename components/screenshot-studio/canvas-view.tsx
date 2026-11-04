@@ -36,7 +36,7 @@ export function CanvasView({
   if (overview) {
     return (
       <section aria-label="Vista del set completo" className="min-w-0 rounded-card border border-line bg-surface p-4">
-        <ol className="flex gap-3 overflow-x-auto pb-2">
+        <ol className="relative flex gap-3 overflow-x-auto pb-2">
           {spec.slides.map((sl, i) => (
             <li key={sl.id} className="shrink-0">
               <button
@@ -98,7 +98,7 @@ export function CanvasView({
           </Button>
         </div>
       </div>
-      <div className="flex max-h-[calc(100dvh-300px)] min-h-80 overflow-auto rounded-control bg-bg p-4">
+      <div className="relative flex max-h-[calc(100dvh-300px)] min-h-80 overflow-auto rounded-control bg-bg p-4">
         {slide && (
           <canvas
             ref={previews.slideRef("main", slide.id, MAIN_WIDTH)}

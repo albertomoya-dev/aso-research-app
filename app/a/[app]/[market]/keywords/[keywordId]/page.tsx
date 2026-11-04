@@ -145,7 +145,7 @@ export default async function KeywordPage(props: Props) {
             <RankChart data={series} markers={notes.filter((n) => n.date >= since).map(({ date, index }) => ({ date, index }))} depth={depth} />
             <details className="mt-3 text-sm">
               <summary className="cursor-pointer text-muted">Ver los datos en tabla</summary>
-              <div className="mt-2 max-h-64 overflow-y-auto">
+              <div className="relative mt-2 max-h-64 overflow-y-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className="text-xs text-muted uppercase">
@@ -190,10 +190,13 @@ export default async function KeywordPage(props: Props) {
             {peak ? (
               <p className="mt-2 text-sm font-medium">Pico de interés en {peak}: prepara la ficha unas semanas antes.</p>
             ) : weakSignal ? (
-              <p className="mt-2 text-sm text-muted">Sin datos suficientes: Google tiene muy poca señal para esta búsqueda, así que no se puede hablar de temporadas.</p>
+              <p className="mt-2 text-sm text-muted">Sin datos suficientes: Google tiene muy poca señal para esta búsqueda.</p>
             ) : metrics.popularity != null && metrics.popularity < MIN_POPULARITY ? (
-              <p className="mt-2 text-sm text-muted">
-                La popularidad en la tienda es menor de {MIN_POPULARITY}: aunque Google muestre subidas, no compensa preparar la ficha para ellas.
+              <p className="mt-2 flex items-center gap-1 text-sm text-muted">
+                Se busca poco en la tienda.
+                <HelpTip label="Popularidad baja">
+                  La popularidad en la tienda es menor de {MIN_POPULARITY}: aunque Google muestre subidas, no compensa preparar la ficha para ellas.
+                </HelpTip>
               </p>
             ) : null}
             <div className="mt-3">
@@ -255,7 +258,7 @@ export default async function KeywordPage(props: Props) {
             <AnnotationForm appId={app.id} defaultDate={end} />
           </div>
           {notes.length > 0 && (
-            <div className="mt-5 overflow-x-auto">
+            <div className="relative mt-5 overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
                 <thead>
                   <tr className="text-left text-xs tracking-wider text-muted uppercase">

@@ -12,7 +12,7 @@ type Props = {
   fields: Record<string, string>;
   label: string;
   pendingLabel: string;
-  /** Text of the browser's confirmation dialog: what will change and where. */
+  /** The question of the confirmation dialog: what will change and where. */
   confirmMessage: string;
   /** Extra inputs inside the form (App Store Connect: promotional text and release notes). */
   children?: React.ReactNode;
@@ -31,7 +31,7 @@ export function PublishForm({ action, fields, label, pendingLabel, confirmMessag
       <input type="hidden" name="confirm" value="yes" />
       {children}
       <div className="flex flex-wrap items-center gap-3">
-        <ConfirmButton message={confirmMessage} disabled={pending || state?.ok} aria-busy={pending} className={secondary ? buttonSecondary : buttonPrimary}>
+        <ConfirmButton message={confirmMessage} confirmLabel={label} disabled={pending || state?.ok} aria-busy={pending} className={secondary ? buttonSecondary : buttonPrimary}>
           {pending ? pendingLabel : label}
         </ConfirmButton>
         <span aria-live="polite" className="text-[13px]">

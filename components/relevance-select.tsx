@@ -25,6 +25,7 @@ export function RelevanceSelect({
   source,
   reason,
   status,
+  onSaved,
 }: {
   appId: number;
   keywordId: number;
@@ -34,6 +35,8 @@ export function RelevanceSelect({
   reason: NoiseReason | null;
   /** Why it has no relevance yet (see RELEVANCE_PROGRESS_LABEL); only for unrated keywords. */
   status?: string;
+  /** Called once the value is stored, for a copy of the data kept outside the server props (the detail panel). */
+  onSaved?: (value: number) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic({ value, source });
@@ -47,7 +50,8 @@ export function RelevanceSelect({
           const next = Number(e.target.value);
           startTransition(async () => {
             setShown({ value: next, source: "user" });
-            await setKeywordRelevance(appId, keywordId, next);
+            const result = await setKeywordRelevance(appId, keywordId, next);
+            if (!result.error) onSaved?.(next);
           });
         }}
         className="min-h-11 w-[9.5rem] rounded-md border border-line-strong bg-surface px-2 text-[13px] text-ink focus:border-brand focus:outline-2 focus:outline-brand/50 md:min-h-8"

@@ -111,7 +111,7 @@ Antes de seguir una keyword, **Encontrar** da una popularidad **estimada** sin p
 
 ## Relevancia e higiene de keywords
 
-Una lista con cientos de keywords mezcla frases que de verdad traen usuarios con ruido: palabras vacías de las descripciones («además», «puedes», «etc», «com»), búsquedas donde la gente quiere otra cosa («tomas omitidas» da *Thomas y sus amigos*) y palabras sueltas demasiado amplias («móvil», «alarma»). Ese ruido infla la oportunidad, llena Novedades de avisos y mete apps como «Reloj» entre tus competidores.
+Una lista con cientos de keywords mezcla frases que de verdad traen usuarios con ruido: palabras vacías de las descripciones («además», «puedes», «etc», «com»), búsquedas donde la gente quiere otra cosa («tomas omitidas» da *Thomas y sus amigos*) y palabras sueltas demasiado amplias («móvil», «alarma»). Ese ruido infla la oportunidad, llena Actividad de avisos y mete apps como «Reloj» entre tus competidores.
 
 - **Palabras vacías** (`lib/stopwords.ts`): listas por idioma (es, en, pt, fr, de, it) de artículos, preposiciones, conectores, adverbios, verbos auxiliares y modales con sus formas habituales y restos web (com, www, etc). Además, palabras genéricas de cualquier descripción («datos», «configurar», «experiencia»): nunca son keyword solas, pero sí dentro de una frase («copia de datos», «el tiempo», «tiempo hoy»). Si la relevancia es 4 o más (o la has puesto tú a 3 o más), una palabra genérica deja de contar como vacía: «tiempo» es la keyword de una app del tiempo. *Keywords del TOP 10* ya no las propone.
 - **Relevancia para todas**: al añadir keywords, Claude valora de 1 a 5 cuánto encaja cada una con tu app, usando la ficha de producto (o la ficha publicada si no la hay), en lotes de 10 por petición, 4 a la vez. Cada lote se guarda en cuanto responde.
@@ -428,7 +428,7 @@ La distribución de estrellas y la media se calculan con las reseñas leídas, n
   - **«Oportunidades»:** el resto, posibles funciones futuras.
 - **Cómo se decide la coincidencia.** Es por palabras, sin IA. Hacen falta al menos 2 raíces significativas en común con el nombre de la función (confianza alta) o 3 con el nombre y el resumen (confianza media). Se ignoran palabras demasiado comunes («medicamento», «función», «app»…). Las coincidencias que propone la IA en el análisis salen como «Según la IA». Conviene revisarlas.
 
-## Estacionalidad y otros países
+## Tendencias
 
 La pantalla **Tendencias** (antes Estacionalidad) convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes, en cinco tramos de un solo tono: tokens `--heat-1…5`, con texto AA en los dos temas) y, arriba, muestra los **Próximos picos** en tarjetas: keyword, mes y «Empieza en N semanas» (o «En temporada ahora»), con los picos de los próximos tres meses (`nextSeasons`, como mucho 6). Los meses de pico van en negrita y subrayados, y las keywords sin datos (poca señal o aún sin descargar) se pliegan tras «Mostrar N sin datos».
 
@@ -438,13 +438,15 @@ La pantalla **Tendencias** (antes Estacionalidad) convierte los datos de Google 
 - **Pico sostenido.** Un mes es pico si su media supera en un 25 % la media del año **y** tiene al menos 3 semanas por encima de ese umbral. Además, tiene que destacar sobre el ruido semanal: su media debe superar la del año en al menos 3 errores estándar (la desviación de cada semana respecto a la media de su mes, dividida entre la raíz del número de semanas del mes). Una semana viral no es una temporada, y una serie plana con mucho ruido tampoco.
 - **Mes en curso.** El último mes descargado aún no ha terminado, así que no cuenta; si hay datos del mismo mes del año anterior, se usan esos, y si no, la casilla sale vacía.
 - **Popularidad mínima.** No se anuncia ningún pico si la popularidad en la tienda es menor de 10 (o aún no se ha medido): que la gente lo busque en Google no significa que lo busque en la tienda. Los «Próximos picos» solo incluyen además keywords relevantes.
-- **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
+- **Aviso en Actividad.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
+
+### Otros países: Ajustes › Mercados
 
 En **Ajustes de la app › Mercados**, «Añadir mercado» sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia las keywords de uno de sus mercados. Cada país es un mercado del mismo producto (ver [Productos y mercados](#productos-y-mercados)), con sus posiciones y su histórico.
 
 ## Creativos: screenshots e icono
 
-La pestaña **Creativos** monta los recursos gráficos de la ficha en el navegador (canvas), sin servicios externos.
+La sección **Creativos** (`/a/[app]/creativos`, la misma para todos los países) monta los recursos gráficos de la ficha en el navegador (canvas), sin servicios externos.
 
 **El editor de screenshots** (fase 32) se ordena como una herramienta de diseño:
 
@@ -478,7 +480,7 @@ Lo que puede hacer cada herramienta:
 
 El diseño de cada tipo se guarda en la tabla `asset_designs` (uno por app y tipo); las capturas subidas viajan en base64, por lo que el límite del cuerpo de las server actions está en 4 MB (`next.config.ts`).
 
-## Novedades y resumen semanal
+## Actividad y resumen semanal
 
 Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») compara cada keyword con su consulta anterior y crea avisos, que se ven en **Actividad** (`/actividad`, antes Novedades):
 
@@ -487,7 +489,7 @@ Cada consulta de posiciones (la diaria y el botón «Actualizar posiciones») co
 - deja de aparecer en los resultados, solo si la tienda devolvió más resultados que tu posición anterior (si estabas el #35 y Google Play solo devuelve 30, no sabemos si has bajado y no se avisa);
 - cambia el nº 1, solo donde compites: tu app está entre las 30 primeras (antes o ahora), el nº 1 nuevo o el anterior es un competidor vigilado, o ganas o pierdes tú el nº 1;
 - una ficha vigilada cambia;
-- un pico de temporada de una keyword relevante empieza en unas 3 semanas (ver Estacionalidad).
+- un pico de temporada de una keyword relevante empieza en unas 3 semanas (ver [Tendencias](#tendencias)).
 
 Para que no se llene de ruido:
 
@@ -565,7 +567,7 @@ El Resumen de cada app convierte la **Salud ASO** en «Próximos pasos». Inicio
 | Capturas | Capturas subidas en Creativos más antiguas que la ficha publicada o de otra versión (solo las fechas: el diseño no se descarga entero) | Mejorable con alguna; necesita atención si lo están todas. Las de la tienda no tienen fecha y no cuentan |
 | Normas de las tiendas | Comprobador de normas sobre el borrador principal o la ficha publicada, con las marcas detectadas | Necesita atención con errores; mejorable con avisos |
 | Reseñas sin responder | Reseñas de la última semana de Google Play Console, solo si está conectada; se piden aparte para no frenar la portada | Mejorable con alguna; necesita atención con 10 o más. En App Store y sin Play Console sale «sin datos» con un enlace a Ajustes |
-| Próximo pico estacional | El pico más cercano de las keywords relevantes con popularidad suficiente (Estacionalidad) | Mejorable si está en temporada o empieza en 35 días o menos |
+| Próximo pico estacional | El pico más cercano de las keywords relevantes con popularidad suficiente (Tendencias) | Mejorable si está en temporada o empieza en 35 días o menos |
 
 ## Productos y mercados
 
@@ -624,7 +626,7 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 
 ### Redirecciones
 
-Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`. Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de `app/loading.tsx`, y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como `/apps/nueva`, que además es una ruta estática), uno que no existe o una subpágina desconocida dan 404.
+Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`, `/apps/1/keywords/42` → `/a/recordatorio/es/keywords?k=42` (el panel de la keyword sobre la tabla; la página `/keywords/42` sigue existiendo). Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de un `loading.tsx` (los de ahora son `app/(global)/loading.tsx` y `app/a/[app]/loading.tsx`), y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como `/apps/nueva`, que además es una ruta estática), uno que no existe o una subpágina desconocida dan 404.
 
 Las tres páginas de Encontrar de la fase 27 (`/a/[app]/[país]/descubrir`, `/ideas`, `/top10`) responden con un **308** a `encontrar?fuente=autocompletado`, `ia` o `top10`, conservando la query (`seed`, `kw`): `FIND_REDIRECTS` en `lib/redirects.ts`. Las antiguas `/apps/[id]/descubrir…` van directamente a su destino final, sin pasar por ellas (`findPath()` en `lib/market-path.ts`).
 

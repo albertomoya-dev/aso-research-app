@@ -90,7 +90,8 @@ function WatchSwitch({ appId, row }: { appId: number; row: CompetitorRow }) {
         disabled={pending}
         onClick={() => (on ? setConfirming(true) : follow())}
         className={cn(
-          "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60 motion-reduce:transition-none",
+          // 40×24 to the eye; on mobile the ::before takes the touch target to 44×44 (DESIGN.md §6).
+          "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors before:absolute before:top-1/2 before:left-1/2 before:size-11 before:-translate-1/2 md:before:hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-60 motion-reduce:transition-none",
           on ? "border-brand bg-brand" : "border-line-strong bg-surface-muted",
         )}
       >

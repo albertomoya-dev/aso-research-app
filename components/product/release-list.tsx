@@ -59,12 +59,24 @@ export function ReleaseList({ appId, releases }: { appId: number; releases: Rele
 function ReleaseEditor({ appId, release, onDone }: { appId: number; release: ReleaseRow | null; onDone: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pending, start] = useTransition();
-  const save = (formData: FormData) =>
+  const [error, setError] = useState<string | null>(null);
+  const save = (formData: FormData) => {
+    // Only spaces pass `required`; the server would refuse them, so say it here and keep the panel open.
+    if (!String(formData.get("version") ?? "").trim()) {
+      setError("Indica el número de versión.");
+      return;
+    }
+    setError(null);
     start(async () => {
-      await (release ? updateRelease(formData) : addRelease(formData));
+      const result = await (release ? updateRelease(formData) : addRelease(formData));
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       toast(release ? `Versión ${formData.get("version")} guardada` : `Versión ${formData.get("version")} añadida`);
       onDone();
     });
+  };
   const remove = () =>
     start(async () => {
       const fd = new FormData();
@@ -97,6 +109,11 @@ function ReleaseEditor({ appId, release, onDone }: { appId: number; release: Rel
         Qué cambió
         <textarea name="notes" rows={8} maxLength={4000} defaultValue={release?.notes} placeholder="Qué cambió para los usuarios" className={`${inputClass} py-2`} />
       </label>
+      {error && (
+        <p role="alert" className="text-table text-danger">
+          {error}
+        </p>
+      )}
       <SheetFooter className="sm:items-center">
         {release &&
           (confirmDelete ? (

@@ -45,12 +45,27 @@ export const APP_ROUTES: { route: string; path: (app: E2eApp) => string | null }
   ...PRODUCT_SUBPAGES.map((sub) => ({ route: `/a/[app]/${sub}`, path: (a: E2eApp) => `${productPath(a)}/${sub}` })),
 ];
 
-/** One path per route, for the first market of the test database (it stands in for every app). */
-export function allPaths(app: E2eApp | undefined): string[] {
-  const paths = [...GLOBAL_ROUTES];
-  if (app) for (const { path } of APP_ROUTES) {
-    const p = path(app);
-    if (p) paths.push(p);
-  }
-  return paths;
+const isProductRoute = (route: string) => !route.startsWith("/a/[app]/[market]");
+
+/** The first market (lowest id) of each product: the product pages are the same for all its markets. */
+export function firstMarkets(apps: readonly E2eApp[]): E2eApp[] {
+  const seen = new Map<string, E2eApp>();
+  for (const a of [...apps].sort((x, y) => x.id - y.id)) if (!seen.has(a.slug)) seen.set(a.slug, a);
+  return [...seen.values()];
+}
+
+/**
+ * The global routes once, then every market route of each market in `apps` and the product routes of
+ * the first market of each product (real data differs per market: one market cannot stand in for all).
+ */
+export function allPaths(apps: readonly E2eApp[]): string[] {
+  const first = new Set(firstMarkets(apps).map((a) => a.id));
+  return [...GLOBAL_ROUTES, ...apps.flatMap((app) => appPaths(app, first.has(app.id)))];
+}
+
+/** The market routes of one market and, with `withProduct`, the product routes of its app. */
+export function appPaths(app: E2eApp, withProduct: boolean): string[] {
+  return APP_ROUTES.filter(({ route }) => withProduct || !isProductRoute(route))
+    .map(({ path }) => path(app))
+    .filter((p): p is string => p != null);
 }

@@ -7,7 +7,7 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import { cn } from "@/lib/cn";
-import { useLongAction } from "@/lib/long-operations";
+import { hasOperation, useLongAction } from "@/lib/long-operations";
 import { formatNumber } from "@/lib/format";
 import type { DraftAge, DraftTarget, LocaleOption } from "@/lib/listing-drafts";
 import { type ListingProposal } from "@/lib/listing-optimizer";
@@ -136,8 +136,9 @@ export function MetadataEditor({
   const [state, action, pending] = useActionState<DraftState, FormData>(saveDraft, null);
   // One proposal at a time: «Optimizar con IA» or «Adaptar a …», told apart by the submit's intent.
   // It outlives the page (lib/long-operations.ts): leave while the AI writes, and the proposal waits here.
+  const aiKey = `listing:${appId}:${target.locale}|${target.country}`;
   const [ai, aiAction, optimizing, aiOp] = useLongAction<OptimizeState>(
-    `listing:${appId}:${target.locale}|${target.country}`,
+    aiKey,
     (prev, formData) => (formData.get("intent") === "localize" ? localizeListingAction(prev, formData) : optimizeListing(prev, formData)),
     (formData) =>
       formData.get("intent") === "localize"
@@ -197,7 +198,9 @@ export function MetadataEditor({
     const q = new URLSearchParams(window.location.search);
     q.delete("adaptar");
     router.replace(`${pathname}${q.size ? `?${q}` : ""}`, { scroll: false });
-    if (canLocalize) localize();
+    // Back here from «Ver resultado» or an old tab: an adaptation for this listing is already kept (running
+    // or waiting to be used), so show it instead of paying for another.
+    if (canLocalize && !hasOperation(aiKey)) localize();
     // Only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

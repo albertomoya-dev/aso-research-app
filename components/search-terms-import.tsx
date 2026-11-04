@@ -1,5 +1,6 @@
 "use client";
 
+import { HelpTip } from "./ui/help-tip";
 import { useActionState, useState } from "react";
 import { importSearchTerms, type PlayActionState } from "@/app/play-actions";
 import { CSV_TOO_BIG_MESSAGE, MAX_CSV_BYTES } from "@/lib/play-console/constants";
@@ -47,9 +48,12 @@ export function SearchTermsImport({ appId }: { appId: number }) {
           {pending ? "Importando…" : "Importar CSV"}
         </button>
       </div>
-      <p className="text-xs text-muted">
-        Las fechas solo hacen falta si el CSV no trae columna de fecha (las descargas desde las pantallas de Play Console): pon el periodo que
-        elegiste al descargarlo. Volver a importar el mismo periodo sustituye sus datos.
+      <p className="flex items-center gap-1 text-xs text-muted">
+        Las fechas, solo si el CSV no las trae.
+        <HelpTip label="Fechas del CSV">
+          Las descargas desde las pantallas de Play Console no traen columna de fecha: pon el periodo que elegiste al descargarlo. Volver a
+          importar el mismo periodo sustituye sus datos.
+        </HelpTip>
       </p>
       <p aria-live="polite" className="text-[13px]">
         {error && <span className="text-danger">{error}</span>}

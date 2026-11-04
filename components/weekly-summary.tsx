@@ -29,7 +29,7 @@ export function WeeklyCompact({ apps }: { apps: AppWeek[] }) {
   if (apps.length === 0) return null;
   return (
     <Card aria-label="Resumen de la semana" className="overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[560px] text-table">
           <caption className="sr-only">Resumen de la semana por app</caption>
           <thead>

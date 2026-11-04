@@ -79,6 +79,16 @@ export function firstSentence(text: string): string {
 }
 
 /**
+ * The first sentence of a hint up to its colon, if it has one: the line a list shows (the rest goes in
+ * a HelpTip). «Tu ficha describe una versión anterior: la tienda tiene…» → «Tu ficha describe una versión anterior».
+ */
+export function firstClause(text: string): string {
+  const sentence = firstSentence(text);
+  const colon = sentence.indexOf(":");
+  return colon > 0 ? sentence.slice(0, colon).trim() : sentence;
+}
+
+/**
  * Screenshots are the app's; the listing-age line compares the app's product sheet with each country's
  * listing, so two countries with the same version say the same thing: one task. The rest are per market.
  */

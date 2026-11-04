@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HealthItem, NextSeason } from "@/lib/health";
-import { firstSentence, type TodayAlert, whatToDoToday } from "@/lib/today";
+import { firstClause, firstSentence, type TodayAlert, whatToDoToday } from "@/lib/today";
 
 const es = { id: 1, productSlug: "recordatorio", title: "Recordatorio", country: "es" };
 const us = { id: 4, productSlug: "recordatorio", title: "Recordatorio", country: "us" };
@@ -110,5 +110,13 @@ describe("firstSentence", () => {
   it("cuts at the first full stop followed by a space, keeping decimals and versions", () => {
     expect(firstSentence("Tu ficha describe la 2.0.0 y ya vas por la 3.0.1. Revisa los textos.")).toBe("Tu ficha describe la 2.0.0 y ya vas por la 3.0.1");
     expect(firstSentence("Sin punto")).toBe("Sin punto");
+  });
+});
+
+describe("firstClause", () => {
+  it("keeps the first sentence up to its colon", () => {
+    expect(firstClause("Tu ficha describe una versión anterior: la tienda tiene la 2.0. Revisa los textos.")).toBe("Tu ficha describe una versión anterior");
+    expect(firstClause("Tus capturas son de la versión publicada.")).toBe("Tus capturas son de la versión publicada");
+    expect(firstClause("Sin punto")).toBe("Sin punto");
   });
 });

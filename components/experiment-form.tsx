@@ -74,7 +74,12 @@ export function ExperimentForm({ appId, experiment, onDone }: { appId: number; e
           {pending ? "Guardando…" : e ? "Guardar" : "Añadir experimento"}
         </button>
         {e && (
-          <ConfirmButton formAction={deleteExperiment} formNoValidate message={`¿Borrar el experimento «${e.name}»?`} className={`${buttonSecondary} text-danger`}>
+          <ConfirmButton
+            formAction={deleteExperiment}
+            formNoValidate
+            message={`¿Borrar el experimento «${e.name}»?`}
+            confirmLabel="Borrar"
+            destructive className={`${buttonSecondary} text-danger`}>
             Borrar
           </ConfirmButton>
         )}

@@ -82,7 +82,7 @@ describe("legacyAppRedirect", () => {
   const es = { productSlug: "recordatorio", country: "es" };
   it.each([
     [[], "/a/recordatorio/es/keywords"],
-    [["keywords", "42"], "/a/recordatorio/es/keywords/42"],
+    [["keywords", "42"], "/a/recordatorio/es/keywords?k=42"],
     // The three old find pages go straight to Encontrar (phase 29), not through the 308 of phase 27.
     [["descubrir"], "/a/recordatorio/es/encontrar?fuente=autocompletado"],
     [["ideas"], "/a/recordatorio/es/encontrar?fuente=ia"],
@@ -100,6 +100,11 @@ describe("legacyAppRedirect", () => {
     [["creativos", "video"], "/a/recordatorio/creativos/video"],
   ])("/apps/1/%j → %s", (rest, expected) => {
     expect(legacyAppRedirect(es, rest)).toBe(expected);
+  });
+
+  it("sends an old keyword page to its panel over the table, keeping the query", () => {
+    expect(legacyAppRedirect(es, ["keywords", "42"], "?dias=90")).toBe("/a/recordatorio/es/keywords?dias=90&k=42");
+    expect(legacyAppRedirect(es, ["keywords", "42"], "?k=7")).toBe("/a/recordatorio/es/keywords?k=42");
   });
 
   it("keeps the query string", () => {

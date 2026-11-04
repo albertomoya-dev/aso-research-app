@@ -95,11 +95,42 @@ export type LongActionOptions<S = unknown> = {
   stepMs?: number;
 };
 
+/**
+ * Query parameters that start an operation when a page opens (`?adaptar=1` on the listing editor). They are
+ * never kept in an operation's `href`: «Ver resultado» would open the page with them and pay for it again.
+ */
+export const AUTO_RUN_PARAMS = ["adaptar"] as const;
+
+/** Query parameters of an overlay on the page (the keyword panel, `?k=`): they do not make it another page. */
+const OVERLAY_PARAMS = ["k"];
+
+/** `pathname` + `search` without the auto-run parameters: where an operation's result shows. */
+export function operationHref(pathname: string, search: string): string {
+  const q = new URLSearchParams(search);
+  for (const p of AUTO_RUN_PARAMS) q.delete(p);
+  return q.size ? `${pathname}?${q}` : pathname;
+}
+
+/** Whether `current` (path and query) is the page an operation started on: same path and same query, in any order. */
+export function isOperationPage(href: string, current: string): boolean {
+  const normal = (h: string) => {
+    const [path, search = ""] = h.split("?");
+    const q = new URLSearchParams(search);
+    for (const p of [...AUTO_RUN_PARAMS, ...OVERLAY_PARAMS]) q.delete(p);
+    q.sort();
+    return `${path}?${q}`;
+  };
+  return normal(href) === normal(current);
+}
+
+/** Whether an operation is kept under `key`, running or with a result not yet used. */
+export const hasOperation = (key: string) => operations.has(key);
+
 /** Starts `run` under `key` unless it is already running. */
 export function startOperation<S>(key: string, options: LongActionOptions<S>, run: (prev: S | null) => Promise<S>) {
   const previous = operations.get(key);
   if (previous?.status === "running") return;
-  const href = typeof window === "undefined" ? "" : window.location.pathname + window.location.search;
+  const href = typeof window === "undefined" ? "" : operationHref(window.location.pathname, window.location.search);
   operations.set(key, {
     key,
     label: options.label,
