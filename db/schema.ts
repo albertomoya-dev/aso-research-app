@@ -364,6 +364,29 @@ export const reviewAnalyses = pgTable("review_analyses", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Date of the newest review the store shows for a review source (our app or a competitor) in the market's
+ * country, read by the daily job at most once a day (lib/review-freshness.ts). Reseñas compares it with
+ * the `stats.to` of the last analysis to put a dot on sources with new reviews.
+ */
+export const reviewFreshness = pgTable(
+  "review_freshness",
+  {
+    id: serial("id").primaryKey(),
+    appId: integer("app_id")
+      .notNull()
+      .references(() => apps.id, { onDelete: "cascade" }),
+    targetStoreId: text("target_store_id").notNull(),
+    /** Null when the store returned no reviews. */
+    latestReviewAt: timestamp("latest_review_at", { withTimezone: true }),
+    /** Day of the last check (UTC), so a source is read once a day at most. */
+    checkedOn: date("checked_on").notNull(),
+    /** Last error from the store, cleared on the next successful check. */
+    error: text("error"),
+  },
+  (t) => [uniqueIndex("review_freshness_app_target_idx").on(t.appId, t.targetStoreId)],
+);
+
 export const assetKindEnum = pgEnum("asset_kind", ["screenshots", "icon"]);
 
 // The app-wide tables below (creatives, product sheet, brand exceptions) belong to the PRODUCT, not to a

@@ -5,6 +5,7 @@ import { cronBudget, runStep } from "@/lib/cron-step";
 import { appUrl, emailConfigured, renderSummaryEmail, sendEmail } from "@/lib/email";
 import { trackOwnListings } from "@/lib/own-listings";
 import { rateUnratedKeywords } from "@/lib/relevance-jobs";
+import { trackReviewFreshness } from "@/lib/review-freshness";
 import { today } from "@/lib/ranking";
 import { generateSeasonalAlerts } from "@/lib/seasonality-jobs";
 import { getWeeklySummaries } from "@/lib/summary";
@@ -15,9 +16,10 @@ export const maxDuration = 300;
 
 /**
  * Daily job (see vercel.json): positions, ranking alerts, coming seasonal peaks, competitor listings,
- * the weekly email on Mondays, own listings (automatic annotations) and, last, the AI relevance of
+ * the weekly email on Mondays, own listings (automatic annotations), the date of the newest review of every
+ * review source (one store request each per day, for the «reseñas nuevas» dot) and, last, the AI relevance of
  * keywords still unrated (at most 200). Own listings go before relevance because they are cheap and its
- * backlog of Claude calls could otherwise leave them no time. Relevance runs after the alerts on purpose:
+ * backlog of Claude calls could otherwise leave them no time; review freshness too, for the same reason. Relevance runs after the alerts on purpose:
  * its Claude calls are the slowest part, and an alert that needs a relevance just set uses it from the
  * next day's run. Popularity measures, own listings and relevance batches have deadlines measured from
  * the start of the route, and every Claude call is aborted at the hard cap (see `cronBudget`).
@@ -43,6 +45,7 @@ export async function GET(request: NextRequest) {
         })
       : null;
   const ownListings = await runStep(() => trackOwnListings({}, budget.ownListingsDeadline));
+  const reviewFreshness = await runStep(() => trackReviewFreshness(budget.reviewFreshnessDeadline));
   const relevance = await runStep(() =>
     rateUnratedKeywords({ deadline: budget.relevanceDeadline, request: budget.relevanceCall }),
   );
@@ -60,6 +63,7 @@ export async function GET(request: NextRequest) {
       competitors,
       email,
       ownListings,
+      reviewFreshness,
     },
     { status: rankingsFailed ? 502 : 200 },
   );

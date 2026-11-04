@@ -41,6 +41,7 @@ Usa siempre los tokens (`bg-surface`, `text-ink-soft`…). **Nunca un hexadecima
 | `ios-*`, `android-*` | | | Insignias de la tienda |
 | `series-own` | = `brand` | = `brand` | «Tu app» en todos los gráficos |
 | `series-1…5` | | | Competidores, en orden fijo (paleta validada para daltonismo) |
+| `heat-1…5` / `on-heat` | #EAF1FB → #1E4F95 / #FFFFFF | #1C2533 → #9CC0F2 / #0E1013 | Mapa de calor (Tendencias): un solo tono; texto `ink` en 1–3 y `on-heat` en 4–5 (`HEAT_CLASS` de `lib/trends-view.ts`) |
 | `overlay` | | | Fondo detrás de diálogos y paneles |
 | `panel` | = `bg` | = `bg` | Heredado; ya no hay panel de contenido |
 

@@ -10,9 +10,16 @@ export const TOP5_DAYS = 30;
 export const SUGGESTED_TARGETS = 3;
 
 export type ReviewTargetSource = "own" | "watched" | "top5" | "analysed";
-export type ReviewTarget = { storeId: string; title: string; source: ReviewTargetSource };
+export type ReviewTarget = {
+  storeId: string;
+  title: string;
+  source: ReviewTargetSource;
+  /** Store icon and rating when known (our listing, the watched competitor, or its TOP 5 entry). */
+  icon?: string | null;
+  rating?: number | null;
+};
 
-type AppRef = { id: number; store: "ios" | "android"; country: string; storeId: string; title: string };
+type AppRef = { id: number; store: "ios" | "android"; country: string; storeId: string; title: string; icon?: string; meta?: { rating?: number | null } };
 
 /** The app as it appears in any stored TOP 5, newest first; null when it never did. */
 export function findInTop5(snapshots: Pick<VisibilitySnapshot, "date" | "top5">[], storeId: string): AppSummary | null {
@@ -46,7 +53,7 @@ export async function loadReviewTargets(app: AppRef) {
   const db = getDb();
   const [watched, analysed, snapshots] = await Promise.all([
     db
-      .select({ storeId: schema.competitors.storeId, title: schema.competitors.title })
+      .select({ storeId: schema.competitors.storeId, title: schema.competitors.title, icon: schema.competitors.icon, rating: schema.competitors.rating })
       .from(schema.competitors)
       .where(eq(schema.competitors.appId, app.id))
       .orderBy(schema.competitors.title),
@@ -71,15 +78,18 @@ export async function loadReviewTargets(app: AppRef) {
     : [];
   const top = topCompetitors(snapshots, new Map(metrics.map((m) => [m.keywordId, m.popularity])), app.storeId);
 
-  const targets: ReviewTarget[] = [{ storeId: app.storeId, title: app.title, source: "own" }];
+  const targets: ReviewTarget[] = [{ storeId: app.storeId, title: app.title, source: "own", icon: app.icon ?? null, rating: app.meta?.rating ?? null }];
   const add = (t: ReviewTarget) => {
     if (!targets.some((x) => x.storeId === t.storeId)) targets.push(t);
   };
   for (const w of watched) add({ ...w, source: "watched" });
-  for (const a of analysed) add({ ...a, source: "analysed" });
+  for (const a of analysed) {
+    const seen = findInTop5(snapshots, a.storeId);
+    add({ ...a, source: "analysed", icon: seen?.icon ?? null, rating: seen?.rating ?? null });
+  }
   return {
     targets,
-    suggested: top.map((r) => ({ storeId: r.app.id, title: r.app.title, source: "top5" as const, share: r.share })),
+    suggested: top.map((r) => ({ storeId: r.app.id, title: r.app.title, source: "top5" as const, share: r.share, icon: r.app.icon, rating: r.app.rating })),
     snapshots,
   };
 }

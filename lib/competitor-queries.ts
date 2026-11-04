@@ -1,6 +1,7 @@
 import { and, asc, eq, gte, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/db";
-import { diffListings, type ListingChange } from "./listing-diff";
+import { chartSeries, seriesColor, type SharedKeyword, sharedKeywords } from "./competitor-view";
+import { diffListings, type Listing, type ListingChange } from "./listing-diff";
 import { shiftDate, today } from "./ranking";
 import { latestPerKeyword, shareByDay, visibilityShare } from "./visibility";
 
@@ -46,7 +47,8 @@ export async function getShareHistory(app: ShareApp, days: ShareDays = SHARE_DAY
         )
     : [];
   const popularity = new Map(metrics.map((m) => [m.keywordId, m.popularity]));
-  const current = visibilityShare(latestPerKeyword(snapshots), popularity);
+  const latest = latestPerKeyword(snapshots);
+  const current = visibilityShare(latest, popularity);
 
   // Our app first, then the strongest others; colours follow this order.
   const own = current.find((r) => r.app.id === app.storeId);
@@ -60,8 +62,39 @@ export async function getShareHistory(app: ShareApp, days: ShareDays = SHARE_DAY
     popularity,
     series.map((s) => s.id),
   );
-  return { keywordCount: keywordIds.length, current, series, history };
+  return { keywordCount: keywordIds.length, current, series, history, latest };
 }
+
+/** Rows of the competitor table, at most: the strongest apps of the TOP 5 plus every watched one. */
+const TABLE_APPS = 25;
+const DESCRIPTION_CHARS = 600;
+
+export type CompetitorRow = {
+  storeId: string;
+  title: string;
+  developer: string;
+  icon: string;
+  url: string;
+  own: boolean;
+  /** 0–100; 0 for a watched app not in any TOP 5 now. */
+  share: number;
+  keywords: number;
+  bestPosition: number | null;
+  rating: number | null;
+  /** Its row in `competitors` when watched. */
+  competitorId: number | null;
+  /** Colour of its series in the chart, when it has one. */
+  color: string | null;
+};
+
+export type CompetitorDetail = {
+  ratingsCount: number | null;
+  checkedAt: Date | null;
+  error: string | null;
+  listing: { shortDescription: string; description: string; version: string | null; category: string | null; screenshots: number } | null;
+  changes: ChangeEvent[];
+  shared: SharedKeyword[];
+};
 
 export async function getCompetitorPage(app: ShareApp, opts: { days?: ShareDays } = {}) {
   const db = getDb();
@@ -69,19 +102,27 @@ export async function getCompetitorPage(app: ShareApp, opts: { days?: ShareDays 
     getShareHistory(app, opts.days),
     db.select().from(schema.competitors).where(eq(schema.competitors.appId, app.id)).orderBy(schema.competitors.title),
   ]);
-  const { keywordCount, current, series, history } = share;
+  const { keywordCount, current, series, history, latest } = share;
 
   const competitorIds = followed.map((c) => c.id);
-  const listings = competitorIds.length
-    ? await db
-        .select()
-        .from(schema.competitorSnapshots)
-        .where(inArray(schema.competitorSnapshots.competitorId, competitorIds))
-        .orderBy(asc(schema.competitorSnapshots.fetchedAt))
-    : [];
+  const latestIds = latest.map((l) => l.keywordId);
+  const [listings, terms] = await Promise.all([
+    competitorIds.length
+      ? db
+          .select()
+          .from(schema.competitorSnapshots)
+          .where(inArray(schema.competitorSnapshots.competitorId, competitorIds))
+          .orderBy(asc(schema.competitorSnapshots.fetchedAt))
+      : [],
+    latestIds.length
+      ? db.select({ id: schema.keywords.id, term: schema.keywords.term }).from(schema.keywords).where(inArray(schema.keywords.id, latestIds))
+      : [],
+  ]);
   const changes: ChangeEvent[] = [];
+  const lastListing = new Map<number, Listing>();
   for (const [competitorId, rows] of Map.groupBy(listings, (l) => l.competitorId)) {
     const competitor = followed.find((c) => c.id === competitorId)!;
+    lastListing.set(competitorId, rows.at(-1)!.listing);
     for (let i = 1; i < rows.length; i++) {
       const diff = diffListings(rows[i - 1].listing, rows[i].listing);
       if (diff.length > 0) changes.push({ competitorId, title: competitor.title, icon: competitor.icon, date: rows[i].fetchedAt, changes: diff });
@@ -89,11 +130,74 @@ export async function getCompetitorPage(app: ShareApp, opts: { days?: ShareDays 
   }
   changes.sort((a, b) => b.date.getTime() - a.date.getTime());
 
+  const plotted = chartSeries(series, history).series;
+  const colorOf = new Map(plotted.map((s, i) => [s.id, seriesColor(s, i)]));
+  const watchedBy = new Map(followed.map((c) => [c.storeId, c]));
+  const rows: CompetitorRow[] = current.slice(0, TABLE_APPS).map((r) => ({
+    storeId: r.app.id,
+    title: r.app.title,
+    developer: r.app.developer,
+    icon: r.app.icon,
+    url: r.app.url,
+    own: r.app.id === app.storeId,
+    share: r.share,
+    keywords: r.keywords,
+    bestPosition: r.bestPosition,
+    rating: watchedBy.get(r.app.id)?.rating ?? r.app.rating ?? null,
+    competitorId: watchedBy.get(r.app.id)?.id ?? null,
+    color: colorOf.get(r.app.id) ?? null,
+  }));
+  // Watched apps out of the TOP 5 (or past the first rows) still get a row, to see and unwatch them.
+  for (const c of followed) {
+    if (rows.some((r) => r.storeId === c.storeId)) continue;
+    const r = current.find((x) => x.app.id === c.storeId);
+    rows.push({
+      storeId: c.storeId,
+      title: c.title,
+      developer: c.developer,
+      icon: c.icon,
+      url: c.url,
+      own: false,
+      share: r?.share ?? 0,
+      keywords: r?.keywords ?? 0,
+      bestPosition: r?.bestPosition ?? null,
+      rating: c.rating,
+      competitorId: c.id,
+      color: colorOf.get(c.storeId) ?? null,
+    });
+  }
+
+  const shared = sharedKeywords(latest, new Map(terms.map((t) => [t.id, t.term])), app.storeId);
+  const details: Record<string, CompetitorDetail> = {};
+  for (const row of rows) {
+    if (row.own) continue;
+    const c = watchedBy.get(row.storeId);
+    const listing = c ? lastListing.get(c.id) : undefined;
+    details[row.storeId] = {
+      ratingsCount: c?.ratingsCount ?? null,
+      checkedAt: c?.checkedAt ?? null,
+      error: c?.error ?? null,
+      listing: listing
+        ? {
+            shortDescription: listing.shortDescription ?? "",
+            description: (listing.description ?? "").slice(0, DESCRIPTION_CHARS),
+            version: listing.version ?? null,
+            category: listing.category ?? null,
+            screenshots: listing.screenshots?.length ?? 0,
+          }
+        : null,
+      changes: c ? changes.filter((e) => e.competitorId === c.id).slice(0, 20) : [],
+      shared: shared.get(row.storeId) ?? [],
+    };
+  }
+
   return {
     keywordCount,
     current,
     series,
     history,
+    rows,
+    details,
     followed,
     followedIds: new Set(followed.map((c) => c.storeId)),
     changes: changes.slice(0, 60),
