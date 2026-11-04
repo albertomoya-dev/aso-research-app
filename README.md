@@ -38,6 +38,7 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 27 | Navegación: barra lateral global (selector de app, Inicio, Actividad, Integraciones) y barra lateral de cada app (Resumen, Keywords, Mercado, Optimizar, Ajustes de la app), cabecera fija con selector de mercado y «Actualizar posiciones», paleta ⌘K, barra inferior en el móvil, páginas Actividad, Integraciones y Añadir app, Ajustes de la app con pestañas (Producto, Mercados, Marcas, Datos de Play Console, Zona de peligro) y redirecciones 308 de las páginas globales antiguas | Hecho |
 | 28 | Inicio (KPIs de todas las apps, una fila por mercado con mini-gráfico, TOP 10 y 30, posición media, valoración y salud, y «Qué hacer hoy») y Resumen de cada mercado (KPIs, visibilidad a 30, 90 o 180 días con los cambios marcados y su impacto, próximos pasos, movimientos de la semana y competencia en una línea) | Hecho |
 | 29 | Keywords: tabla de Seguimiento con buscador, filtros por facetas, «Vistas» (columnas y densidad), selección con barra flotante, tarjetas en el móvil y panel de detalle (`?k=`) con el TOP 10; pantalla única **Encontrar** (Autocompletado, Ideas con IA, TOP 10 y Reseñas) con popularidad estimada, «Medir» y descartes que no vuelven (migración 0021) | Hecho |
+| 31 | Mercado: **Competidores** (cuota en áreas apiladas con tu app, 4 competidores y «Otros», o barras con un solo día; tabla con la cuota en la fila y el interruptor «Vigilar»; panel del competidor; línea de tiempo de cambios), **Reseñas** (columna de fuentes con el punto de «reseñas nuevas», análisis en tarjetas, «Lo que pide la categoría» arriba y el país del mercado activo; migración 0022) y **Tendencias** (escala de un tono, filas sin datos plegadas y «Próximos picos» con «Preparar») | Hecho |
 
 ## Stack
 
@@ -359,8 +360,10 @@ Endpoints, atributos, estados y límites comprobados el **30 oct 2026** en la [r
 
 La pantalla **Competidores** usa el TOP 5 guardado de cada keyword:
 
-- **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. Se muestra la cuota actual (última posición de cada keyword) y su evolución en 30 días para tu app y las cuatro apps más visibles.
-- **Fichas vigiladas**: al pulsar «Vigilar ficha» en una app, la consulta diaria lee su ficha y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. La lista de cambios muestra qué palabras añadió o quitó.
+- **Cuota de visibilidad**: cada keyword vale su popularidad (1 si aún no se ha medido) y se reparte entre las cinco primeras posiciones con pesos 40, 22, 15, 12 y 11 %, parecidos a la proporción de clics de las tiendas. El gráfico apila, en 30, 90 o 180 días (`?dias=`), tu app (en `--series-own`, abajo), las cuatro apps más visibles (con el mismo color que en Resumen) y «Otros» con lo que queda hasta el 100 %. Con un solo día de datos dibuja barras horizontales de ese día (`lib/competitor-view.ts`).
+- **Tabla de competidores** (`DataTable`): app, cuota con una barra dentro de la fila (escalada al líder; la cifra es la real), keywords en el TOP 5, mejor posición, valoración y el interruptor **«Vigilar»**. Las apps vigiladas que ya no salen en el TOP 5 siguen en la tabla para poder dejar de vigilarlas; apagar el interruptor pide confirmación porque borra su historial.
+- **Panel del competidor**: al pulsar una fila se abre un panel con su ficha guardada (descripción corta, inicio de la descripción, versión, categoría y capturas), sus cambios, las keywords que comparte contigo (su posición y la tuya en ese TOP 5) y «Analizar reseñas», que abre Reseñas con esa app.
+- **Fichas vigiladas**: la consulta diaria lee la ficha de cada app vigilada y guarda una copia cuando cambia el título, la descripción corta, la descripción, la versión, el precio, la categoría, el icono o las capturas. «Cambios en fichas vigiladas» los muestra como línea de tiempo bajo la tabla, con las palabras añadidas y quitadas.
 
 ## Cambios y experimentos
 
@@ -375,7 +378,7 @@ La anotación sigue apareciendo en el gráfico de cada keyword, ahora con su ori
 
 ## Reseñas
 
-La pestaña **Reseñas** lee hasta 300 reseñas recientes (App Store: feed RSS de Apple; Google Play: `google-play-scraper`) de tu app, de un competidor que vigiles o de cualquier app que haya salido en el TOP 5 de tus keywords en los últimos 30 días (se comprueba en el servidor con los TOP 5 guardados), y Claude resume:
+La pantalla **Reseñas** tiene a la izquierda la columna de **fuentes**: tu app arriba, después los competidores vigilados y las apps que ya analizaste, cada una con su valoración y la fecha del último análisis, y debajo las apps del TOP 5 aún sin analizar. Al elegir una fuente, su análisis se muestra en tarjetas: valoraciones, Resumen, Temas (con su tono y una barra con el porcentaje), **Ideas para tu ficha** (destacadas), Quejas, Peticiones y Palabras de los usuarios. Lee hasta 300 reseñas recientes (App Store: feed RSS de Apple; Google Play: `google-play-scraper`) de tu app, de un competidor que vigiles o de cualquier app que haya salido en el TOP 5 de tus keywords en los últimos 30 días (se comprueba en el servidor con los TOP 5 guardados), y Claude resume:
 
 - los temas más mencionados, con su tono, cuántas reseñas los mencionan y una cita;
 - las quejas y las peticiones más repetidas;
@@ -384,26 +387,28 @@ La pestaña **Reseñas** lee hasta 300 reseñas recientes (App Store: feed RSS d
 
 La distribución de estrellas y la media se calculan con las reseñas leídas, no con IA. Cada análisis se guarda, así que puedes comparar la media entre análisis.
 
-- **País.** Por defecto, el de la app; el selector lee las reseñas de otra tienda nacional. Cada análisis guarda su país (`review_analyses.country`, migración 0014; los anteriores se rellenan con el país de la app).
+- **País.** El del mercado activo: para leer las reseñas de otro país, añade ese mercado en Ajustes de la app › Mercados. Cada análisis guarda su país (`review_analyses.country`, migración 0014).
+- **Reseñas nuevas.** Un punto junto a la fuente avisa de que la tienda tiene reseñas posteriores a la más reciente que leyó el último análisis (`stats.to`). Las reseñas no se guardan: la consulta diaria pide a la tienda solo la reseña más reciente de cada fuente (tu app, las vigiladas y las ya analizadas), una petición por fuente y día y como mucho 80, y guarda su fecha en `review_freshness` (migración 0022, `lib/review-freshness.ts`). Va antes de la relevancia y no empieza ninguna lectura pasados 215 s; lo que falte se lee al día siguiente. La página nunca llama a la tienda para el punto.
 - **Sin reseñas.** Si la tienda no devuelve reseñas recientes, no es un error pasajero: se guarda la comprobación (sin llamar a Claude) y la página lo sigue diciendo al recargar, con la fecha y un botón para comprobar de nuevo.
 - **Por dónde empezar.** Mientras no hay análisis, la página sugiere las 3 apps con más cuota de visibilidad en tu TOP 5.
 - **Oportunidades.** Al analizar un competidor, Claude recibe tu ficha de producto (versión publicada) y devuelve las quejas y peticiones de sus usuarios que tu app ya resuelve, con la función que lo hace y una cita: material para el texto y las capturas de tu ficha. Los análisis anteriores a `rv-3` no las tienen.
 - **Ideas para tu ficha (competidor).** Son siempre para tu app, sacadas de las quejas de sus usuarios: por ejemplo, «sus usuarios se quejan de la suscripción → destaca que la tuya es gratis». Nunca son consejos para el competidor, ni proponen pruebas, suscripciones o funciones que tu ficha de producto no tiene. Desde el prompt `rv-4`; los análisis anteriores pueden traer consejos para el competidor hasta que los repitas.
-- **Lo que piden los usuarios de la categoría.** Junta las quejas y peticiones del último análisis de cada competidor en ese país, en tres columnas:
-  - **«Ya lo resuelves»:** coincide con una función publicada.
+- **Lo que pide la categoría.** Arriba de la pantalla, junta las quejas y peticiones del último análisis de cada competidor en ese país, en tres columnas (las tres primeras de cada una y el resto en «Ver N más»):
+  - **«Ya lo resuelves → cuéntalo»:** coincide con una función publicada.
   - **«Lo resuelve la próxima versión»:** coincide con una función de la próxima versión; cuéntalo en la ficha nueva.
-  - **«Posibles funciones futuras»:** el resto.
+  - **«Oportunidades»:** el resto, posibles funciones futuras.
 - **Cómo se decide la coincidencia.** Es por palabras, sin IA. Hacen falta al menos 2 raíces significativas en común con el nombre de la función (confianza alta) o 3 con el nombre y el resumen (confianza media). Se ignoran palabras demasiado comunes («medicamento», «función», «app»…). Las coincidencias que propone la IA en el análisis salen como «Según la IA». Conviene revisarlas.
 
 ## Estacionalidad y otros países
 
-La pestaña **Estacionalidad** convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes) y avisa de las keywords cuyo pico empieza en los próximos dos meses, para cambiar la ficha con margen. Todo sale de `lib/seasonality.ts`, también el «Pico de interés en …» de la página de cada keyword. Para no anunciar temporadas que no existen:
+La pantalla **Tendencias** (antes Estacionalidad) convierte los datos de Google Trends de cada keyword en un mapa de calor por meses (0–100 respecto a su mejor mes, en cinco tramos de un solo tono: tokens `--heat-1…5`, con texto AA en los dos temas) y, arriba, muestra los **Próximos picos** en tarjetas: keyword, mes y «Empieza en N semanas» (o «En temporada ahora»), con los picos de los próximos tres meses (`nextSeasons`, como mucho 6). Los meses de pico van en negrita y subrayados, y las keywords sin datos (poca señal o aún sin descargar) se pliegan tras «Mostrar N sin datos».
 
-- **Señal mínima.** Una serie con más de la mitad de las semanas a 0, o con interés en menos de 6 meses, no tiene datos suficientes: su fila sale en gris, «Sin datos suficientes», en lugar de un mapa de calor engañoso (una semana a 100 entre 51 ceros pintaría un pico enorme).
+- **Preparar.** El botón de cada tarjeta crea una anotación «Preparar temporada: <keyword>» fechada tres semanas antes de que empiece el pico (o hoy, si ese día ya ha pasado) y abre la Ficha de la tienda con el enfoque estacional en `?focus=`. **No crea un borrador**: hay un borrador por app, idioma y país, y uno nuevo pisaría el principal; los borradores con nombre quedan para más adelante. Todo sale de `lib/seasonality.ts`, también el «Pico de interés en …» de la página de cada keyword. Para no anunciar temporadas que no existen:
+
+- **Señal mínima.** Una serie con más de la mitad de las semanas a 0, o con interés en menos de 6 meses, no tiene datos suficientes: va con las filas plegadas «sin datos», en lugar de un mapa de calor engañoso (una semana a 100 entre 51 ceros pintaría un pico enorme).
 - **Pico sostenido.** Un mes es pico si su media supera en un 25 % la media del año **y** tiene al menos 3 semanas por encima de ese umbral. Además, tiene que destacar sobre el ruido semanal: su media debe superar la del año en al menos 3 errores estándar (la desviación de cada semana respecto a la media de su mes, dividida entre la raíz del número de semanas del mes). Una semana viral no es una temporada, y una serie plana con mucho ruido tampoco.
 - **Mes en curso.** El último mes descargado aún no ha terminado, así que no cuenta; si hay datos del mismo mes del año anterior, se usan esos, y si no, la casilla sale vacía.
-- **Popularidad mínima.** No se anuncia ningún pico si la popularidad en la tienda es menor de 10 (o aún no se ha medido): que la gente lo busque en Google no significa que lo busque en la tienda. La lista «Picos que empiezan pronto» y el calendario solo incluyen además keywords relevantes.
-- **Calendario de picos.** Los 12 meses con las keywords que están en temporada alta en cada uno, marcando el mes en que empieza.
+- **Popularidad mínima.** No se anuncia ningún pico si la popularidad en la tienda es menor de 10 (o aún no se ha medido): que la gente lo busque en Google no significa que lo busque en la tienda. Los «Próximos picos» solo incluyen además keywords relevantes.
 - **Aviso en Novedades.** La consulta diaria crea un aviso «entra en temporada alta» entre 21 y 27 días antes del primer día del pico (una vez por keyword y pico, así que un segundo pico de la misma keyword también se avisa; tipo `seasonal_peak`, se puede desactivar en las preferencias de avisos). Respeta la relevancia mínima de esas preferencias y no avisa de palabras vacías ni de búsquedas donde la gente quiere otro tipo de app.
 
 En **Ajustes de la app › Mercados**, «Añadir mercado» sigue la misma app en otra tienda nacional (mismo id) y, si quieres, copia las keywords de uno de sus mercados. Cada país es un mercado del mismo producto (ver [Productos y mercados](#productos-y-mercados)), con sus posiciones y su histórico.

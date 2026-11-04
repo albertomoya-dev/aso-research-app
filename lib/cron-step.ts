@@ -15,6 +15,8 @@ export const CRON_MAX_MS = 300_000;
 export const POPULARITY_STOP_AT_MS = 180_000;
 /** Own listings are not fetched after this point of the run. They go before relevance, so its backlog cannot starve them. */
 export const OWN_LISTINGS_STOP_AT_MS = 200_000;
+/** No review freshness check (one store request each) starts after this point; it goes before relevance too. */
+export const REVIEW_FRESHNESS_STOP_AT_MS = 215_000;
 /** Relevance batches are not started after this point of the run: a batch still running ends by `+ RELEVANCE_CALL_TIMEOUT_MS`. */
 export const RELEVANCE_STOP_AT_MS = 240_000;
 /** One relevance request in the cron: abandoned after this long and never retried. */
@@ -27,6 +29,8 @@ export type CronBudget = {
   popularityDeadline: number;
   /** Epoch ms after which no own listing is fetched. */
   ownListingsDeadline: number;
+  /** Epoch ms after which no review freshness check starts. */
+  reviewFreshnessDeadline: number;
   /** Epoch ms after which no relevance batch starts. */
   relevanceDeadline: number;
   /** Per-request options for the relevance calls: short timeout, no retries, aborted at the hard cap. */
@@ -41,7 +45,7 @@ function hardCapSignal(ms: number): AbortSignal {
 /**
  * Time budget of the daily job, measured from when the route started (not from when a step starts),
  * so a slow earlier step shrinks the later ones instead of pushing them past the platform's kill.
- * Order of the deadlines: popularity (180 s) → own listings (200 s) → relevance (240 s). Worst case: a
+ * Order of the deadlines: popularity (180 s) → own listings (200 s) → review freshness (215 s) → relevance (240 s). Worst case: a
  * relevance batch started just before `relevanceDeadline` gives up `RELEVANCE_CALL_TIMEOUT_MS` later
  * (280 s); in any case the hard cap aborts it at 290 s, before the 300 s kill. `now` is for tests.
  */
@@ -49,6 +53,7 @@ export function cronBudget(start: number, now = Date.now()): CronBudget {
   return {
     popularityDeadline: start + POPULARITY_STOP_AT_MS,
     ownListingsDeadline: start + OWN_LISTINGS_STOP_AT_MS,
+    reviewFreshnessDeadline: start + REVIEW_FRESHNESS_STOP_AT_MS,
     relevanceDeadline: start + RELEVANCE_STOP_AT_MS,
     relevanceCall: {
       timeoutMs: RELEVANCE_CALL_TIMEOUT_MS,
