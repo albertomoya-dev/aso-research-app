@@ -56,8 +56,11 @@ export interface StoreAdapter {
   getApp(id: string, query: StoreQuery): Promise<AppMeta>;
   /** Store autocomplete for what the user has typed so far, in the store's order. */
   suggest(prefix: string, query: StoreQuery): Promise<string[]>;
-  /** Most recent reviews in the country's store, newest first. */
-  getReviews(id: string, query: StoreQuery & { limit: number }): Promise<Review[]>;
+  /**
+   * Most recent reviews in the country's store, newest first. `signal` (optional) abandons the request
+   * and its retries when it aborts; without it nothing changes.
+   */
+  getReviews(id: string, query: StoreQuery & { limit: number; signal?: AbortSignal }): Promise<Review[]>;
 }
 
 export class StoreError extends Error {

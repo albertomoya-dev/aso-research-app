@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull } from "drizzle-orm";
-import { CalendarClock, Inbox, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { CalendarClock, FileText, Inbox, TrendingDown, TrendingUp, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
@@ -13,7 +13,19 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { WeeklyCards, WeeklyCompact } from "@/components/weekly-summary";
 import { getDb, hasDatabase, schema } from "@/db";
-import { ACTIVITY_PERIODS, ACTIVITY_TYPES, type ActivityFilters, activityHref, kindsForType, parseActivityFilters, periodStart, typeOfKind } from "@/lib/activity";
+import {
+  ACTIVITY_PERIODS,
+  ACTIVITY_TYPES,
+  activityDays,
+  type ActivityFilters,
+  activityHref,
+  annotationSourcesForType,
+  annotationSummary,
+  kindsForType,
+  parseActivityFilters,
+  periodStart,
+  typeOfKind,
+} from "@/lib/activity";
 import { loadAlertPrefs, prefsFor } from "@/lib/alert-jobs";
 import { ALERT_KIND_GROUPS, alertPriority } from "@/lib/alerts";
 import { cn } from "@/lib/cn";
@@ -76,7 +88,7 @@ export default async function ActivityPage({ searchParams }: Props) {
           </>
         }
       >
-        Lo que ha cambiado en tus apps: posiciones, competidores y temporadas.
+        Lo que ha cambiado en tus apps: posiciones, competidores, temporadas y tu ficha.
       </PageHeader>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
@@ -201,32 +213,56 @@ async function PrefsDialog({ apps }: { apps: { id: number; icon: string; label: 
   );
 }
 
-const TYPE_ICON = { posicion: TrendingUp, competidor: Users, temporada: CalendarClock } as const;
+const TYPE_ICON = { posicion: TrendingUp, competidor: Users, temporada: CalendarClock, ficha: FileText } as const;
+const typeLabel = (type: string) => ACTIVITY_TYPES.find((t) => t.id === type)?.label;
 
 async function Feed({ filters, apps }: { filters: ActivityFilters; apps: { id: number; title: string; icon: string; country: string; productSlug: string }[] }) {
   const kinds = kindsForType(filters.type);
-  const rows = await getDb()
-    .select()
-    .from(schema.alerts)
-    .where(
-      and(
-        gte(schema.alerts.date, periodStart(filters.period, today())),
-        filters.appId ? eq(schema.alerts.appId, filters.appId) : undefined,
-        kinds ? inArray(schema.alerts.kind, kinds) : undefined,
-      ),
-    )
-    .orderBy(desc(schema.alerts.date), desc(schema.alerts.id))
-    .limit(300);
+  const sources = annotationSourcesForType(filters.type);
+  const since = periodStart(filters.period, today());
+  const db = getDb();
+  const [rows, notes] = await Promise.all([
+    kinds?.length === 0
+      ? []
+      : db
+          .select()
+          .from(schema.alerts)
+          .where(
+            and(
+              gte(schema.alerts.date, since),
+              filters.appId ? eq(schema.alerts.appId, filters.appId) : undefined,
+              kinds ? inArray(schema.alerts.kind, kinds) : undefined,
+            ),
+          )
+          .orderBy(desc(schema.alerts.date), desc(schema.alerts.id))
+          .limit(300),
+    // «Ficha»: the own listing changed in the store or was published from Rankeo (automatic annotations).
+    sources.length === 0
+      ? []
+      : db
+          .select({ id: schema.annotations.id, appId: schema.annotations.appId, date: schema.annotations.date, label: schema.annotations.label, source: schema.annotations.source, detail: schema.annotations.detail })
+          .from(schema.annotations)
+          .where(
+            and(
+              gte(schema.annotations.date, since),
+              filters.appId ? eq(schema.annotations.appId, filters.appId) : undefined,
+              inArray(schema.annotations.source, sources),
+            ),
+          )
+          .orderBy(desc(schema.annotations.date), desc(schema.annotations.id))
+          .limit(100),
+  ]);
   const appById = new Map(apps.map((a) => [a.id, a]));
-  // Within a day, what happened to our app goes first; rows arrive newest day first.
-  const byDate = [...Map.groupBy(rows, (r) => r.date)].map(
-    ([date, items]) => [date, items.toSorted((a, b) => alertPriority(a) - alertPriority(b) || b.id - a.id)] as const,
-  );
+  const byDate = activityDays(rows, notes, alertPriority);
 
-  if (rows.length === 0) {
+  if (byDate.length === 0) {
     return (
       <Card>
-        <EmptyState icon={Inbox} title="Nada en este periodo" description="Los avisos se crean cada día al consultar las posiciones." />
+        <EmptyState
+          icon={Inbox}
+          title="Nada en este periodo"
+          description="Los avisos se crean cada día al consultar las posiciones, y los cambios de tu ficha al leerla de la tienda."
+        />
       </Card>
     );
   }
@@ -235,7 +271,29 @@ async function Feed({ filters, apps }: { filters: ActivityFilters; apps: { id: n
       <h2 className="mb-2 text-table font-semibold text-muted">{formatDate(date)}</h2>
       <Card className="overflow-hidden">
         <ul>
-          {items.map((alert) => {
+          {items.map((item) => {
+            if (item.type === "annotation") {
+              const note = item.annotation;
+              const app = appById.get(note.appId);
+              return (
+                <li key={`n${note.id}`} className="border-b border-line last:border-0">
+                  <Link href={app ? marketPath(app, "/cambios") : "/actividad"} className="flex items-start gap-3 px-4 py-3 hover:bg-surface-muted">
+                    <FileText size={16} role="img" aria-label={typeLabel("ficha")} className="mt-0.5 shrink-0 text-link" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-body text-ink-soft">{note.label}</span>
+                      <span className="block text-table text-muted">{annotationSummary(note.source, note.detail)}</span>
+                    </span>
+                    {app && (
+                      <span className="hidden shrink-0 items-center gap-2 text-table text-muted sm:flex">
+                        <AppIcon src={app.icon} size={20} />
+                        {app.title} · {app.country.toUpperCase()}
+                      </span>
+                    )}
+                  </Link>
+                </li>
+              );
+            }
+            const alert = item.alert;
             const app = appById.get(alert.appId);
             const type = typeOfKind(alert.kind);
             const Icon = type === "posicion" && alert.tone === "down" ? TrendingDown : TYPE_ICON[type as keyof typeof TYPE_ICON];
@@ -250,7 +308,7 @@ async function Feed({ filters, apps }: { filters: ActivityFilters; apps: { id: n
             return (
               <li key={alert.id} className="border-b border-line last:border-0">
                 <Link href={href} className="flex items-start gap-3 px-4 py-3 hover:bg-surface-muted">
-                  <Icon size={16} role="img" aria-label={ACTIVITY_TYPES.find((t) => t.id === type)?.label} className={cn("mt-0.5 shrink-0", tone)} />
+                  <Icon size={16} role="img" aria-label={typeLabel(type)} className={cn("mt-0.5 shrink-0", tone)} />
                   <span className="min-w-0 flex-1">
                     <span className={cn("block text-body", alert.readAt ? "text-ink-soft" : "font-semibold")}>{alert.title}</span>
                     <span className="block text-table text-muted">{alert.detail}</span>

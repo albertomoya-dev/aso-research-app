@@ -3,6 +3,7 @@ import pLimit from "p-limit";
 import { getDb, schema } from "@/db";
 import { listingAnnotation } from "./annotations";
 import { getCountry } from "./countries";
+import { syncProductListing } from "./products";
 import { diffListings, type ListingChange, toListing } from "./listing-diff";
 import type { PublicationStatus, PublishedField, PublishFieldKey } from "./publications";
 import { today } from "./ranking";
@@ -47,7 +48,8 @@ export function changesNotPublished(changes: ListingChange[], publications: Rece
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * Saves the freshly fetched listing of a followed app: updates apps.meta and, when it differs from the
+ * Saves the freshly fetched listing of a followed app: updates apps.meta (and, for the primary market,
+ * the product's title and icon: `syncProductListing`) and, when it differs from the
  * last snapshot, stores a new snapshot and an automatic annotation with the diff. The first call only
  * stores the baseline. Returns the annotation label, or null when nothing changed.
  */
@@ -60,6 +62,8 @@ export async function recordOwnListing(appId: number, meta: AppMeta): Promise<st
     .where(eq(schema.apps.id, appId))
     .returning({ country: schema.apps.country });
   if (!app) return null;
+  // The primary market's listing also names the product (title and icon in the picker, Inicio…).
+  await syncProductListing(appId, meta);
   const [last] = await db
     .select({ listing: schema.appSnapshots.listing })
     .from(schema.appSnapshots)

@@ -5,7 +5,7 @@ import itunesLookup from "./fixtures/itunes-lookup.json";
 import { isEmptySuggestError, toMeta as androidMeta, toSummary as androidSummary } from "@/lib/stores/android";
 import { looksLikeAppId } from "@/lib/stores";
 import { toMeta as iosMeta, type ItunesApp } from "@/lib/stores/ios";
-import { withRetry } from "@/lib/stores/retry";
+import { abortable, isRetryable, withRetry } from "@/lib/stores/retry";
 
 describe("iOS adapter", () => {
   const app = itunesLookup.results[0] as ItunesApp;
@@ -88,6 +88,37 @@ describe("withRetry", () => {
     const fn = vi.fn().mockRejectedValue(Object.assign(new Error("not found"), { status: 404 }));
     await expect(withRetry(fn, 3, 1)).rejects.toThrow("not found");
     expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("never retries an aborted request, and stops when its signal aborts", async () => {
+    const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
+    expect(isRetryable(timeout)).toBe(false);
+    expect(isRetryable(Object.assign(new Error("aborted"), { name: "AbortError" }))).toBe(false);
+
+    const controller = new AbortController();
+    const fn = vi.fn().mockImplementation(async () => {
+      controller.abort(timeout);
+      throw Object.assign(new Error("network"), { status: undefined });
+    });
+    await expect(withRetry(fn, 4, 1, controller.signal)).rejects.toBe(timeout);
+    expect(fn).toHaveBeenCalledTimes(1);
+
+    const never = vi.fn();
+    await expect(withRetry(never, 4, 1, AbortSignal.abort(timeout))).rejects.toBe(timeout);
+    expect(never).not.toHaveBeenCalled();
+  });
+});
+
+describe("abortable", () => {
+  it("stops waiting for a call that takes no signal when the signal aborts", async () => {
+    const slow = new Promise((resolve) => setTimeout(() => resolve("late"), 200));
+    await expect(abortable(slow, AbortSignal.timeout(10))).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("passes the result through without a signal or before it aborts", async () => {
+    await expect(abortable(Promise.resolve(1))).resolves.toBe(1);
+    await expect(abortable(Promise.resolve(2), AbortSignal.timeout(1_000))).resolves.toBe(2);
+    await expect(abortable(Promise.reject(new Error("boom")), new AbortController().signal)).rejects.toThrow("boom");
   });
 });
 

@@ -9,7 +9,12 @@ import { useAppNav } from "./app-context";
 import { NavIconGlyph } from "./nav-icon";
 import { NavCount, SidebarLink } from "./sidebar-link";
 
-const COUNTER_LABEL: Record<NavCounter, string> = { alerts: "avisos sin leer", ideas: "ideas pendientes", pending: "candidatas pendientes" };
+const COUNTER_LABEL: Record<NavCounter, string> = {
+  alerts: "avisos sin leer",
+  pending: "candidatas pendientes",
+  reviews: "fuentes con reseñas nuevas",
+  listing: "avisos de las normas en la ficha",
+};
 
 /** The count of one entry for the active market; streams in with the layout's aggregated query. */
 function EntryCount({ counter }: { counter: NavCounter }) {

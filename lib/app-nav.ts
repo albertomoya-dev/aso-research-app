@@ -18,7 +18,7 @@ export type NavIcon =
   | "changes"
   | "settings";
 /** Which counter of `MarketCounters` an entry shows. */
-export type NavCounter = "alerts" | "ideas" | "pending";
+export type NavCounter = "alerts" | "pending" | "reviews" | "listing";
 
 export type NavEntry = {
   id: string;
@@ -54,7 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Mercado",
     entries: [
       { id: "competidores", label: "Competidores", scope: "market", path: "/competidores", icon: "competitors" },
-      { id: "resenas", label: "Reseñas", scope: "market", path: "/resenas", icon: "reviews" },
+      { id: "resenas", label: "Reseñas", scope: "market", path: "/resenas", icon: "reviews", counter: "reviews" },
       { id: "tendencias", label: "Tendencias", scope: "market", path: "/tendencias", icon: "trends" },
     ],
   },
@@ -62,7 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "optimizar",
     label: "Optimizar",
     entries: [
-      { id: "ficha", label: "Ficha de la tienda", scope: "market", path: "/ficha", icon: "listing" },
+      { id: "ficha", label: "Ficha de la tienda", scope: "market", path: "/ficha", icon: "listing", counter: "listing" },
       { id: "creativos", label: "Creativos", scope: "product", path: "/creativos", icon: "creatives" },
       { id: "cambios", label: "Cambios y pruebas", scope: "market", path: "/cambios", icon: "changes" },
     ],

@@ -88,8 +88,50 @@ export async function marketRef(appId: number): Promise<MarketRef | null> {
 }
 
 /**
+ * What a freshly fetched listing of market `marketId` changes in its product: title and icon, only when
+ * it is the primary market (the lowest `apps.id` of the product) and they differ. The slug never changes
+ * (links and bookmarks keep working). Null: nothing to update.
+ */
+export function productListingUpdate(
+  marketId: number,
+  marketIds: readonly number[],
+  product: { title: string; icon: string },
+  listing: { title: string; icon: string },
+): { title: string; icon: string } | null {
+  if (marketIds.length === 0 || marketId !== Math.min(...marketIds)) return null;
+  const title = listing.title.trim() || product.title;
+  const icon = listing.icon || product.icon;
+  return title === product.title && icon === product.icon ? null : { title, icon };
+}
+
+/**
+ * Keeps the product's title and icon in step with its primary market's listing. Called whenever a
+ * market's listing is refreshed (the daily job and «Actualizar ficha»); other markets change nothing.
+ */
+export async function syncProductListing(marketId: number, listing: { title: string; icon: string }): Promise<boolean> {
+  const db = getDb();
+  const [market] = await db
+    .select({ productId: schema.apps.productId, title: schema.products.title, icon: schema.products.icon })
+    .from(schema.apps)
+    .innerJoin(schema.products, eq(schema.products.id, schema.apps.productId))
+    .where(eq(schema.apps.id, marketId));
+  if (!market) return false;
+  const markets = await db.select({ id: schema.apps.id }).from(schema.apps).where(eq(schema.apps.productId, market.productId));
+  const update = productListingUpdate(
+    marketId,
+    markets.map((m) => m.id),
+    market,
+    listing,
+  );
+  if (!update) return false;
+  await db.update(schema.products).set(update).where(eq(schema.products.id, market.productId));
+  return true;
+}
+
+/**
  * The product of (store, store id), created when the app is followed for the first time, with a free
- * slug. Title and icon are the first market's; they are not overwritten by later countries.
+ * slug. Title and icon start as the first market's and then follow the primary market's listing
+ * (`syncProductListing`); later countries do not overwrite them.
  */
 export async function ensureProduct(app: { store: "ios" | "android"; storeId: string; title: string; icon: string }): Promise<Product> {
   const db = getDb();

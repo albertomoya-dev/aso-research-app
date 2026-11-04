@@ -71,9 +71,11 @@ export async function refreshAppMeta(formData: FormData) {
     country: app.country,
     lang: getCountry(app.country).lang,
   });
-  // Same path as the daily job: a changed listing leaves an automatic annotation.
+  // Same path as the daily job: a changed listing leaves an automatic annotation, and the primary
+  // market's listing renames the product (title and icon, never the slug).
   await recordOwnListing(appId, meta);
-  await revalidateMarket(appId, "", "layout");
+  // Every page: the product's title and icon show in every market's header, the app picker and Inicio.
+  revalidatePath("/", "layout");
 }
 
 export type AddKeywordsState = {

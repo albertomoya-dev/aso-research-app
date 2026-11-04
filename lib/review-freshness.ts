@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import pLimit from "p-limit";
 import { getDb, schema } from "@/db";
 import { getCountry } from "./countries";
+import { RELEVANCE_STOP_AT_MS, REVIEW_FRESHNESS_STOP_AT_MS } from "./cron-step";
 import { today } from "./ranking";
 import { getAdapter } from "./stores";
 
@@ -30,19 +31,43 @@ export function hasNewReviews(latestReviewAt: Date | string | null | undefined, 
 export type FreshnessSource = { appId: number; targetStoreId: string };
 type CheckedRow = FreshnessSource & { checkedOn: string };
 
-/** The sources still to check today, in order, at most `max`: one never checked or checked on an earlier day. */
+/**
+ * The sources still to check today, at most `max`: one never checked or checked on an earlier day.
+ * Never-checked sources go first, then the ones checked longest ago, so with more than `max` sources the
+ * cap rotates over all of them day after day instead of always reading the same first ones. Ties keep
+ * the order of `sources`.
+ */
 export function sourcesToCheck(sources: FreshnessSource[], checked: CheckedRow[], date: string, max = MAX_FRESHNESS_SOURCES): FreshnessSource[] {
-  const done = new Set(checked.filter((c) => c.checkedOn >= date).map((c) => `${c.appId}:${c.targetStoreId}`));
+  const lastCheck = new Map(checked.map((c) => [`${c.appId}:${c.targetStoreId}`, c.checkedOn]));
   const seen = new Set<string>();
-  const out: FreshnessSource[] = [];
+  const due: { source: FreshnessSource; checkedOn: string | null; index: number }[] = [];
   for (const s of sources) {
     const key = `${s.appId}:${s.targetStoreId}`;
-    if (done.has(key) || seen.has(key)) continue;
+    if (seen.has(key)) continue;
     seen.add(key);
-    out.push(s);
-    if (out.length >= max) break;
+    const checkedOn = lastCheck.get(key) ?? null;
+    if (checkedOn !== null && checkedOn >= date) continue;
+    due.push({ source: s, checkedOn, index: due.length });
   }
-  return out;
+  due.sort((a, b) => {
+    if (a.checkedOn !== b.checkedOn) {
+      if (a.checkedOn === null) return -1;
+      if (b.checkedOn === null) return 1;
+      return a.checkedOn < b.checkedOn ? -1 : 1;
+    }
+    return a.index - b.index;
+  });
+  return due.slice(0, Math.max(0, max)).map((d) => d.source);
+}
+
+/**
+ * The signal of one freshness request: it aborts when `requestDeadline` (epoch ms) comes, so a slow
+ * store cannot eat the time of the relevance step that follows. Infinity: no signal (no limit).
+ */
+export function freshnessSignal(requestDeadline: number, now = Date.now()): AbortSignal | undefined {
+  if (!Number.isFinite(requestDeadline)) return undefined;
+  const left = requestDeadline - now;
+  return left > 0 ? AbortSignal.timeout(left) : AbortSignal.abort(new DOMException("The review freshness step ran out of time.", "TimeoutError"));
 }
 
 export type FreshnessReport = { checked: number; skipped: number; errors: number };
@@ -52,9 +77,15 @@ const message = (error: unknown) => (error instanceof Error ? error.message : St
 /**
  * Daily step of the cron: for every market, the newest review date of each review source, read with one
  * store request (`limit: 1`) per source and day. Stops starting requests at `deadline` (epoch ms); what is
- * left is read the next day. Sources: our app, the watched competitors and every app analysed before.
+ * left is read the next day. A request still running at `requestDeadline` is abandoned (counted as an
+ * error, retried the next day); by default that is when the cron starts the relevance step
+ * (`RELEVANCE_STOP_AT_MS`, measured from the same start as `deadline`). Sources: our app, the watched
+ * competitors and every app analysed before.
  */
-export async function trackReviewFreshness(deadline = Infinity): Promise<FreshnessReport> {
+export async function trackReviewFreshness(
+  deadline = Infinity,
+  requestDeadline = deadline + (RELEVANCE_STOP_AT_MS - REVIEW_FRESHNESS_STOP_AT_MS),
+): Promise<FreshnessReport> {
   const db = getDb();
   const [apps, watched, analysed, checked] = await Promise.all([
     db.select({ id: schema.apps.id, store: schema.apps.store, storeId: schema.apps.storeId, country: schema.apps.country }).from(schema.apps),
@@ -86,7 +117,12 @@ export async function trackReviewFreshness(deadline = Infinity): Promise<Freshne
         let latestReviewAt: Date | null = null;
         let error: string | null = null;
         try {
-          const [newest] = await getAdapter(app.store).getReviews(source.targetStoreId, { country: app.country, lang: getCountry(app.country).lang, limit: 1 });
+          const [newest] = await getAdapter(app.store).getReviews(source.targetStoreId, {
+            country: app.country,
+            lang: getCountry(app.country).lang,
+            limit: 1,
+            signal: freshnessSignal(requestDeadline),
+          });
           latestReviewAt = newest ? new Date(newest.date) : null;
           report.checked++;
         } catch (err) {
