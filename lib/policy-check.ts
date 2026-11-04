@@ -78,6 +78,8 @@ export type PolicyRule = {
    * or `() => []` when the issue is about the whole field.
    */
   locate?: (text: string, matches: string[], ctx: RuleContext) => Range[];
+  /** About the whole listing (a Play Console declaration), not about the field it is tested on: the issue gets no `field`. */
+  listing?: boolean;
   link: string;
   reviewedAt: string;
 };
@@ -153,7 +155,7 @@ export function mergeRanges(ranges: Range[]): Range[] {
   return out;
 }
 
-const NUMBER_ONE =/(?<![\p{L}\p{N}])(?:#\s?1|n\s?[º°]\s?1|n\.\s?º\s?1|no\.\s?1|nr\.?\s?1|numero\s(?:1|uno|um|un)|number\s(?:1|one)|nummer\s(?:1|eins)|top\s?1)(?!\p{N})/gu;
+const NUMBER_ONE = /(?<![\p{L}\p{N}])(?:#\s?1|n\s?[º°]\s?1|n\.\s?º\s?1|no\.\s?1|nr\.?\s?1|numero\s(?:1|uno|um|un)|number\s(?:1|one)|nummer\s(?:1|eins)|top\s?1)(?!\p{N})/gu;
 const numberOne = (text: string) => unique([...fold(text).matchAll(NUMBER_ONE)].map((m) => m[0]));
 
 type Lang = "es" | "en" | "pt" | "fr" | "de" | "it";
@@ -640,6 +642,7 @@ export const POLICY_RULES: PolicyRule[] = [
     store: "android",
     field: "title",
     level: "info",
+    listing: true,
     test: (_t, ctx) => (isHealthCategory(ctx.category) ? ["salud"] : []),
     message: () =>
       "App de salud: Google exige rellenar la declaración de apps de salud en Play Console (Supervisar y mejorar › Política › Contenido de la app).",
@@ -750,7 +753,7 @@ export function policyCheck(store: Store, draft: MetadataDraft, ctx: PolicyConte
         text: rule.message(matches, LABELS[field][store]),
         ruleId: rule.id,
         link: rule.link,
-        field,
+        ...(rule.listing ? {} : { field }),
         ...(ranges.length ? { ranges } : {}),
       });
     }

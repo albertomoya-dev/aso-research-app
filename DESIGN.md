@@ -97,6 +97,9 @@ Están en `components/ui/` (y en `components/ui.tsx` los de siempre). Reutilíza
 | `EmptyState` | Cuando no hay nada: icono, título, una frase y un botón |
 | `Skeleton`, `SkeletonText`, `SkeletonKpi`, `SkeletonTable`, `SkeletonChart` | Carga con la forma del contenido real |
 | `DataTable` (+ `TableSearch`, `FacetFilter`, `ViewOptions`, `useTableView`, `SelectionBar`) | Toda tabla de datos: buscador y facetas en la barra, «Vistas» (columnas y densidad, en localStorage), cabecera fija, cifras a la derecha, filas de 44 o 36 px, selección con barra flotante y `card` para el móvil. La lógica de filtros está en `lib/data-table.ts`. Ejemplo: Keywords › Seguimiento |
+| `HighlightTextarea` (`components/highlight-textarea.tsx`) | Texto editable con marcas detrás, como un corrector: subrayado suave `brand` para lo cubierto, ondulado `danger` para un aviso y fondo `brand` suave para lo resaltado. Las marcas son decoración (`aria-hidden`): el aviso se lista también en texto. El campo crece con el texto. Ejemplo: Ficha de la tienda |
+| `DiffText` (`components/diff-text.tsx`) | Dos textos como uno, por palabras (`lib/word-diff.ts`): lo quitado en `<del>` tachado sobre `danger-soft`, lo añadido en `<ins>` subrayado sobre `up` suave. Nunca solo color |
+| Contador con barra (`CharMeter` en `metadata-editor.tsx`) | Caracteres frente al límite en mono: barra `brand`, `warn` desde el 90 % y `danger` al pasarse |
 
 ### Navegación (`components/nav/`)
 

@@ -174,7 +174,7 @@ La pantalla **Ficha de la tienda** (`/a/[app]/[país]/ficha`, antes «Editor de 
 - **Panel (40 %)**, con pestañas:
   - **Vista previa**: la ficha como se ve en el móvil. En Google Play, icono, título, desarrollador, «Instalar», las 3 primeras capturas y la descripción corta en «Información de la app»; en el App Store, nombre y subtítulo junto al icono y «Obtener». Las capturas son las publicadas (`meta.screenshots`) o, si el producto tiene un diseño en **Creativos**, sus 3 primeras pantallas dibujadas con el mismo motor del estudio. El texto es el del editor y cambia mientras escribes.
   - **Cobertura**: las keywords agrupadas en «En título», «En descripción corta», «En descripción» (o los campos del App Store), «Solo palabras sueltas» y «Falta», con la cobertura ponderada. Al pulsar una se resalta en el texto (la frase o, si está suelta, cada palabra) y el editor va al campo.
-  - **Normas**: los avisos de límites y normas, con su enlace oficial.
+  - **Normas**: los avisos de límites y normas, con su enlace oficial, y cuántas marcas de la competencia hay detectadas, con enlace a Ajustes › Marcas.
   - **Notas de la versión**: el generador de siempre.
 - **Publicada** muestra la ficha leída de la tienda (sustituye al antiguo bloque «Ficha publicada»). **Comparar** muestra, campo a campo, la publicada frente al borrador como diff por palabras.
 - En móvil las zonas se apilan: barra, editor y panel debajo.
@@ -184,7 +184,7 @@ La pantalla **Ficha de la tienda** (`/a/[app]/[país]/ficha`, antes «Editor de 
 **Bajo el capó.**
 - `lib/word-diff.ts`: `wordDiff(antes, después)`, un diff LCS por palabras que conserva espacios y saltos de línea (palabras, signos y espacios son unidades; se recortan primero el principio y el final comunes). Une el espacio suelto entre dos cambios y pone lo quitado antes que lo añadido. Una descripción de 4000 caracteres tarda milisegundos.
 - `phraseRanges(texto, frase)` (en `lib/text.ts`, reexportada desde `lib/metadata-check.ts`): las posiciones `[inicio, fin)` de cada aparición en el **texto original**, con la misma comparación que la cobertura (sin acentos ni mayúsculas, palabra a palabra). Usa `foldWithMap`, que ahora vive en `lib/text.ts`, así que los acentos descompuestos (NFD) quedan dentro del subrayado.
-- Los avisos (`Issue`) llevan `field` y `ranges`. Las reglas de texto de `lib/policy-check.ts` (promoción, emojis, mayúsculas, símbolos, llamadas a la acción, otras marcas, salud, precios, campo de keywords) marcan las palabras exactas; la densidad marca cada repetición de la frase y el relleno sin repeticiones, el párrafo o la ventana de 300 caracteres peor. Los límites de longitud marcan lo que sobra. Los avisos de todo el campo (declaración de salud, aviso médico) no tienen posiciones.
+- Los avisos (`Issue`) llevan `field` y `ranges`. Las reglas de texto de `lib/policy-check.ts` (promoción, emojis, mayúsculas, símbolos, llamadas a la acción, otras marcas, salud, precios, campo de keywords) marcan las palabras exactas; la densidad marca cada repetición de la frase y el relleno sin repeticiones, el párrafo o la ventana de 300 caracteres peor. Los límites de longitud marcan lo que sobra. Los avisos de todo un campo (aviso médico) tienen campo pero no posiciones, y la declaración de salud de Play Console, que es de toda la ficha, no tiene ni campo (`PolicyRule.listing`): sale solo en Normas.
 - El subrayado es una capa espejo detrás de un `<textarea>` transparente, con el mismo texto y tipografía (`components/highlight-textarea.tsx`); el espejo también da la altura, así que no hay scroll que sincronizar.
 - `/dev/ui` incluye una demo de la propuesta con datos fijos, que la prueba e2e usa porque no tiene clave de IA.
 
@@ -278,7 +278,7 @@ La IA evita las marcas de otras apps en la ficha y en las ideas. El detector (`c
 
 Los nombres de desarrollador van en un grupo aparte, «Desarrolladores», plegado. La IA y el comprobador de normas siguen evitando las dos listas.
 
-**Ajustes de la app › Marcas** muestra la lista **Marcas detectadas** (con las keywords del mercado en el que estás) con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo. La ficha de la tienda no las lista: solo avisa, entre los avisos de normas y subrayada en el texto, si una aparece en tu texto.
+**Ajustes de la app › Marcas** muestra la lista **Marcas detectadas** (con las keywords del mercado en el que estás) con «No es una marca» para corregir errores (se guarda por app en la tabla `brand_exceptions`, migración `0012_brand_exceptions`) y la lista de las que marcaste, con «Es una marca» para deshacerlo. La ficha de la tienda no las lista: en la pestaña Normas dice cuántas hay, con el enlace «Revisar en Ajustes › Marcas», y avisa (subrayada en el texto) si una aparece en tu texto.
 
 ## Ficha de producto
 

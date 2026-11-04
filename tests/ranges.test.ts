@@ -131,6 +131,12 @@ describe("policy issues carry the field and the exact words", () => {
     expect(issue.field).toBe("description");
     expect(issue.ranges).toBeUndefined();
   });
+
+  it("the Play health declaration is about the listing, not a field", () => {
+    const [issue] = rule("play.health.declaration", "android", { title: "Pastillero" }, { category: "Medicina" });
+    expect(issue.field).toBeUndefined();
+    expect(issue.ranges).toBeUndefined();
+  });
 });
 
 describe("checkMetadata issues", () => {

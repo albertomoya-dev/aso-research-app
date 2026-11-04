@@ -4,6 +4,7 @@ import { Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { importantLosses, isRegression, type ListingProposal } from "@/lib/listing-optimizer";
 import { charCount, checkMetadata, FIELDS, type FieldKey, keywordDiff, type MetadataDraft, type ScoredKeyword, weightedCoverage } from "@/lib/metadata-check";
+import { formatNumber } from "@/lib/format";
 import type { PolicyContext } from "@/lib/policy-check";
 import type { Store } from "@/lib/stores/types";
 import { DiffText } from "./diff-text";
@@ -72,9 +73,9 @@ export function ListingProposalPanel({ store, draft, proposal, model, terms, sco
         </h2>
         {scoring.length > 0 && (
           <p className="text-table text-ink-soft">
-            Cobertura ponderada {current.score} →{" "}
+            Cobertura ponderada {formatNumber(current.score)} →{" "}
             <span className={`font-mono font-semibold ${scoreDropped ? "text-down" : proposedWeighted.score > current.score ? "text-up" : "text-ink"}`}>
-              {proposedWeighted.score}
+              {formatNumber(proposedWeighted.score)}
             </span>{" "}
             de 100 · cubiertas {coveredNow} → {proposed.coverage.filter((c) => c.covered).length} de {terms.length}
           </p>
@@ -83,7 +84,7 @@ export function ListingProposalPanel({ store, draft, proposal, model, terms, sco
 
       {regressed && (
         <p role="alert" className="rounded-control bg-danger-soft px-3 py-2 text-sm text-danger">
-          Esta propuesta cubre peor tus keywords que el texto actual{drop ? ` (${drop[0]} → ${drop[1]})` : ""}.
+          Esta propuesta cubre peor tus keywords que el texto actual{drop ? ` (${formatNumber(drop[0])} → ${formatNumber(drop[1])})` : ""}.
           {lostShown.length > 0 ? ` Deja de cubrir keywords importantes: ${lostShown.slice(0, 5).map((l) => l.term).join(", ")}.` : ""}
           {proposal.attempts === 2 ? " La IA lo intentó dos veces y esta es la mejor de las dos." : ""} Acepta solo los campos que te convenzan.
         </p>

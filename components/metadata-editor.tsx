@@ -7,6 +7,7 @@ import { startTransition, useActionState, useEffect, useMemo, useRef, useState }
 import { discardDraft, type DraftState, localizeListingAction, optimizeListing, type OptimizeState, saveDraft } from "@/app/ai-actions";
 import type { ScreenshotSpec } from "@/lib/assets/screenshots";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format";
 import type { DraftAge, DraftTarget, LocaleOption } from "@/lib/listing-drafts";
 import { type ListingProposal } from "@/lib/listing-optimizer";
 import {
@@ -400,7 +401,9 @@ export function MetadataEditor({
                     </span>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="notes">Notas de la versión</TabsTrigger>
+                <TabsTrigger value="notes">
+                  Notas<span className="sr-only"> de la versión</span>
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="preview" className="mt-4">
                 <StorePreview
@@ -425,7 +428,7 @@ export function MetadataEditor({
                   </p>
                   {scoring.length > 0 && (
                     <p className="flex items-center gap-1">
-                      Cobertura ponderada: <span className="font-mono font-semibold text-ink">{weighted.score}</span> de 100
+                      Cobertura ponderada: <span className="font-mono font-semibold text-ink">{formatNumber(weighted.score)}</span> de 100
                       <HelpTip label="Cobertura ponderada">
                         Cuenta las {scoring.length} keywords relevantes por su oportunidad y por el campo: {weightsText(store, labels)}. Si solo están las
                         palabras sueltas, cuenta {store === "ios" ? "el 80 %" : "la mitad"}.
@@ -441,12 +444,13 @@ export function MetadataEditor({
                 ) : (
                   <IssueList issues={report.issues} />
                 )}
-                <p className="text-label text-muted">
-                  Límites de la tienda y normas de Google Play y App Store; cada aviso enlaza a la norma. Las marcas de la competencia se revisan en{" "}
-                  <Link href={brandsHref} className="text-link underline">
-                    Ajustes › Marcas
+                <p className="text-label text-muted">Límites de la tienda y normas de Google Play y App Store; cada aviso enlaza a la norma.</p>
+                <p className="text-table text-ink-soft">
+                  {brands.length === 1 ? "1 marca de la competencia detectada" : `${brands.length} marcas de la competencia detectadas`}: la IA no las usa y, si
+                  aparecen en tu texto, salen aquí.{" "}
+                  <Link href={brandsHref} className="font-medium text-link underline">
+                    Revisar en Ajustes › Marcas
                   </Link>
-                  .
                 </p>
               </TabsContent>
               {/* Forced mount: a generated text survives switching tabs. */}
