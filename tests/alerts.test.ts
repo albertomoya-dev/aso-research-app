@@ -160,6 +160,12 @@ describe("summarizeWeek", () => {
     expect(week.losers.map((l) => [l.term, l.change])).toEqual([["b", -6]]);
   });
 
+  it("counts the TOP 30 like the TOP 10: now over every keyword, before only where there was a check", () => {
+    const week = summarizeWeek([row(1, 20, 5), row(2, 3, 9), row(3, null, 50, { hasBefore: false }), row(4, 7, 7), row(5, 40, 25), row(6, 28, 31), row(7, null, 12, { hasBefore: false })]);
+    // Now: 5, 9, 7, 25, 12 (50 and 31 are out). Before, with a check: 20, 3, 7, 28 (40 is out).
+    expect(week).toMatchObject({ top30: 5, top30Before: 4 });
+  });
+
   it("describes out of 30 → #18 as entering the first 30, not a jump of 183", () => {
     const week = summarizeWeek([row(1, null, 18, { beforeDepth: 30, nowDepth: 30 }), row(2, 5, 10)]);
     expect(week.gainers).toHaveLength(1);

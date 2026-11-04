@@ -1,7 +1,10 @@
 // No "@/" imports here: db/schema.ts imports this file and drizzle-kit loads it without the alias.
 
-/** Where a followed keyword came from. "autocomplete" is the old value for Descubrir, kept for existing rows. */
-export const KEYWORD_SOURCES = ["manual", "ai", "autocomplete", "top10", "discover"] as const;
+/**
+ * Where a followed keyword came from. "autocomplete" is the old value for Descubrir, kept for existing rows.
+ * "reviews" (migration 0021): words users write in the reviews; older ones were stored as "ai".
+ */
+export const KEYWORD_SOURCES = ["manual", "ai", "autocomplete", "top10", "discover", "reviews"] as const;
 export type KeywordSource = (typeof KEYWORD_SOURCES)[number];
 
 export const SOURCE_LABEL: Record<KeywordSource, string> = {
@@ -10,6 +13,7 @@ export const SOURCE_LABEL: Record<KeywordSource, string> = {
   autocomplete: "Autocompletado",
   top10: "TOP 10 de la competencia",
   discover: "Descubrir",
+  reviews: "Reseñas",
 };
 
 export const MAX_KEYWORD_LENGTH = 100;

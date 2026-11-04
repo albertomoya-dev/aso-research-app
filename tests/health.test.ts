@@ -8,6 +8,7 @@ import {
   irrelevantItem,
   listingAgeItem,
   nextSeason,
+  nextSeasons,
   policyItem,
   REVIEWS_BAD,
   reviewsItem,
@@ -144,6 +145,25 @@ describe("nextSeason and seasonItem", () => {
 
   it("returns null without peaks", () => {
     expect(nextSeason([{ term: "x", peaks: [] }], "2026-10-30")).toBeNull();
+  });
+
+  it("nextSeasons lists every keyword's coming peak, nearest first, keeping the keyword id", () => {
+    const list = nextSeasons(
+      [
+        { term: "verano", peaks: [5, 6], keywordId: 1 },
+        { term: "sin pico", peaks: [] },
+        { term: "navidad", peaks: [11, 0], keywordId: 2 },
+        { term: "halloween", peaks: [9], keywordId: 3 },
+      ],
+      "2026-10-30",
+    );
+    expect(list.map((s) => [s.term, s.days, s.running, s.keywordId])).toEqual([
+      ["halloween", 0, true, 3],
+      ["navidad", 32, false, 2],
+      ["verano", 214, false, 1],
+    ]);
+    expect(nextSeason([{ term: "a", peaks: [11] }, { term: "b", peaks: [11] }], "2026-10-30")?.term).toBe("a");
+    expect(nextSeasons([], "2026-10-30")).toEqual([]);
   });
 
   it("warns when the peak is close and is unknown without data", () => {

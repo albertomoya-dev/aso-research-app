@@ -154,7 +154,7 @@ export async function generateSuggestions(_prev: GenerateState, formData: FormDa
           .onConflictDoNothing()
           .returning({ id: schema.aiSuggestions.id });
 
-  await revalidateMarket(appId, "/ideas");
+  await revalidateMarket(appId, "", "layout");
   return { created: inserted.length, dropped: dropped.length + kept.length - inserted.length };
 }
 
@@ -200,7 +200,7 @@ export async function dismissSuggestions(appIdValue: number, idValues: number[])
       .set({ status: "dismissed" })
       .where(and(eq(schema.aiSuggestions.appId, appId), eq(schema.aiSuggestions.status, "pending"), inArray(schema.aiSuggestions.id, ids)))
       .returning({ id: schema.aiSuggestions.id });
-    await revalidateMarket(appId, "/ideas");
+    await revalidateMarket(appId, "", "layout");
     return { dismissed: changed.length };
   } catch (err) {
     console.error("dismissSuggestions", err);

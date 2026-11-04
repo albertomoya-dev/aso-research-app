@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { GLOBAL_REDIRECTS } from "./lib/redirects";
+import { FIND_REDIRECTS, GLOBAL_REDIRECTS } from "./lib/redirects";
 
 const nextConfig: NextConfig = {
   experimental: {
@@ -9,9 +9,10 @@ const nextConfig: NextConfig = {
     // Screenshot sets carry their images (base64) when they are saved.
     serverActions: { bodySizeLimit: "4mb" },
   },
-  // Old global pages (/novedades, /resumen, /ajustes, /buscar) → their new ones, as 308s with the query kept.
+  // Old global pages (/novedades, /resumen, /ajustes, /buscar) → their new ones, and the old find pages of
+  // a market (descubrir, ideas, top10) → Encontrar, as 308s with the query kept.
   async redirects() {
-    return [...GLOBAL_REDIRECTS];
+    return [...GLOBAL_REDIRECTS, ...FIND_REDIRECTS];
   },
 };
 

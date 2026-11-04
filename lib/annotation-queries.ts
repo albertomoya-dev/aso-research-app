@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, lte, or, type SQL } from "drizzle-orm
 import { getDb, schema } from "@/db";
 import type { Annotation, Experiment } from "@/db/schema";
 import { affectedKeywords } from "./annotations";
-import { annotationImpact, IMPACT_WINDOW, type Impact, type ImpactPoint, type ImpactVerdict, summarizeImpacts } from "./impact";
+import { aggregateImpact, type AggregateImpact, annotationImpact, IMPACT_WINDOW, type Impact, type ImpactPoint, type ImpactVerdict, summarizeImpacts } from "./impact";
 import { shiftDate, today } from "./ranking";
 
 /** Annotations older than this are listed in the keyword detail only. */
@@ -22,6 +22,8 @@ export type AnnotationWithImpact = {
   /** Keywords measured (before trimming rows). */
   measured: number;
   summary: Record<ImpactVerdict, number>;
+  /** Every measured keyword in one line («12 keywords · 23 → 18 ▲»), see `aggregateImpact`. */
+  aggregate: AggregateImpact;
 };
 
 /** Dates (and, for annotations with changed words, keywords) whose snapshots an impact needs. Null keywordIds: all of them. */
@@ -114,6 +116,7 @@ export async function getAnnotationsWithImpact(appId: number): Promise<Annotatio
       rows: sorted.slice(0, scope === "affected" ? MAX_AFFECTED : TOP_MOVERS),
       measured: measuredRows.length,
       summary: summarizeImpacts(measuredRows.map((r) => r.impact)),
+      aggregate: aggregateImpact(measuredRows.map((r) => r.impact)),
     };
   });
 }

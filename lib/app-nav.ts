@@ -18,7 +18,7 @@ export type NavIcon =
   | "changes"
   | "settings";
 /** Which counter of `MarketCounters` an entry shows. */
-export type NavCounter = "alerts" | "ideas";
+export type NavCounter = "alerts" | "ideas" | "pending";
 
 export type NavEntry = {
   id: string;
@@ -27,7 +27,7 @@ export type NavEntry = {
   /** Path under the market or product base, "" for the market root. */
   path: string;
   icon: NavIcon;
-  /** Other first segments that belong to this entry (Encontrar covers descubrir, ideas and top10). */
+  /** Other first segments that belong to this entry. */
   also?: string[];
   counter?: NavCounter;
 };
@@ -38,7 +38,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "top",
     label: null,
-    // Until phase 28 the market root shows the keywords; the Resumen plugs in there.
+    // The market root is the Resumen (phase 28); the keyword table is Seguimiento.
     entries: [{ id: "resumen", label: "Resumen", scope: "market", path: "", icon: "summary", counter: "alerts" }],
   },
   {
@@ -46,7 +46,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Keywords",
     entries: [
       { id: "seguimiento", label: "Seguimiento", scope: "market", path: "/keywords", icon: "tracking" },
-      { id: "encontrar", label: "Encontrar", scope: "market", path: "/descubrir", icon: "find", also: ["ideas", "top10"], counter: "ideas" },
+      { id: "encontrar", label: "Encontrar", scope: "market", path: "/encontrar", icon: "find", counter: "pending" },
     ],
   },
   {

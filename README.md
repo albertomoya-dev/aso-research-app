@@ -36,6 +36,8 @@ Aplicación web para seguir en qué posición aparece una app en App Store y Goo
 | 26 | Productos y mercados: la tabla `products` y una app con varios países (`apps` = mercado), URLs `/a/[app]/[país]/…`, redirecciones 308 desde `/apps/[id]/…` y portada y barra lateral agrupadas por app | Hecho |
 | 26b | Datos de la app en el producto: ficha de producto, marcas excluidas y creativos por `product_id` (migración 0020, que fusiona los países). Se conservan al dejar de seguir un país. Los borradores siguen siendo de cada país y el editor avisa si dos países tienen el mismo idioma | Hecho |
 | 27 | Navegación: barra lateral global (selector de app, Inicio, Actividad, Integraciones) y barra lateral de cada app (Resumen, Keywords, Mercado, Optimizar, Ajustes de la app), cabecera fija con selector de mercado y «Actualizar posiciones», paleta ⌘K, barra inferior en el móvil, páginas Actividad, Integraciones y Añadir app, Ajustes de la app con pestañas (Producto, Mercados, Marcas, Datos de Play Console, Zona de peligro) y redirecciones 308 de las páginas globales antiguas | Hecho |
+| 28 | Inicio (KPIs de todas las apps, una fila por mercado con mini-gráfico, TOP 10 y 30, posición media, valoración y salud, y «Qué hacer hoy») y Resumen de cada mercado (KPIs, visibilidad a 30, 90 o 180 días con los cambios marcados y su impacto, próximos pasos, movimientos de la semana y competencia en una línea) | Hecho |
+| 29 | Keywords: tabla de Seguimiento con buscador, filtros por facetas, «Vistas» (columnas y densidad), selección con barra flotante, tarjetas en el móvil y panel de detalle (`?k=`) con el TOP 10; pantalla única **Encontrar** (Autocompletado, Ideas con IA, TOP 10 y Reseñas) con popularidad estimada, «Medir» y descartes que no vuelven (migración 0021) | Hecho |
 | 30 | Ficha de la tienda: barra superior (idiomas del mercado y «+ Añadir idioma», Publicada / Borrador / Comparar, «Optimizar con IA», «Adaptar a…», «Guardar»), editor con contador en barra, keywords subrayadas y avisos de normas en ondulado sobre las palabras exactas, panel con Vista previa de Google Play / App Store (capturas publicadas o de Creativos), Cobertura que resalta en el texto, Normas y Notas de la versión, y la propuesta de la IA como diff por palabras con «Aceptar campo» (`lib/word-diff.ts`, `phraseRanges`, `Issue.field` y `Issue.ranges`) | Hecho |
 
 ## Stack
@@ -69,7 +71,7 @@ Importa el repositorio en Vercel, añade `DATABASE_URL`, `APP_PASSWORD`, `CRON_S
 
 ## Posiciones
 
-Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda (se piden 200 resultados) y se guarda la posición de cada app que la sigue, el TOP 5 y cuántos resultados devolvió la tienda. Si la app no aparece, se guarda «fuera de los N primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
+Cada día a las 05:00 UTC, Vercel Cron llama a `/api/cron/rankings` (configurado en `vercel.json`). Para cada keyword, tienda y país se hace una sola búsqueda (se piden 200 resultados) y se guarda la posición de cada app que la sigue, el TOP 5, el TOP 10 (desde la migración 0021; las posiciones anteriores solo tienen el TOP 5) y cuántos resultados devolvió la tienda. Si la app no aparece, se guarda «fuera de los N primeros», nunca 0. También puedes lanzarla a mano con «Actualizar posiciones», y las keywords nuevas se consultan nada más añadirlas.
 
 La profundidad real depende de la tienda: App Store devuelve hasta 200 resultados; Google Play suele devolver unos 30, aunque el scraper ya pide más páginas (es un límite de Google, no nuestro). Por eso cada posición «> N» lleva su propio N, el de ese día y esa búsqueda: al pulsarla (o al pasar el ratón o el foco del teclado) se explica «Fuera de los N resultados que devuelve la tienda». El histórico y el gráfico de cada keyword usan el N de cada día, no el de hoy.
 
@@ -84,7 +86,7 @@ La consulta diaria va en este orden: posiciones → avisos → picos de temporad
 
 Si un paso falla, los demás siguen y su error aparece en la respuesta JSON.
 
-En la tabla de keywords, la columna **TOP 5** marca tu app con un borde lavanda y los competidores que vigilas (pestaña Competidores) con uno naranja; la leyenda está encima de la tabla y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. La tabla es ancha: en el móvil o en una ventana estrecha hace scroll dentro de su tarjeta, nunca la página, y la casilla y la keyword se quedan fijas a la izquierda para no perder de vista qué fila estás leyendo. 
+En la tabla de keywords, la columna **TOP 5** marca tu app con un borde azul y los competidores que vigilas (Competidores) con uno naranja; la leyenda está en el menú «Vistas», y el nombre de cada icono sale al pasar el cursor y lo leen los lectores de pantalla. Ver *Keywords › Seguimiento*.
 
 ## Popularidad, dificultad y oportunidad
 
@@ -102,7 +104,7 @@ Las tiendas no publican cuántas veces se busca una palabra, así que son estima
 - **Oportunidad**: `popularidad × (1 − 0,7 × dificultad / 100) × factor de relevancia`. La relevancia de 1 a 5 da un factor de 0,6 a 1; una keyword **sin valorar cuenta como 0,7**, así una palabra genérica muy buscada ya no gana a una frase central valorada con un 5 (ver *Relevancia e higiene de keywords*).
 - **Google Trends**: interés semanal en Google de los últimos 12 meses en el país, relativo al pico de la propia keyword. Sirve para ver la estacionalidad, no para comparar keywords. Google Trends no tiene API pública y limita mucho las peticiones: se descargan como máximo 20 keywords por día y se refrescan cada semana.
 
-La pantalla **Descubrir keywords** consulta el autocompletado con una palabra semilla, sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
+Antes de seguir una keyword, **Encontrar** da una popularidad **estimada** sin pedir nada nuevo a la tienda, y «Medir popularidad» la mide de verdad para unas pocas (ver *Keywords › Encontrar*).
 
 ## Relevancia e higiene de keywords
 
@@ -117,28 +119,47 @@ Una lista con cientos de keywords mezcla frases que de verdad traen usuarios con
     - Va al final, después de los avisos y de la ficha propia, así que un aviso usa la relevancia nueva al día siguiente.
     - No empieza lotes pasados 240 segundos desde el inicio, y cada petición a Claude se abandona a los 40 segundos sin reintentar.
   - Si falla todo, las keywords se añaden igual.
-  - **Recalcular relevancia con IA** vuelve a valorar todas menos las que has valorado tú.
-- **Tu relevancia manda**: en la tabla de keywords cada fila tiene un selector de 1 a 5 que indica si la puso la IA o tú. La que pones tú no la cambia nunca la IA (columna `relevance_source`).
+  - **Recalcular con IA** (barra de la selección) vuelve a valorar las marcadas, menos las que has valorado tú.
+- **Tu relevancia manda**: en el panel de cada keyword (y en la columna opcional «Relevancia editable») hay un selector de 1 a 5 que indica si la puso la IA o tú; «Cambiar relevancia» la fija para toda la selección. La que pones tú no la cambia nunca la IA (columna `relevance_source`).
 - **Intención ajena**: las tiendas no dan la categoría de las apps en los resultados de búsqueda, así que no se puede comparar categorías. Con cada keyword se le pasan a Claude los títulos de las 5 primeras apps de hoy y se le pide marcar `foreign` cuando al menos 4 son otro tipo de app (juegos, dibujos, mensajería, relojes). Es una estimación del modelo, no un dato de la tienda; si no estás de acuerdo, súbele la relevancia a 3 o más y deja de contar como ajena.
-- **Filtro «Probablemente irrelevantes»** (`?f=noise`): relevancia 2 o menos, intención ajena o palabra vacía. Una keyword a la que tú has dado relevancia 3 o más nunca entra en el filtro. Puedes marcar varias y **Quitar seleccionadas**: pide confirmación y deja **Deshacer** durante 15 segundos, que recupera las keywords con su origen y su relevancia. El histórico de posiciones no se borra al quitar una keyword.
+- **Filtro Relevancia › «Probablemente irrelevante»** (`?f=noise` sigue funcionando): relevancia 2 o menos, intención ajena o palabra vacía. Una keyword a la que tú has dado relevancia 3 o más nunca entra en el filtro. Puedes marcar varias y pulsar **Quitar** en la barra de la selección: un aviso deja **Deshacer** durante 15 segundos, que recupera las keywords con su origen y su relevancia. El histórico de posiciones no se borra al quitar una keyword.
 - **Presupuesto**: por encima de 150 keywords seguidas la tabla avisa de que alertas y cuota pierden precisión.
-- En **Keywords del TOP 10** y **Descubrir**, «Seleccionar todas» deja fuera las palabras vacías y las de relevancia 2 o menos. **Estimar relevancia con IA** valora las candidatas sin guardar nada (una petición por cada 100, hasta 200 por clic).
-- El origen de cada keyword distingue **TOP 10 de la competencia** y **Descubrir** de las añadidas a mano.
+- En **Encontrar**, «Seleccionar todas» deja fuera las palabras vacías y las de relevancia 2 o menos. **Estimar relevancia con IA** valora las candidatas sin guardar nada (una petición por cada 100, hasta 200 por clic).
+- El origen de cada keyword (`keyword_source`) distingue Manual, IA, Autocompletado (antes «Descubrir»), TOP 10 y **Reseñas** (desde la migración 0021; las seguidas antes desde Reseñas constan como IA y no se pueden recuperar).
 - Para filtrar keywords «relevantes» en otras partes: `isRelevantKeyword` y `isLikelyIrrelevant` de `lib/relevance.ts`. Prompt versión `rel-1`.
 
-## Keywords del TOP 10
+## Keywords › Seguimiento
 
-La pestaña **Keywords del TOP 10** busca una keyword que sigues (o todas, hasta 8), o cualquier otra búsqueda, y lee la ficha completa de las 10 primeras apps, sin contar la tuya. De su título, descripción corta (Google Play) y descripción saca palabras y frases de 1 a 3 palabras, sin artículos ni preposiciones, y muestra en cuántas apps aparece cada una, en cuántos títulos y cuántas veces en total. Las que solo usa una app se descartan porque suelen ser nombres de marca.
+La tabla de `/a/[app]/[país]/keywords` (`components/keyword-table.tsx` sobre `DataTable`, `components/ui/data-table.tsx`):
 
-La puntuación suma, por cada app que la usa, 3 si está en el título, 2 en la descripción corta y 1 en la descripción, con un extra para las frases. Puedes seguir las que elijas (se consulta su posición en el momento) o exportarlas a CSV. En App Store no se lee el subtítulo porque la API pública no lo devuelve.
+- **Barra de herramientas:** buscador (sin tildes ni mayúsculas), filtros por facetas en chips (**Estado**: TOP 10, Al alcance, Bajando, Fuera; **Relevancia**: de 5 a 1, sin valorar y «Probablemente irrelevante»; **Origen**: Manual, IA, Reseñas, TOP 10, Autocompletado; **Dificultad**: baja, media, alta, sin datos), con el número de filas de cada opción, y **Vistas**: columnas y densidad (filas de 44 o 36 px), guardadas en `localStorage` (`rk-keyword-view-v1`), con la leyenda del TOP 5. Las opciones de una faceta se suman; las facetas se combinan. El filtrado y el orden se hacen en el navegador sobre las filas que manda el servidor (`lib/data-table.ts`, `lib/keyword-table.ts`).
+- **Columnas por defecto:** Keyword (con su origen y la relevancia en puntos), Posición (`RankBadge` y el cambio desde ayer), Evolución 30 d, Popularidad, Dificultad, Oportunidad (el orden por defecto) y TOP 5. Opcionales: Variación 7 días, Relevancia editable y, en Google Play con el CSV importado, Visitantes de Play. Cada cabecera lleva su «?» con la definición; la cabecera es fija y las cifras van alineadas a la derecha.
+- **«+ Añadir keywords»** abre un diálogo con **Escribir** (una por línea o separadas por comas) y **Pegar CSV**: lee la columna «keyword», «término», «search term»… (o la primera), con comas, punto y coma o tabuladores, y salta la cabecera (`parseKeywordCsv`).
+- **Selección:** al marcar filas sale una barra flotante con **Cambiar relevancia**, **Recalcular con IA**, **Exportar CSV** y **Quitar** (con **Deshacer** durante 15 segundos).
+- **Panel de detalle** (480 px, `?k=<id>` en la URL; se abre al pulsar una fila y Atrás lo cierra): posición a 90 días con las anotaciones y la media antes y después, el TOP 10 (o el TOP 5 en las posiciones anteriores a la 0021) con tu app y los competidores vigilados marcados, la relevancia y la intención editables, **Dónde aparece en tu ficha** (los campos del borrador principal o, sin borrador, de la ficha publicada que tienen la frase exacta, con `weightedCoverage`), **Analizar TOP 10** (abre Encontrar › TOP 10 con esa keyword) y **Quitar**. `/keywords/[id]` sigue existiendo para los enlaces directos, con Google Trends y las anotaciones.
+- **En el móvil** (menos de 640 px) la tabla pasa a tarjetas (keyword, posición con su cambio, mini-gráfico y oportunidad) y los filtros se abren en una hoja inferior.
 
-## Ideas con IA
+## Keywords › Encontrar
 
-La pantalla **Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Anthropic) keywords nuevas para la app. Antes de llamar al modelo se reúnen señales reales: la ficha, las keywords que ya sigues y las que descartaste, el autocompletado de la tienda para las palabras del título y la categoría, y las apps que salen en el TOP 5 de tus keywords.
+Una sola pantalla, `/a/[app]/[país]/encontrar`, con un campo **Semilla o tema** y cuatro vistas (`?fuente=`): **Pendientes**, **Autocompletado**, **Ideas con IA** y **TOP 10**. Todas dan la **misma lista de candidatas** (`components/candidate-list.tsx`): keyword, fuente, relevancia (la de la idea, o la que estimes con IA), popularidad, el porqué y una casilla, con **Seguir N**, **Descartar**, **Medir popularidad** y **Exportar CSV**.
+
+- **Autocompletado** (antes Descubrir): la semilla sola y seguida de cada letra de la «a» a la «z», para encontrar frases long tail.
+- **Ideas con IA:** ver abajo. La semilla es el enfoque de las ideas.
+- **TOP 10:** lee la ficha completa de las 10 primeras apps de la búsqueda, sin contar la tuya. De su título, descripción corta (Google Play) y descripción saca palabras y frases de 1 a 3 palabras, sin artículos ni preposiciones; el porqué dice en cuántas apps y en cuántos títulos aparece. Las que solo usa una app se descartan porque suelen ser nombres de marca. En App Store no se lee el subtítulo porque la API pública no lo devuelve. `?kw=all` (de la antigua página) busca tus 8 primeras keywords.
+- **Pendientes:** la bandeja de lo que aún no has decidido: las ideas con IA pendientes, las **palabras de las reseñas** (fuente «Reseñas»: llegan al analizar las reseñas de tu país y al abrir Encontrar, desde el último análisis de cada app) y las candidatas que has medido. Su número es el contador de «Encontrar» en la barra lateral.
+- **Popularidad estimada:** sale del autocompletado ya leído, sin peticiones nuevas: el mejor `autocompleteScore` entre las listas donde aparece, con las letras escritas y su puesto (`estimatePopularity` en `lib/candidates.ts`). Se marca «estimada». **Medir popularidad** hace la medida real (la de las keywords seguidas, hasta 16 peticiones cada una) para como mucho **10** candidatas por clic, de 2 en 2, y la guarda.
+- **Descartar** funciona igual en todas las fuentes, y lo descartado no vuelve en ninguna: una idea con IA se marca en `ai_suggestions`; el resto se guarda en la tabla `keyword_candidates` (migración 0021).
+- **Seguir** añade las marcadas con el origen de su fuente (Autocompletado, IA, TOP 10 o Reseñas), consulta su posición en el momento y valora su relevancia.
+
+**Modelo de datos.** Las ideas con IA siguen en `ai_suggestions` (con su estado, relevancia, competencia y modelo). `keyword_candidates` (`app_id`, `term`, `source` = autocomplete, ai, top10 o reviews, `status` = pending, followed o dismissed, `reason`, `relevance`, `popularity_estimate`, `popularity_measured`, único por app, término y fuente) guarda lo demás: las palabras de las reseñas y las candidatas de Autocompletado y TOP 10 en cuanto las descartas, las sigues o las mides (si no, se calculan en cada búsqueda). Una fila con fuente `ai` solo guarda la popularidad medida de una idea. Las dos tablas se unen en un mismo tipo `Candidate` con `mergeCandidates`, que quita repetidas, seguidas y descartadas.
+
+### Ideas con IA
+
+**Encontrar › Ideas con IA** pide a Claude (`claude-opus-5-5`, con la API de Anthropic) keywords nuevas para la app. Antes de llamar al modelo se reúnen señales reales: la ficha, las keywords que ya sigues y las que descartaste, el autocompletado de la tienda para las palabras del título y la categoría, y las apps que salen en el TOP 5 de tus keywords.
 
 - La respuesta llega como JSON estructurado y se valida con Zod. Se quitan repetidas (también plurales y acentos), las que ya sigues o descartaste y las que contienen marcas de otras apps.
 - Las ideas quedan pendientes hasta que eliges cuáles seguir. Nada se añade solo.
-- La relevancia y la competencia son estimaciones de la IA, no datos de la tienda. La popularidad y la dificultad reales se miden al seguir la keyword.
+- La relevancia y la competencia son estimaciones de la IA, no datos de la tienda. La popularidad se puede medir antes de seguirla («Medir popularidad») y la dificultad se mide al seguirla.
 - Cada idea guarda el modelo que respondió y la versión del prompt (`PROMPT_VERSION` en `lib/suggestions.ts`).
 - Si el modelo rechaza una petición, la API la reintenta con el modelo alternativo que recomienda Anthropic (fallback del lado del servidor).
 - Sin `ANTHROPIC_API_KEY` la pantalla lo indica y el resto de la app funciona igual.
@@ -379,7 +400,7 @@ La pestaña **Reseñas** lee hasta 300 reseñas recientes (App Store: feed RSS d
 - los temas más mencionados, con su tono, cuántas reseñas los mencionan y una cita;
 - las quejas y las peticiones más repetidas;
 - ideas concretas para la ficha;
-- las frases con las que los usuarios describen la app, que puedes seguir como keywords.
+- las frases con las que los usuarios describen la app, que puedes seguir como keywords (con el origen «Reseñas») y que también llegan a Keywords › Encontrar › Pendientes, donde se pueden descartar.
 
 La distribución de estrellas y la media se calculan con las reseñas leídas, no con IA. Cada análisis se guarda, así que puedes comparar la media entre análisis.
 
@@ -466,9 +487,43 @@ Las imágenes generativas no tienen prueba porque cada imagen se cobra. Los avis
 
 Cada tarjeta muestra «Probar» cuando está conectada y «Cómo conectar» cuando no: un panel con los pasos numerados y los nombres de las variables, con un botón para copiarlos y pegarlos en Vercel (`lib/integration-guides.ts`). Las variables y si están puestas quedan dentro de «Detalles técnicos».
 
+## Inicio
+
+`/` resume todas las apps que sigues. Está en `lib/home.ts` (`getHomeOverview`) y `components/home-overview.tsx`.
+
+- **KPIs del conjunto:** keywords en el TOP 10 y en el TOP 30, visibilidad media y avisos sin leer, con el cambio frente a hace una semana. El cambio solo cuenta las keywords que tenían consulta en las dos fechas, así que una keyword añadida esta semana no parece una subida. Los mercados sin una semana de datos no suman al cambio.
+- **Una fila por mercado** (en el móvil, una tarjeta), ordenadas por app y país. Al pulsarla se abre su Resumen. Columnas:
+  - el mini-gráfico de tu cuota de visibilidad en los últimos 30 días;
+  - el TOP 10 con su cambio y el TOP 30;
+  - la **posición media**: la de las 5 keywords relevantes con más oportunidad. Las que están fuera de los resultados no cuentan, porque no sabemos su posición, y lo indica «(3/5)»;
+  - la valoración de la ficha;
+  - la salud en pocas palabras («2 por atender · 1 mejorable»).
+- **Coste:** todos los mercados salen de una sola ronda de 3 consultas (los mercados con sus avisos sin leer, las posiciones de 30 días de las keywords seguidas y las keywords con sus métricas). De cada consulta solo se lee el número de apps del TOP 5, no las apps. La salud de cada fila llega después, por streaming, y no llama a las tiendas: la línea de reseñas, que pregunta a Google Play, solo está en el Resumen. Con `LOG_TIMING=1` el servidor escribe cuánto tarda la ronda.
+- **Qué hacer hoy:** de 3 a 5 tareas con la app, el país y un botón (`whatToDoToday` en `lib/today.ts`). Salen de la salud de cada mercado, de los avisos sin leer de los últimos 14 días y de los picos de temporada. Por orden:
+
+  | Tarea | Puntos |
+  | --- | --- |
+  | Línea de salud que necesita atención / mejorable | 100 / 60, más un desempate: ficha frente a producto, normas, cobertura, reseñas, irrelevantes y capturas |
+  | Pierdes el nº 1 / sales del TOP 10 / dejas de aparecer / bajas 5 o más | 90 / 85 / 80 / 70 |
+  | Pico en temporada ahora / que empieza en 35 días o menos (más cerca, más puntos) | 75 / 60–70 |
+  | Aviso de temporada / ficha vigilada que cambia / nuevo nº 1 de otra app | 65 / 45 / 35 |
+
+  Las subidas no son tareas. Un aviso de temporada y el pico de la misma keyword son una sola tarea, la del pico, que dice cuánto falta. Las capturas y la línea «Ficha frente a tu producto» son de la app, así que la misma tarea sale una vez aunque la sigas en dos países. Hay una tarea por keyword y mercado, y como mucho dos picos por mercado.
+- **Sin apps**, la página es un buscador grande que lleva a Añadir app.
+
+## Resumen de la app
+
+`/a/[app]/[país]` es el Resumen del mercado (`components/market-summary.tsx`). La tabla de keywords está en `/a/[app]/[país]/keywords` (Seguimiento). Cada bloque llega por streaming con un esqueleto de su forma, y las keywords y la cuota se leen una vez por petición.
+
+1. **KPIs:** visibilidad (tu cuota del TOP 5, con el cambio en puntos), keywords en el TOP 10 y en el TOP 30 (con su cambio, contado como en Inicio) y la valoración con el número de valoraciones.
+2. **Visibilidad a 30, 90 o 180 días** (`?dias=90`), con tu app en `--series-own` (`getShareHistory` en `lib/competitor-queries.ts`). Las anotaciones de Cambios son líneas verticales con una marca. Al pasar el ratón por un día se ven los cambios desde el punto anterior y su impacto a 14 días en una línea: «12 keywords · 23 → 18 ▲» (`aggregateImpact` en `lib/impact.ts`, la media de las posiciones medias de las keywords medidas antes y después; las que entran o salen de los resultados se cuentan aparte). Debajo, la lista de esos cambios, que también lee un lector de pantalla.
+3. **Próximos pasos:** las líneas de la salud ASO como tareas, primero las que necesitan atención y después las mejorables, cada una con su botón. Las que están bien se pliegan en «4 en orden».
+4. **Movimientos de la semana:** «Suben» y «Bajan», con la posición anterior → la actual, y «Nuevos nº 1 donde compites», que son los avisos de cambio de nº 1 de la semana.
+5. **Competencia en una línea:** «MyTherapy 33 % · Medisafe 15 % · Tú 3 %» como barra apilada, con los mismos colores que en Competidores y un enlace a esa página.
+
 ## Panel de salud
 
-La portada de cada app empieza con la tarjeta **Salud ASO**: una línea por señal, con su estado (bien, mejorable, necesita atención o sin datos) y un enlace a la pantalla donde se arregla. La decisión está en `lib/health.ts` (puro y con tests) y los datos se cargan en `lib/health-queries.ts` en una sola ronda de consultas en paralelo, reutilizando las keywords que la portada ya ha leído. La tarjeta llega por streaming (Suspense), así que la tabla de keywords no la espera.
+El Resumen de cada app convierte la **Salud ASO** en «Próximos pasos». Inicio la resume por fila. Cada señal tiene un estado (bien, mejorable, necesita atención o sin datos) y un enlace a la pantalla donde se arregla. La decisión está en `lib/health.ts` (puro y con tests). Los datos se cargan en `lib/health-queries.ts` (`loadHealth`, y `loadHealthDetail` con todos los picos que vienen para Inicio) en una sola ronda de consultas en paralelo, reutilizando las keywords ya leídas. Todo llega por streaming (Suspense).
 
 | Señal | De dónde sale | Umbrales |
 | --- | --- | --- |
@@ -508,9 +563,9 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 | Actividad (novedades) y resumen semanal | `/actividad` y `/actividad?vista=semana` (filtros `periodo`, `app`, `tipo`) |
 | Integraciones | `/integraciones` |
 | Añadir app (buscar en las tiendas) | `/apps/nueva` |
-| Resumen del mercado (hasta la fase 28 muestra las keywords) | `/a/[app]/[país]` |
-| Keywords › Seguimiento y una keyword | `/a/[app]/[país]/keywords`, `/a/[app]/[país]/keywords/[id]` |
-| Keywords › Encontrar (tres fuentes hasta la fase 29) | `/a/[app]/[país]/descubrir`, `/ideas`, `/top10` |
+| Resumen del mercado | `/a/[app]/[país]` (`?dias=90` o `180` para el gráfico) |
+| Keywords › Seguimiento, su panel y una keyword | `/a/[app]/[país]/keywords` (`?k=[id]` abre el panel), `/a/[app]/[país]/keywords/[id]` |
+| Keywords › Encontrar | `/a/[app]/[país]/encontrar` (`?fuente=pendientes`, `autocompletado`, `ia` o `top10`; `seed`: semilla o tema) |
 | Mercado › Competidores, Reseñas, Tendencias | `/a/[app]/[país]/competidores`, `/resenas`, `/tendencias` |
 | Optimizar › Ficha de la tienda y su publicación | `/a/[app]/[país]/ficha`, `/a/[app]/[país]/ficha/publicar` |
 | Optimizar › Creativos (iguales en todos los países) | `/a/[app]/creativos`, `/creativos/icono`, `/creativos/logo`, `/creativos/video` |
@@ -522,7 +577,7 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 ### Navegación
 
 - **Fuera de una app** (`app/(global)/layout.tsx`): barra lateral con el selector de app (búsqueda con iconos, agrupado por app con sus mercados), Inicio, Actividad (con los avisos sin leer) e Integraciones, y al pie el tema y la versión.
-- **Dentro de una app** (`app/a/[app]/layout.tsx`): la barra lateral pasa a ser la de la app, con «← Todas las apps», Resumen, los grupos KEYWORDS, MERCADO y OPTIMIZAR y Ajustes de la app al pie. La configuración está en `lib/app-nav.ts` (`NAV_GROUPS`). Los contadores (ideas pendientes y avisos sin leer del mercado) y la fecha de la última consulta salen de **una sola consulta** por producto (`marketCounters` en `lib/nav-queries.ts`) y llegan por streaming.
+- **Dentro de una app** (`app/a/[app]/layout.tsx`): la barra lateral pasa a ser la de la app, con «← Todas las apps», Resumen, los grupos KEYWORDS, MERCADO y OPTIMIZAR y Ajustes de la app al pie. La configuración está en `lib/app-nav.ts` (`NAV_GROUPS`). Los contadores (candidatas pendientes de Encontrar y avisos sin leer del mercado) y la fecha de la última consulta salen de **una sola consulta** por producto (`marketCounters` en `lib/nav-queries.ts`) y llegan por streaming.
 - **Cabecera fija de 56 px:** icono y nombre de la app, tienda, selector de mercado (cambiar de mercado mantiene la subpágina, `switchMarketPath()`), «Posiciones del…», el botón principal «Actualizar posiciones» y el menú «⋯» (Actualizar ficha, Ver en la tienda, Ajustes de la app).
 - **El mercado en las páginas de la app en conjunto** (Creativos, Ajustes): los enlaces de la barra lateral llevan `?m=[país]`, y el último mercado visto se guarda en la cookie `rk-m-[app]`. Así «Seguimiento» vuelve al país del que venías, y Marcas y Datos de Play Console usan ese país (`loadContextMarket()`). Sin ninguno de los dos, el mercado principal.
 - **⌘K / Ctrl+K** (o «Buscar» en la cabecera) abre la paleta: apps y mercados, secciones de la app, keywords del mercado activo (búsqueda en el servidor, como mucho 8) y las acciones «Actualizar posiciones», «Optimizar ficha» y «Generar ideas».
@@ -532,6 +587,8 @@ Una app se sigue en uno o varios países. Cada país es un **mercado**, con sus 
 ### Redirecciones
 
 Las URLs antiguas `/apps/[id]/…`, que siguen en emails y marcadores, responden con un **308** a la nueva, conservando la query: `/apps/1/metadata` → `/a/recordatorio/es/ficha`, `/apps/4` → `/a/recordatorio/us/keywords`, `/apps/1/producto` → `/a/recordatorio/ajustes/producto`, `/apps/1/creativos/logo` → `/a/recordatorio/creativos/logo`. Están en `app/apps/[id]/[[...rest]]/route.ts`, que busca el id en la base de datos, y el mapa está en `legacyAppRedirect()`. Es un route handler y no una página porque una página se serviría en streaming detrás de `app/loading.tsx`, y la redirección llegaría como una etiqueta `<meta>` con estado 200. Un id que no es un número (como `/apps/nueva`, que además es una ruta estática), uno que no existe o una subpágina desconocida dan 404.
+
+Las tres páginas de Encontrar de la fase 27 (`/a/[app]/[país]/descubrir`, `/ideas`, `/top10`) responden con un **308** a `encontrar?fuente=autocompletado`, `ia` o `top10`, conservando la query (`seed`, `kw`): `FIND_REDIRECTS` en `lib/redirects.ts`. Las antiguas `/apps/[id]/descubrir…` van directamente a su destino final, sin pasar por ellas (`findPath()` en `lib/market-path.ts`).
 
 Las páginas globales antiguas también responden con un **308**, conservando la query: `/novedades` → `/actividad`, `/resumen` → `/actividad?vista=semana`, `/ajustes` → `/integraciones` y `/buscar` → `/apps/nueva`. El mapa está en `lib/redirects.ts` y lo aplica `next.config.ts` (`redirects()`). `/apps/nueva` es una ruta estática y gana a `app/apps/[id]/[[...rest]]/route.ts`.
 
@@ -549,6 +606,8 @@ Las páginas globales antiguas también responden con un **308**, conservando la
 - `E2E_DATABASE_URL_FILE=ruta/al/archivo npm run test:e2e` compila la app y la arranca con `next start -p 3200` (otro puerto con `E2E_PORT`), sin contraseña y sin claves de IA, correo ni consolas de las tiendas. Para repetir sin compilar: `npx playwright test`.
 - **`e2e/routes.spec.ts`**: todas las rutas, para todas las apps de la base de datos, a 390 y 1440 px. Comprueba que responden 200 y que no hay errores en la consola. Falla si el documento hace scroll horizontal a 390 o 1440 px, salvo en Creativos y su vídeo (fase 32), que solo se informan. El desbordamiento de `<main>` se mide y se deja en `test-results/overflow.md`.
 - **`e2e/navigation.spec.ts`**: la navegación de la fase 27. Redirecciones 308 de las páginas globales, sin pestañas horizontales, «Dejar de seguir» solo en la zona de peligro (abre el diálogo, nunca lo envía), cambio de mercado con la misma subpágina, ⌘K y la barra inferior del móvil.
+- **`e2e/summary.spec.ts`**: Inicio y Resumen (fase 28). Comprueba los KPIs, una fila por mercado que abre su Resumen, «Qué hacer hoy», las tarjetas en el móvil, el gráfico con una marca por anotación (si la base de datos de prueba tiene alguna en 30 días) y el cambio de periodo. También que no hay scroll horizontal a 390 y 1440 px y que el contenido pasa axe AA en los dos temas. Anota el tiempo de Inicio.
+- **`e2e/keywords.spec.ts`**: la fase 29. Seguimiento con 25 botones visibles como mucho sin selección (antes, 106) y la barra de la selección; `?k=` abre el panel de 480 px y cerrarlo lo quita de la URL; a 390 px tarjetas, filtros en una hoja inferior y sin scroll horizontal; en Encontrar, lo descartado no vuelve tras recargar (inserta y borra su propia candidata); redirecciones 308 de las páginas antiguas de Encontrar.
 - **`e2e/axe.spec.ts`**: `/dev/ui` en los dos temas debe pasar WCAG 2.1 AA. De las pantallas actuales solo se informa en `test-results/axe-routes.json`.
 - **`e2e/ficha.spec.ts`**: la ficha de la tienda de «recordatorio» en España. La vista previa enseña icono, título, descripción corta y 3 capturas; pulsar una keyword de Cobertura la resalta; Publicada y Comparar; la propuesta de la IA se acepta campo a campo (con la demo de `/dev/ui`); sin scroll horizontal a 390 y 1440 px, y sin fallos graves de axe en los dos temas. No guarda nada.
 

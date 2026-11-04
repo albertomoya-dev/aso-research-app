@@ -83,9 +83,10 @@ describe("legacyAppRedirect", () => {
   it.each([
     [[], "/a/recordatorio/es/keywords"],
     [["keywords", "42"], "/a/recordatorio/es/keywords/42"],
-    [["descubrir"], "/a/recordatorio/es/descubrir"],
-    [["ideas"], "/a/recordatorio/es/ideas"],
-    [["top10"], "/a/recordatorio/es/top10"],
+    // The three old find pages go straight to Encontrar (phase 29), not through the 308 of phase 27.
+    [["descubrir"], "/a/recordatorio/es/encontrar?fuente=autocompletado"],
+    [["ideas"], "/a/recordatorio/es/encontrar?fuente=ia"],
+    [["top10"], "/a/recordatorio/es/encontrar?fuente=top10"],
     [["resenas"], "/a/recordatorio/es/resenas"],
     [["competidores"], "/a/recordatorio/es/competidores"],
     [["estacionalidad"], "/a/recordatorio/es/tendencias"],
@@ -105,6 +106,8 @@ describe("legacyAppRedirect", () => {
     expect(legacyAppRedirect(es, [], "?f=top10&s=position")).toBe("/a/recordatorio/es/keywords?f=top10&s=position");
     expect(legacyAppRedirect(es, ["metadata"], "?locale=en-US")).toBe("/a/recordatorio/es/ficha?locale=en-US");
     expect(legacyAppRedirect(es, ["creativos"], "?x=1")).toBe("/a/recordatorio/creativos?x=1");
+    expect(legacyAppRedirect(es, ["descubrir"], "?seed=correr")).toBe("/a/recordatorio/es/encontrar?seed=correr&fuente=autocompletado");
+    expect(legacyAppRedirect(es, ["top10"], "?kw=all")).toBe("/a/recordatorio/es/encontrar?kw=all&fuente=top10");
   });
 
   it("is null for pages that never existed", () => {

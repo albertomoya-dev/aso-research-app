@@ -221,37 +221,42 @@ export function reviewsItem(input: {
   };
 }
 
-export type KeywordPeaks = { term: string; peaks: number[] };
-export type NextSeason = { term: string; month: number; days: number; running: boolean };
+export type KeywordPeaks = { term: string; peaks: number[]; keywordId?: number };
+export type NextSeason = { term: string; month: number; days: number; running: boolean; keywordId?: number };
 
 /**
- * The nearest seasonal peak among keywords that may be announced: one that is running now (the current
- * month is a peak) counts as 0 days; otherwise the first day of the next peak start. `date` is YYYY-MM-DD.
+ * The coming seasonal peak of every keyword that may be announced, nearest first: one that is running now
+ * (the current month is a peak) counts as 0 days; otherwise the first day of its next peak start.
+ * `date` is YYYY-MM-DD. Ties keep the input order.
  */
-export function nextSeason(keywords: KeywordPeaks[], date: string): NextSeason | null {
+export function nextSeasons(keywords: KeywordPeaks[], date: string): NextSeason[] {
   const today = new Date(`${date}T00:00:00Z`);
   const month = today.getUTCMonth();
-  let best: NextSeason | null = null;
+  const out: NextSeason[] = [];
   for (const k of keywords) {
     if (k.peaks.length === 0) continue;
-    let candidate: NextSeason;
+    const id = k.keywordId != null ? { keywordId: k.keywordId } : {};
     if (k.peaks.includes(month)) {
-      candidate = { term: k.term, month, days: 0, running: true };
-    } else {
-      const starts = peakStarts(k.peaks);
-      let soonest = Infinity;
-      let soonestMonth = starts[0];
-      for (const m of starts) {
-        const year = m > month ? today.getUTCFullYear() : today.getUTCFullYear() + 1;
-        const days = Math.round((Date.UTC(year, m, 1) - today.getTime()) / 86_400_000);
-        if (days < soonest) [soonest, soonestMonth] = [days, m];
-      }
-      if (!Number.isFinite(soonest)) continue;
-      candidate = { term: k.term, month: soonestMonth, days: soonest, running: false };
+      out.push({ term: k.term, month, days: 0, running: true, ...id });
+      continue;
     }
-    if (!best || candidate.days < best.days) best = candidate;
+    const starts = peakStarts(k.peaks);
+    let soonest = Infinity;
+    let soonestMonth = starts[0];
+    for (const m of starts) {
+      const year = m > month ? today.getUTCFullYear() : today.getUTCFullYear() + 1;
+      const days = Math.round((Date.UTC(year, m, 1) - today.getTime()) / 86_400_000);
+      if (days < soonest) [soonest, soonestMonth] = [days, m];
+    }
+    if (Number.isFinite(soonest)) out.push({ term: k.term, month: soonestMonth, days: soonest, running: false, ...id });
   }
-  return best;
+  // Stable sort: equal days keep the order of `keywords`.
+  return out.sort((a, b) => a.days - b.days);
+}
+
+/** The nearest of `nextSeasons`, or null (the health line shows only this one). */
+export function nextSeason(keywords: KeywordPeaks[], date: string): NextSeason | null {
+  return nextSeasons(keywords, date)[0] ?? null;
 }
 
 export function seasonItem(input: { next: NextSeason | null; analysed: number; href: string }): HealthItem {
